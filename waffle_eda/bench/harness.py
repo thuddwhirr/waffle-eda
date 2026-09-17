@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 from waffle_eda.bench import references as refs
-from waffle_eda.kicad import board as kb
+from waffle_eda.kicad import board as kb, refill
 
 # DRC violation types that are electrical (copper) rather than fabrication or documentation.
 ELECTRICAL_TYPES = {
@@ -41,10 +41,14 @@ def bench_dir() -> Path:
     return d
 
 
-def strip_bus(ref: refs.Reference, out_path: Path | None = None) -> tuple[Path, dict]:
-    """Write the problem board: the reference with only the bus nets' tracks, arcs and vias removed."""
+def strip_bus(ref: refs.Reference, out_path: Path | None = None, reuse: bool = True) -> tuple[Path, dict]:
+    """Write the problem board: the reference with only the bus nets' tracks, arcs and vias removed. With ``reuse``
+    an existing problem board newer than the reference file is returned as is (the refill can take minutes)."""
     if not ref.has_bus:
         raise ValueError(f"{ref.key} has no bus to strip")
+    out_path = out_path or bench_dir() / f"{ref.key}-problem.kicad_pcb"
+    if reuse and out_path.is_file() and out_path.stat().st_mtime > refs.board_path(ref).stat().st_mtime:
+        return out_path, {"bus_nets": None, "reused": True}
     board = kb.load_board(refs.board_path(ref))
     nets = set(kb.nets_matching(board, ref.bus_net_pattern))
     removed = {"tracks": 0, "arcs": 0, "vias": 0}
@@ -53,10 +57,9 @@ def strip_bus(ref: refs.Reference, out_path: Path | None = None) -> tuple[Path, 
             cls = item.GetClass()
             removed["tracks" if cls == "PCB_TRACK" else "arcs" if cls == "PCB_ARC" else "vias"] += 1
             board.Delete(item)  # not Remove(): the Python proxy would then own a C++ object with no destructor
-    kb.refill_zones(board)
-    out_path = out_path or bench_dir() / f"{ref.key}-problem.kicad_pcb"
     kb.save_board(board, out_path)
-    return out_path, {"bus_nets": len(nets), **removed}
+    fill = refill.refill_file(out_path)  # in a child process: the in-process filler hangs on some boards (D14)
+    return out_path, {"bus_nets": len(nets), **removed, "refill": fill}
 
 
 def run_drc(board_path: Path, out_path: Path, severity: str = "--severity-error") -> dict:
