@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "waffle-eda"
+version = "0.0.1"
+description = "Feature proposal to manufacturable design files, with no interactive routing."
+requires-python = ">=3.11"
+dependencies = [
+    "z3-solver",
+    "numpy",
+    "shapely",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+# KiCad 9's `pcbnew` module is not on PyPI: it comes with the KiCad installation and must be importable by this
+# interpreter. scripts/check_env.py verifies that.
+
+[tool.setuptools.packages.find]
+include = ["waffle_eda*"]
+
+[tool.setuptools.package-data]
+"waffle_eda.fab" = ["profiles/*.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

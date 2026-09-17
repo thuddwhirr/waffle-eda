@@ -1,0 +1,63 @@
+# PCBWay, standard capability. Numbers captured from PCBWay's published capability and stack-up pages on 2026-09-10 by
+# the waffle-fpga project (docs/lessons/vendor-notes.md, stackup.md, tooling-project-brief.md section 7). Confirm on
+# the quote page at order time; impedance control and via-in-pad are quoted under "Advanced PCB".
+
+[profile]
+name = "pcbway"
+vendor = "PCBWay"
+source = "PCBWay published capability pages, captured 2026-09-10 (waffle-fpga vendor-notes.md); confirm at quote time"
+
+[capability]
+layer_counts = [1, 2, 4, 6, 8, 10, 12, 14]
+thickness_mm = [0.2, 3.2]
+min_track_outer_mm = 0.10          # 4 mil at 1 oz
+min_clearance_outer_mm = 0.10      # 4 mil at 1 oz
+min_track_inner_mm = 0.10          # 4 mil at 1 oz
+min_clearance_inner_mm = 0.127     # 5 mil at 1 oz
+min_drill_mm = 0.15
+min_annular_ring_mm = 0.15
+standard_via_pad_mm = 0.45         # the via the last project used for BGA dog-bones and signals
+standard_via_drill_mm = 0.20
+hole_clearance_mm = 0.20           # the last project's rules used 0.25 mm hole-to-hole
+copper_to_edge_mm = 0.30
+outer_copper_oz = 1.0
+inner_copper_oz = 1.0
+via_in_pad = "option"              # extra cost; needs filled and capped vias
+filled_capped_vias = "option"
+blind_buried_vias = "option"
+controlled_impedance = "option"    # coupon per panel; PCBWay supplies the stack-up and widths at quote time
+surface_finishes = ["HASL", "ENIG", "ENEPIG"]
+material = "FR-4"
+smallest_passive = "0201"
+bga_assembly = true
+x_ray_inspection = "option"
+assembly_min_quantity = 5
+
+# PCBWay's published standard 8-layer 1.6 mm structure #1 (1 oz / 1 oz, >= 60 % inner residual copper).
+[stackup.eight_layer_1p6mm]
+layers = 8
+finished_thickness_mm = 1.62
+finished_thickness_tolerance = 0.10
+outer_copper_oz = 1.0     # 0.5 oz base plated to 1 oz
+inner_copper_oz = 1.0
+# Dielectric between consecutive copper layers, top to bottom: type, thickness after lamination (mm), Dk at 1 MHz.
+dielectrics = [
+  { between = "L1-L2", type = "prepreg 2116", thickness_mm = 0.1195, dk = 4.45 },
+  { between = "L2-L3", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L3-L4", type = "prepreg 7628", thickness_mm = 0.175,  dk = 4.74 },
+  { between = "L4-L5", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L5-L6", type = "prepreg 7628", thickness_mm = 0.175,  dk = 4.74 },
+  { between = "L6-L7", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L7-L8", type = "prepreg 2116", thickness_mm = 0.1195, dk = 4.45 },
+]
+# Closed-form impedance widths the last project derived for this structure (salvage/waffle-fpga/hw/tools/impedance.py).
+[stackup.eight_layer_1p6mm.impedance_mm]
+microstrip_50_single = 0.212
+microstrip_100_diff = { width = 0.158, gap = 0.150 }
+microstrip_90_diff = { width = 0.193, gap = 0.150 }
+stripline_50_single = 0.129
+stripline_100_diff = { width = 0.100, gap = 0.200 }
+
+[price]
+status = "unknown"
+note = "Fill from real PCBWay quotes before any cost-based decision; until then every cost-crossing escalates to the owner."

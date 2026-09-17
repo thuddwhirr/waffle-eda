@@ -1,0 +1,30 @@
+# Layout practices audit (D59)
+
+Written after the fact, which is the point: several standard practices were discovered one at a time while patching
+their consequences. This is the checklist a board like this (two 0.8 mm BGAs, DDR3, eight layers, PCBWay 4/4 mil) is
+held to, what the generated flow did, and what the rework changed. Anything still open is marked.
+
+| # | Practice | Before D59 | Now |
+|---|---|---|---|
+| 1 | **BGA fan-out: every ball owns one diagonal gap, power/ground balls get their via unconditionally, before any signal.** | Signals first, power last; ring-1 power left to a later tool; 8 DRAM power balls and several FPGA VCCIO balls ended with no via or a via in the wrong island. | `bga_escape.py` places power first at the owned site; a power ball without a via is an error. Gate: `fix_open_pads.py --dry-run` must list no BGA ball. |
+| 2 | **Nothing on the top layer inside the ball field except dog-bone stubs and ring-1/2 escapes; inner-ring escapes leave on inner layers between the via rows.** | Ring-2 channel stubs on the top layer ran through the gaps power balls needed. | Ring-2 uses a channel only where no via sits in it, else dog-bones like the inner rings. |
+| 3 | **Verify the fan-out before routing: every ball connected or escaped, DRC clean.** | Not checked; found after two routing stages. | Pre-route DRC: 0 clearance errors; U1 353/353 balls, U2 90/92 (A3, A5 left to the router). |
+| 4 | **Power layers carry no signal tracks.** | PWR was a routing layer outside the islands; 99 nets, 3.3 m of track, cut the 3V3 fill into 47 pieces. | `export_dsn.py` types PWR as a plane (`PWR_ROUTE=1` for the old behaviour). |
+| 5 | **Every rail has continuous copper: a plane, an island with a real feed, or a deliberate pour.** | 3V3 = "whatever the islands leave"; feeds were bounding rectangles (19 x 60 mm walls); 3V3 in 47 pieces, 1V1 core cluster cut off its feed. | Feed strips, a second 3V3 sheet on B.Cu, 1V35 island under the DRAM capacitors and a patch under the bank 2/3 balls; `fix_pwr_fill.py` reports pieces per rail. |
+| 6 | **Zone fill clearance and width at the fab minimum under BGAs, so the plane survives the via grid.** | 0.125 / 0.2 mm (0.25 for GND): 0.8 mm via grid left 0.1 mm webs, dropped; GND under the FPGA 80 % in 8 pieces. | 0.1 / 0.15 mm everywhere: 86 %, 5 pieces. |
+| 7 | **Decoupling next to the balls it serves, on the rail's own copper.** | 1V35 capacitors of banks 2/3 at the FPGA's east edge, 25 mm from the balls; 1V1 caps in the escape lane (clearance error). | Back-side parts target the centroid of their rail's balls; the keep-out around the escape lanes uses the placed FPGA position. |
+| 8 | **DDR3 on signal layers only, each referenced to a ground plane; fan-out first, bus second, length-tune last.** | A11/A14 ended on PWR; length tuning attempted before the bus was routed cleanly. | PWR not routable; order enforced by the staged flow. Open: the bus route itself (router or by hand, see `ddr3-routing-guide.md`). |
+| 9 | **Pin swapping within DDR3 byte lanes and the address group to make the bus crossing-free.** | Tried (`ddr_swap.py`), reverted because the router did worse; the reason was the fan-out, not the swap. | Open: re-evaluate on the new fan-out. |
+| 10 | **Length matching: within a lane to DQS, address group to CK; serpentines on straight runs.** | Tool exists (`ddr3_tune.py`); no room for meanders on the old routes. | Open until the bus is routed. |
+| 11 | **Ground stitching next to every high-speed via and on a grid.** | Done (`stitch_vias.py`). | Kept. |
+| 12 | **Fab rules set from the fab's capability before routing; net classes carry widths and impedance geometry.** | Done (D55, `impedance.py`). | Kept. |
+| 13 | **An autorouter is not the tool for a DDR3 bus.** | Known (D57); used anyway for lack of an alternative. | Fan-out now standard, so an interactive pass has something to start from. |
+| 14 | **Via-in-pad only when the pitch forces it.** | n/a | Not needed at 0.8 mm. |
+| 15 | **DDR3 bus spacing: about 1 to 1.5 track widths, not 3W.** Measured on the ButterStick: 0.12 mm tracks, 0.13 to 0.20 mm gaps to the nearest DDR3 neighbour on the same layer, most at 0.16 to 0.18 mm. | 0.20 mm gap demanded everywhere (D57), which left no room to change layers next to the combs. | 0.10 mm under the BGAs (fab minimum), 0.15 mm in the corridor (`ddr_bus.py`). |
+| 16 | **Layer changes only at the dog-bone vias under the packages; no vias in the open between the chips.** Measured: every ButterStick data net has 3 vias, none outside the BGA footprints; the corridor router's mid-corridor vias never fit between 50 lines. | Corridor router and autorouter both tried to place vias in the corridor. | `ddr_bus.py`: each net changes layer at its own dog-bone via and runs one layer across. |
+| 17 | **Re-order the bus on the ball lattice under the packages**: lines run along the row and column lines between the via grid, jog a few rows, and exit on the row that keeps the corridor crossing-free. | Every net exited on its own row; the crossings then had nowhere to resolve. | `ddr_bus.py` stage A (z3) picks layer and exit row per net with the order constraint per layer; stage B (negotiated congestion) routes the lattice paths. Converges for one layer per run so far; the DRAM lattice is at capacity (17 nets per layer on 18 row lines). Open. |
+| 18 | **A differential pair whose two balls sit in opposite order at the two chips cannot be routed as a pair.** The CK pair here is such a case. | Not checked at pin assignment. | Open: swap the CK pins at the FPGA and invert the ODDR pattern (needs a board-net override in `gen_pinmap.py`); until then the CK halves run on the same layer on adjacent rows, loosely coupled, length-matched. |
+
+The recurring lesson is item 3: a check that the previous step delivered what the next step assumes. The gates now in
+the flow are the fan-out gate (`fix_open_pads.py --dry-run`), the fill report (`fix_pwr_fill.py`), the DRC after every
+stage and `route_report.py` for the bus.

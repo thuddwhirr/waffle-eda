@@ -1,0 +1,440 @@
+# waffle-fpga — FPGA pin assignment: SINGLE SOURCE OF TRUTH
+#
+# Edit this file, then run  python3 pinmap/gen_pinmap.py  to regenerate
+#   pinmap.csv, board.lpf and bank-summary.md  (the generator also validates
+#   every claim below against the prjtrellis ECP5 pin database in pinmap/db/).
+#
+# Conventions
+#   b   = ball of the signal (for a differential signal: the TRUE/positive ball)
+#   nb  = ball of the complement (negative) side of a differential pair
+#   d   = direction seen from the FPGA: in | out | bidir
+#   t   = IO_TYPE for the LPF (overrides the interface default)
+#   a   = extra LPF attributes (overrides the interface default)
+#   clk = external clock frequency in Hz (adds FREQUENCY PORT; must sit on a
+#         PCLK/GR_PCLK primary-clock ball)
+#   dqs = DDR3 role: dq | dm | dqs | addr | cmd | ctrl | ck | reset
+#   lane= DDR3 byte lane (0/1) for dq/dm/dqs
+#   note= free text copied into the CSV
+#
+# Ball naming/availability rules enforced by the generator:
+#   * every ball must exist on LFE5U-85F, -45F and -25F in caBGA381 unless the
+#     signal carries  only85 = true  (then it is documented as NC on smaller parts)
+#   * bank voltage must match the IO_TYPE of every signal in the bank
+#   * differential pairs must be a real A/B or C/D pad pair of one PIO tile,
+#     positive side on A (or C); C/D pairs and differential inputs are only
+#     legal on left/right banks (2,3,6,7)
+#   * DDR3 dq/dm must be in the DQS group of their lane's dqs ball; dqs must
+#     sit on the dedicated DQS/DQSN pads; VREF1 of a DQ bank is reserved
+
+[package]
+device      = "LFE5U-85F-8BG381C"
+alternates  = ["LFE5U-45F-8BG381C", "LFE5U-25F-8BG381C"]
+package     = "CABGA381"
+speed_grade = "-8"   # session 2: -8 for HDMI 720p60 (742.5 Mb/s) and DDR3L 800 MT/s in spec
+
+# Package orientation assumed for all "board_side" remarks (top view of the
+# assembled board, front edge = HDMI/USB-host/audio edge, toward the viewer):
+#   The package is rotated 180 degrees from the Lattice top-view pinout
+#   drawing, i.e. ball A1 is at the FRONT-RIGHT corner of the package.
+#   Row A faces the front edge, column 20 is on the left, column 1 on the
+#   right.  Consequently:
+#     bank 1 = front-left top edge     bank 0 = front-right top edge
+#     bank 2 = left side, front half   bank 3 = left side, back half
+#     bank 7 = right side, front half  bank 6 = right side, back half
+#     bank 8 + dedicated config/JTAG   = back-right corner (rows R..Y, cols 1..5)
+orientation = "A1 at front-right; row A = front edge; banks 2/3 left, 6/7 right, 8 back-right"
+
+[banks.0]
+vccio = 3.3
+board_side = "top edge, front-right"
+role = "microSD x2, ESP32-C6 SDIO, I2C (low speed, single ended)"
+
+[banks.1]
+vccio = 3.3
+board_side = "top edge, front-left"
+role = "STM32H743 FMC bus + 3 expansion-header pins"
+
+[banks.2]
+vccio = 1.35
+board_side = "left side, front half"
+role = "DDR3L address/command/control/clock (+ reserved 2nd-rank CK1/CS1)"
+
+[banks.3]
+vccio = 1.35
+board_side = "left side, back half"
+role = "DDR3L data: DQ, DQS, DM, pseudo-power pads (VREF1_3 = P16 reserved)"
+
+[banks.6]
+vccio = 3.3
+board_side = "right side, back half"
+role = "PMOD C/D (true pairs), 2x20 expansion header (16 pins)"
+
+[banks.7]
+vccio = 3.3
+board_side = "right side, front half"
+role = "HDMI TMDS (A/B pairs), PMOD A/B (pairs), clocks, I2S, 1 header pin"
+
+[banks.8]
+vccio = 3.3
+board_side = "back-right corner (sysCONFIG bank)"
+role = "QSPI configuration flash, 74HC595 LED shift register (3), 5 expansion-header pins on D[7:4]/WRITEN"
+
+# ---------------------------------------------------------------------------
+# Dedicated (non-PIO) pins.  Not in the prjtrellis I/O database; ball numbers
+# taken from the ULX3S KiCad symbol for LFE5UM-85F-6BG381C (emard/ulx3s,
+# ulx3s-cache.lib) and cross-checked against the sysCONFIG guide pin names.
+# Re-verify against the Lattice caBGA381 pinout CSV before the schematic.
+# ---------------------------------------------------------------------------
+
+[dedicated_pins]
+pins = [
+  { name = "TCK", ball = "T5", d = "in", iface = "config", note = "JTAG clock from FT2232H (VCCIO8 = 3.3 V)" },
+  { name = "TMS", ball = "U5", d = "in", iface = "config", note = "JTAG mode select" },
+  { name = "TDI", ball = "R5", d = "in", iface = "config", note = "JTAG data in" },
+  { name = "TDO", ball = "V4", d = "out", iface = "config", note = "JTAG data out" },
+  { name = "PROGRAMN", ball = "W3", d = "in", iface = "config", note = "PROGRAMN push button, 4.7k pull-up to VCCIO8" },
+  { name = "INITN", ball = "V3", d = "bidir", iface = "config", note = "open-drain, INITN LED (active low) + pull-up" },
+  { name = "DONE", ball = "Y3", d = "bidir", iface = "config", note = "open-drain, DONE LED + pull-up" },
+  { name = "CCLK", ball = "U3", d = "out", iface = "config", note = "MCLK to flash SCK (Master SPI), 1k pull-up recommended, user-mode via USRMCLK" },
+  { name = "CFG0", ball = "U4", d = "in", iface = "config", note = "CFG[2:0]=010 = Master SPI: CFG0 pull-DOWN" },
+  { name = "CFG1", ball = "T4", d = "in", iface = "config", note = "CFG1 pull-UP (4.7k)" },
+  { name = "CFG2", ball = "R4", d = "in", iface = "config", note = "CFG2 pull-DOWN" },
+]
+
+# ---------------------------------------------------------------------------
+# Interfaces (order = order in the CSV / LPF)
+# ---------------------------------------------------------------------------
+
+[interfaces.ddr3]
+title   = "DDR3L SDRAM, 1x 8 Gbit x16, LiteDRAM soft PHY (banks 2+3, 1.35 V)"
+io_type = "SSTL135_I"
+attrs   = "SLEWRATE=FAST"
+note    = "DQ byte lanes in bank 3 (RDQS89 = lane 0, RDQS53 = lane 1), addr/cmd/ctrl/CK in bank 2"
+signals = [
+  # ---- byte lane 0 : DQS group RDQS89 (bank 3) ----
+  { n="ddr3_dq[0]",    b="R16", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[1]",    b="N18", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[2]",    b="P17", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[3]",    b="N17", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[4]",    b="L17", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[5]",    b="L18", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[6]",    b="L16", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dq[7]",    b="L19", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=0 },
+  { n="ddr3_dm[0]",    b="R17", d="out",   dqs="dm",  lane=0 },
+  { n="ddr3_dqs_p[0]", b="N16", nb="M17", d="bidir", t="SSTL135D_I", a="SLEWRATE=FAST TERMINATION=OFF DIFFRESISTOR=100", dqs="dqs", lane=0, note="DQS pads T19/R18 (RDQS89/RDQSN89)" },
+  # ---- byte lane 1 : DQS group RDQS53 (bank 3) ----
+  { n="ddr3_dq[8]",    b="P18", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[9]",    b="P19", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[10]",   b="P20", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[11]",   b="R20", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[12]",   b="U18", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[13]",   b="U20", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[14]",   b="T18", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dq[15]",   b="U19", d="bidir", a="SLEWRATE=FAST TERMINATION=75", dqs="dq",  lane=1 },
+  { n="ddr3_dm[1]",    b="N20", d="out",   dqs="dm",  lane=1 },
+  { n="ddr3_dqs_p[1]", b="T19", nb="R18", d="bidir", t="SSTL135D_I", a="SLEWRATE=FAST TERMINATION=OFF DIFFRESISTOR=100", dqs="dqs", lane=1, note="DQS pads N16/M17 (RDQS53/RDQSN53)" },
+  # ---- address / command / control / clock : bank 2 ----
+  { n="ddr3_a[0]",  b="F19", d="out", dqs="addr" },
+  { n="ddr3_a[1]",  b="F17", d="out", dqs="addr" },
+  { n="ddr3_a[2]",  b="F18", d="out", dqs="addr" },
+  { n="ddr3_a[3]",  b="G16", d="out", dqs="addr" },
+  { n="ddr3_a[4]",  b="E20", d="out", dqs="addr" },
+  { n="ddr3_a[5]",  b="F16", d="out", dqs="addr" },
+  { n="ddr3_a[6]",  b="E16", d="out", dqs="addr" },
+  { n="ddr3_a[7]",  b="D19", d="out", dqs="addr" },
+  { n="ddr3_a[8]",  b="C18", d="out", dqs="addr" },
+  { n="ddr3_a[9]",  b="E18", d="out", dqs="addr" },
+  { n="ddr3_a[10]", b="H20", d="out", dqs="addr" },
+  { n="ddr3_a[11]", b="E17", d="out", dqs="addr" },
+  { n="ddr3_a[12]", b="G18", d="out", dqs="addr" },
+  { n="ddr3_a[13]", b="D18", d="out", dqs="addr" },
+  { n="ddr3_a[14]", b="C20", d="out", dqs="addr" },
+  { n="ddr3_a[15]", b="G20", d="out", dqs="addr" },
+  { n="ddr3_ba[0]", b="H17", d="out", dqs="addr" },
+  { n="ddr3_ba[1]", b="F20", d="out", dqs="addr" },
+  { n="ddr3_ba[2]", b="G19", d="out", dqs="addr" },
+  { n="ddr3_ras_n", b="K18", d="out", dqs="cmd" },
+  { n="ddr3_cas_n", b="J18", d="out", dqs="cmd" },
+  { n="ddr3_we_n",  b="H16", d="out", dqs="cmd" },
+  { n="ddr3_cs_n",  b="H18", d="out", dqs="ctrl" },
+  { n="ddr3_cke",   b="J17", d="out", dqs="ctrl" },
+  { n="ddr3_odt",   b="J16", d="out", dqs="ctrl" },
+  { n="ddr3_reset_n", b="D17", d="out", dqs="reset", note="LVCMOS-level reset on DDR3L; SSTL135 output is fine (1.35 V swing)" },
+  { n="ddr3_clk_p", b="J19", nb="K19", d="out", t="SSTL135D_I", dqs="ck", note="CK/CK# on PCLKT2_1/PCLKC2_1 A/B pair; 100 ohm differential termination at the DRAM" },
+  # ---- Lattice SSN guidance: pseudo power pads inside the data DQS groups (FPGA-TN-02035 6.7) ----
+  { n="ddr3_pseudo_vccio[0]", b="N19", d="out", t="SSTL135_II", dqs="pseudo", note="PSEUDO-VCCIO pad in RDQS89 group: RTL drives constant 1, PCB ties the ball to VCCIO3 (1.35 V)" },
+  { n="ddr3_pseudo_gnd[0]",   b="T20", d="out", t="SSTL135_II", dqs="pseudo", note="PSEUDO-GND pad in RDQS89 group: RTL drives constant 0, PCB ties the ball to GND" },
+  { n="ddr3_pseudo_vccio[1]", b="M18", d="out", t="SSTL135_II", dqs="pseudo", note="PSEUDO-VCCIO pad in RDQS53 group: RTL drives constant 1, PCB ties the ball to VCCIO3 (1.35 V)" },
+  # ---- RESERVED (not assigned): second DDR3 die / rank in a later revision ----
+  { n="ddr3_clk1_p", b="J20", nb="K20", d="out", t="SSTL135D_I", dqs="ck", reserved=true, note="RESERVED for a 2nd rank: CK1/CK1# on PCLKT2_0/PCLKC2_0 A/B pair. Not connected on this revision (test point)" },
+  { n="ddr3_cs1_n",  b="E19", d="out", dqs="ctrl", reserved=true, note="RESERVED for a 2nd rank: CS1#. Not connected on this revision" },
+  { n="ddr3_cke1",   b="U17", d="out", dqs="ctrl", reserved=true, note="RESERVED for a 2nd rank: CKE1 (bank 3, RDQS89 group). ODT1 would share ODT0 or take T17. Not connected on this revision" },
+]
+
+[interfaces.hdmi]
+title   = "HDMI 1.4 TMDS source, 4 pseudo-differential pairs direct from FPGA (bank 6, 3.3 V); design target 720p60 / 1080p30, 1080p60 best-effort"
+io_type = "LVCMOS33D"
+attrs   = "DRIVE=4 SLEWRATE=FAST"
+note    = "A/B pad pairs on the right side, back half (GDDRX2/ECLK, 800 Mb/s on -8). Series resistors + optional AC coupling per the ULX3S GPDI circuit. HPD, DDC and CEC are on the STM32H7 (stm32-pin-plan.md)."
+signals = [
+  # D52: moved from bank 7 (front half of the right side) to bank 6 (back half) so the connector can sit on the back edge
+  { n="hdmi_clk_p", b="L4", nb="L5", d="out", note="TMDS clock pair" },
+  { n="hdmi_d0_p",  b="N4", nb="P5", d="out", note="TMDS data 0 (blue)" },
+  { n="hdmi_d1_p",  b="L3", nb="L2", d="out", note="TMDS data 1 (green)" },
+  { n="hdmi_d2_p",  b="L1", nb="N1", d="out", note="TMDS data 2 (red)" },
+]
+
+[interfaces.clocks]
+title   = "Primary clock inputs (bank 7 PCLK pads)"
+io_type = "LVCMOS33"
+attrs   = "PULLMODE=NONE"
+signals = [
+  { n="clk27",     b="F2", d="in", clk=27000000, note="27 MHz main oscillator on PCLKT7_0. Reaches every PLL (UL/UR/LL/LR on 85F/45F; LL/LR on 25F) through the primary clock network; nearest = UL" },
+  { n="clk_si5351", b="G3", d="in", clk=25000000, note="Si5351A CLK0 on PCLKT7_1 (frequency programmable; 25 MHz placeholder in FREQUENCY constraint)" },
+]
+
+[interfaces.i2s]
+title   = "I2S to TLV320AIC3204 codec (bank 7)"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=SLOW"
+signals = [
+  { n="i2s_mclk",  b="H5", d="in",  clk=12288000, a="PULLMODE=NONE", note="MCLK from Si5351A CLK1 on GR_PCLK7_0 (usable as a primary clock)" },
+  { n="i2s_bclk",  b="H4", d="out", note="on GR_PCLK7_1 so it can also be a clock INPUT if the codec is bus master" },
+  { n="i2s_lrclk", b="G5", d="out" },
+  { n="i2s_dout",  b="F3", d="out", note="FPGA -> codec DAC data (on PCLKC7_1, spare clock-capable pad)" },
+  { n="i2s_din",   b="H3", d="in",  note="codec ADC -> FPGA" },
+]
+
+[interfaces.pmod_a]
+title   = "PMOD A (bank 7, 4 differential-capable pad pairs)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=8 SLEWRATE=SLOW"
+note    = "Pairs map to PMOD pins (1,7) (2,8) (3,9) (4,10) per PMOD spec 1.3.1. True differential RX; output pairs as LVCMOS33D (emulated)."
+signals = [
+  { n="pmod_a[0]", b="A4", d="bidir", pair="A5", note="PMOD pin 1 (+) ; pair A/B, ULC_GPLL0T_IN dual-function" },
+  { n="pmod_a[4]", b="A5", d="bidir", pair="A4", note="PMOD pin 7 (-)" },
+  { n="pmod_a[1]", b="E4", d="bidir", pair="D5", note="PMOD pin 2 (+) ; pair A/B" },
+  { n="pmod_a[5]", b="D5", d="bidir", pair="E4", note="PMOD pin 8 (-)" },
+  { n="pmod_a[2]", b="B5", d="bidir", pair="C5", note="PMOD pin 3 (+) ; pair C/D" },
+  { n="pmod_a[6]", b="C5", d="bidir", pair="B5", note="PMOD pin 9 (-)" },
+  { n="pmod_a[3]", b="A3", d="bidir", pair="B3", note="PMOD pin 4 (+) ; pair C/D" },
+  { n="pmod_a[7]", b="B3", d="bidir", pair="A3", note="PMOD pin 10 (-)" },
+]
+
+[interfaces.pmod_b]
+title   = "PMOD B (bank 7, 4 differential-capable pad pairs)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=8 SLEWRATE=SLOW"
+signals = [
+  { n="pmod_b[0]", b="C3", d="bidir", pair="D3", note="PMOD pin 1 (+) ; pair C/D" },
+  { n="pmod_b[4]", b="D3", d="bidir", pair="C3", note="PMOD pin 7 (-)" },
+  { n="pmod_b[1]", b="E5", d="bidir", pair="F5", note="PMOD pin 2 (+) ; pair C/D" },
+  { n="pmod_b[5]", b="F5", d="bidir", pair="E5", note="PMOD pin 8 (-)" },
+  { n="pmod_b[2]", b="B2", d="bidir", pair="C2", note="PMOD pin 3 (+) ; pair C/D ; B2 is VREF1_7 (free: no referenced inputs in bank 7)" },
+  { n="pmod_b[6]", b="C2", d="bidir", pair="B2", note="PMOD pin 9 (-)" },
+  { n="pmod_b[3]", b="D2", d="bidir", pair="E1", note="PMOD pin 4 (+) ; pair C/D" },
+  { n="pmod_b[7]", b="E1", d="bidir", pair="D2", note="PMOD pin 10 (-)" },
+]
+
+[interfaces.pmod_c]
+title   = "PMOD C (bank 6, 4 A/B pairs = true-LVDS-driver pairs)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=8 SLEWRATE=SLOW"
+signals = [
+  { n="pmod_c[0]", b="G2", d="bidir", pair="F1", note="PMOD pin 1 (+) ; PCLKT6_1 (clock-capable input)" },
+  { n="pmod_c[4]", b="F1", d="bidir", pair="G2", note="PMOD pin 7 (-) ; PCLKC6_1" },
+  { n="pmod_c[1]", b="J4", d="bidir", pair="J5", note="PMOD pin 2 (+) ; GR_PCLK6_0" },
+  { n="pmod_c[5]", b="J5", d="bidir", pair="J4", note="PMOD pin 8 (-)" },
+  { n="pmod_c[2]", b="K2", d="bidir", pair="J1", note="PMOD pin 3 (+)" },
+  { n="pmod_c[6]", b="J1", d="bidir", pair="K2", note="PMOD pin 9 (-)" },
+  { n="pmod_c[3]", b="K4", d="bidir", pair="K5", note="PMOD pin 4 (+)" },
+  { n="pmod_c[7]", b="K5", d="bidir", pair="K4", note="PMOD pin 10 (-) ; K5 is VREF1_6 (free at 3.3 V)" },
+]
+
+[interfaces.pmod_d]
+title   = "PMOD D (bank 6, 4 A/B pairs = true-LVDS-driver pairs)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=8 SLEWRATE=SLOW"
+signals = [
+  { n="pmod_d[0]", b="M4", d="bidir", pair="N5", note="PMOD pin 1 (+)" },
+  { n="pmod_d[4]", b="N5", d="bidir", pair="M4", note="PMOD pin 7 (-)" },
+  { n="pmod_d[1]", b="N3", d="bidir", pair="M3", note="PMOD pin 2 (+)" },
+  { n="pmod_d[5]", b="M3", d="bidir", pair="N3", note="PMOD pin 8 (-)" },
+  { n="pmod_d[2]", b="N2", d="bidir", pair="M1", note="PMOD pin 3 (+)" },
+  { n="pmod_d[6]", b="M1", d="bidir", pair="N2", note="PMOD pin 9 (-)" },
+  { n="pmod_d[3]", b="P1", d="bidir", pair="P2", note="PMOD pin 4 (+)" },
+  { n="pmod_d[7]", b="P2", d="bidir", pair="P1", note="PMOD pin 10 (-)" },
+]
+
+[interfaces.ext]
+title   = "2x20 0.1in expansion header, 27 GPIO: bank 6 (16 = 8 pad pairs), bank 1 (3), bank 0 (2), bank 7 (1), bank 8 (5)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=8 SLEWRATE=SLOW"
+note    = "27 GPIO + 3V3/5V/GND on a 2x20. Bank-8 pins are sysCONFIG dual-purpose: leave them undriven/unloaded during configuration (see decisions.md D17)"
+signals = [
+  { n="ext[0]",  b="H2", d="bidir", pair="G1", note="PCLKT6_0 (clock-capable)" },
+  { n="ext[1]",  b="G1", d="bidir", pair="H2", note="PCLKC6_0" },
+  { n="ext[2]",  b="J3", d="bidir", pair="K3", note="GR_PCLK6_1" },
+  { n="ext[3]",  b="K3", d="bidir", pair="J3" },
+  # bank 7 (right, front): the former HDMI pairs (D52)
+  { n="ext[4]",  b="C4", d="bidir", pair="B4", note="was hdmi_clk_p" },
+  { n="ext[5]",  b="B4", d="bidir", pair="C4", note="was hdmi_clk_n" },
+  { n="ext[6]",  b="A2", d="bidir", pair="B1", note="was hdmi_d0_p" },
+  { n="ext[7]",  b="B1", d="bidir", pair="A2", note="was hdmi_d0_n" },
+  { n="ext[8]",  b="C1", d="bidir", pair="D1", note="was hdmi_d1_p" },
+  { n="ext[9]",  b="D1", d="bidir", pair="C1", note="was hdmi_d1_n" },
+  { n="ext[10]", b="F4", d="bidir", pair="E3", note="was hdmi_d2_p" },
+  { n="ext[11]", b="E3", d="bidir", pair="F4", note="was hdmi_d2_n" },
+  { n="ext[12]", b="P3", d="bidir", pair="P4", note="LLC_GPLL0T_IN: dedicated input of the lower-left PLL (present on 85F/45F/25F)" },
+  { n="ext[13]", b="P4", d="bidir", pair="P3", note="LLC_GPLL0C_IN" },
+  { n="ext[14]", b="H1", d="bidir", pair="K1" },
+  { n="ext[15]", b="K1", d="bidir", pair="H1", note="was the reset button (moved to STM32)" },
+  # bank 1 (top, front-left): pairs are pseudo-differential OUTPUT only
+  { n="ext[16]", b="D12", d="bidir", pair="E12", note="GR_PCLK1_0 (clock-capable); was user button" },
+  { n="ext[17]", b="E12", d="bidir", pair="D12", note="GR_PCLK1_1; was user button" },
+  { n="ext[18]", b="B20", d="bidir", note="URC_GPLL1C_IN; single (pad mate A19 = fmc_nrst); was user button" },
+  # bank 0 (top, front-right)
+  { n="ext[19]", b="A6", d="bidir", pair="B6", note="ULC_GPLL1T_IN; was sd1_cd" },
+  { n="ext[20]", b="B6", d="bidir", pair="A6", note="ULC_GPLL1C_IN; was sd2_cd" },
+  # bank 7 (right, front)
+  { n="ext[21]", b="E2", d="bidir", note="PCLKC7_0 (clock-capable input); single (pad mate F2 = clk27); was hdmi_hpd" },
+  # bank 8 (sysCONFIG dual-purpose pins unused by Master SPI). D[7:4] are tristated with no pull during
+  # configuration; WRITEN has a weak pull-up during configuration and must not be pulled low by the header load
+  { n="ext[22]", b="V1", d="bidir", note="D4/MOSI2 — no function in Master SPI mode; tristated during configuration" },
+  { n="ext[23]", b="U1", d="bidir", note="D5/MISO2 — tristated during configuration" },
+  { n="ext[24]", b="T1", d="bidir", note="D6 — tristated during configuration" },
+  { n="ext[25]", b="R1", d="bidir", note="D7 — tristated during configuration" },
+  { n="ext[26]", b="T3", d="bidir", a="DRIVE=8 SLEWRATE=SLOW PULLMODE=UP", note="WRITEN — weak pull-up during configuration; header must not pull it low (low = 0xFF quad-reset preamble, harmless but avoid)" },
+]
+
+[interfaces.fmc]
+title   = "STM32H743 FMC parallel bus, 16-bit data / 8-bit address, async (bank 1, 3.3 V)"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=FAST"
+note    = "STM32 is bus master. NBL[1:0]/NWAIT/FMC_CLK deliberately NOT allocated (spec: ~30 pins); see fit-report"
+signals = [
+  { n="fmc_d[0]",  b="D11", d="bidir", note="PCLKT1_1" },
+  { n="fmc_d[1]",  b="E11", d="bidir", note="PCLKC1_1" },
+  { n="fmc_d[2]",  b="B12", d="bidir", note="PCLKT1_0" },
+  { n="fmc_d[3]",  b="C12", d="bidir", note="PCLKC1_0" },
+  { n="fmc_d[4]",  b="A12", d="bidir" },
+  { n="fmc_d[5]",  b="A13", d="bidir" },
+  { n="fmc_d[6]",  b="B13", d="bidir" },
+  { n="fmc_d[7]",  b="C13", d="bidir" },
+  { n="fmc_d[8]",  b="D13", d="bidir" },
+  { n="fmc_d[9]",  b="E13", d="bidir" },
+  { n="fmc_d[10]", b="A14", d="bidir" },
+  { n="fmc_d[11]", b="C14", d="bidir" },
+  { n="fmc_d[12]", b="D14", d="bidir" },
+  { n="fmc_d[13]", b="E14", d="bidir" },
+  { n="fmc_d[14]", b="B15", d="bidir" },
+  { n="fmc_d[15]", b="C15", d="bidir" },
+  { n="fmc_a[0]",  b="D15", d="in" },
+  { n="fmc_a[1]",  b="E15", d="in" },
+  { n="fmc_a[2]",  b="A16", d="in" },
+  { n="fmc_a[3]",  b="B16", d="in" },
+  { n="fmc_a[4]",  b="C16", d="in" },
+  { n="fmc_a[5]",  b="D16", d="in" },
+  { n="fmc_a[6]",  b="B17", d="in" },
+  { n="fmc_a[7]",  b="C17", d="in" },
+  { n="fmc_noe",   b="A17", d="in",  note="read strobe (FMC_NOE)" },
+  { n="fmc_nwe",   b="B18", d="in",  note="write strobe (FMC_NWE)" },
+  { n="fmc_ne",    b="A18", d="in",  note="chip select (FMC_NEx)" },
+  { n="fmc_irq",   b="B19", d="out", note="FPGA -> STM32 interrupt (EXTI)" },
+  { n="fmc_nrst",  b="A19", d="in",  a="SLEWRATE=FAST PULLMODE=UP", note="STM32 -> FPGA fabric reset (URC_GPLL1T_IN dual-function)" },
+]
+
+[interfaces.sd1]
+title   = "microSD socket 1, 4-bit SD mode (bank 0); card presence by polling, no CD pin"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=FAST PULLMODE=UP"
+signals = [
+  { n="sd1_clk",  b="E6", d="out", a="SLEWRATE=FAST" },
+  { n="sd1_cmd",  b="D6", d="bidir" },
+  { n="sd1_d[0]", b="E7", d="bidir" },
+  { n="sd1_d[1]", b="D7", d="bidir" },
+  { n="sd1_d[2]", b="C6", d="bidir" },
+  { n="sd1_d[3]", b="C7", d="bidir" },
+]
+
+[interfaces.sd2]
+title   = "microSD socket 2, 4-bit SD mode (bank 0); card presence by polling, no CD pin"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=FAST PULLMODE=UP"
+signals = [
+  { n="sd2_clk",  b="E8", d="out", a="SLEWRATE=FAST" },
+  { n="sd2_cmd",  b="D8", d="bidir" },
+  { n="sd2_d[0]", b="C8", d="bidir" },
+  { n="sd2_d[1]", b="B8", d="bidir" },
+  { n="sd2_d[2]", b="A7", d="bidir" },
+  { n="sd2_d[3]", b="A8", d="bidir" },
+]
+
+[interfaces.esp32]
+title   = "ESP32-C6-WROOM-1U link: 4-bit SDIO (FPGA host, ESP32 slave) + EN + handshake (bank 0)"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=FAST PULLMODE=UP"
+signals = [
+  { n="esp_sdio_clk",  b="D9",  d="out", a="SLEWRATE=FAST" },
+  { n="esp_sdio_cmd",  b="E9",  d="bidir" },
+  { n="esp_sdio_d[0]", b="B9",  d="bidir" },
+  { n="esp_sdio_d[1]", b="C10", d="bidir" },
+  { n="esp_sdio_d[2]", b="A9",  d="bidir", note="GR_PCLK0_1" },
+  { n="esp_sdio_d[3]", b="B10", d="bidir", note="GR_PCLK0_0" },
+  { n="esp_en",        b="A10", d="out", a="OPENDRAIN=ON", note="ESP32 EN (reset), open-drain with 10k pull-up + 1uF; PCLKT0_1" },
+  { n="esp_hs",        b="A11", d="in",  a="PULLMODE=UP", note="handshake / data-ready interrupt from ESP32 GPIO; PCLKC0_1" },
+]
+
+[interfaces.i2c]
+title   = "Shared 3.3 V I2C bus: RV-3028 RTC, SSD1306 OLED, Si5351A, ID EEPROM, TLV320AIC3204 control (bank 0)"
+io_type = "LVCMOS33"
+attrs   = "OPENDRAIN=ON PULLMODE=UP SLEWRATE=SLOW"
+signals = [
+  { n="i2c_scl", b="B11", d="bidir", note="PCLKT0_0; 2.2k-4.7k external pull-ups" },
+  { n="i2c_sda", b="C11", d="bidir", note="PCLKC0_0" },
+]
+
+[interfaces.flash]
+title   = "QSPI configuration flash, 32 MB (bank 8 Master-SPI dual-purpose pins; SCK = dedicated CCLK ball U3)"
+io_type = "LVCMOS33"
+attrs   = "SLEWRATE=FAST"
+signals = [
+  { n="flash_mosi", b="W2", d="out",   note="D0/MOSI/IO0 — 10k pull-up (Lattice sysCONFIG note 4)" },
+  { n="flash_miso", b="V2", d="in",    note="D1/MISO/IO1 — 10k pull-up" },
+  { n="flash_io2",  b="Y2", d="bidir", a="SLEWRATE=FAST PULLMODE=UP", note="D2/IO2 (WP#) — 10k pull-up for quad boot" },
+  { n="flash_io3",  b="W1", d="bidir", a="SLEWRATE=FAST PULLMODE=UP", note="D3/IO3 (HOLD#) — 10k pull-up for quad boot" },
+  { n="flash_cs_n", b="R2", d="out",   note="HOLDN/DI/BUSY/CSSPIN/CEN = CSSPIN in MSPI mode — 4.7k pull-up" },
+]
+
+[interfaces.leds]
+title   = "8 user LEDs via a 74HC595 shift register (3 FPGA pins on bank 8 dual-purpose pins)"
+io_type = "LVCMOS33"
+attrs   = "DRIVE=4 SLEWRATE=SLOW"
+note    = "Only 74HC595 CMOS inputs load these pins, so the weak pull-ups during configuration hold them high (harmless). 74HC595 /OE tied low or to !DONE; RTL refreshes the register right after configuration."
+signals = [
+  { n="led_sr_sclk",  b="R3", d="out", note="74HC595 SRCLK. DOUT/CSON: FPGA-driven output during configuration (clocks garbage into the register, refreshed by RTL)" },
+  { n="led_sr_mosi",  b="T2", d="out", note="74HC595 SER. SN/CSN: weak pull-up during configuration; slave SPI port disabled in SYSCONFIG" },
+  { n="led_sr_latch", b="U2", d="out", note="74HC595 RCLK. CS1N: weak pull-up during configuration; slave parallel port disabled in SYSCONFIG" },
+]
+
+# ---------------------------------------------------------------------------
+# Explicit spares.  Every PIO ball not listed in an interface must appear here
+# (the generator errors otherwise) so nothing is left unassigned by accident.
+# ---------------------------------------------------------------------------
+[spares]
+# 1.35 V spares (DDR3 banks) — only usable for SSTL135-level signals; test points
+"D20" = "bank 2 VREF1_2 — kept free (VREF-capable) so bank 2 could take referenced inputs later; test point"
+"K16" = "bank 2, RDQS29 pad — NOT BONDED on LFE5U-45F/25F: leave unconnected"
+"K17" = "bank 2, RDQSN29 pad — NOT BONDED on LFE5U-45F/25F: leave unconnected"
+"U16" = "bank 3 spare, LRC_GPLL0T_IN (dedicated lower-right PLL input, all 3 parts) — 1.35 V bank"
+"T17" = "bank 3 spare, LRC_GPLL0C_IN"
+"L20" = "bank 3 spare in RDQS53 group, PCLKT3_1"
+"M20" = "bank 3 spare in RDQS53 group, PCLKC3_1"
+"M19" = "bank 3 spare in RDQS53 group, PCLKC3_0"
+"T16" = "bank 3, RDQS77 pad — NOT BONDED on LFE5U-25F: leave unconnected"
+# 3.3 V balls that are 85F/45F-only — left unconnected for drop-in compatibility
+"A15" = "bank 1 — NOT BONDED on LFE5U-25F: leave unconnected (optional 85F/45F-only test point)"
+"C9"  = "bank 0 — NOT BONDED on LFE5U-25F: leave unconnected"
+"D10" = "bank 0 — NOT BONDED on LFE5U-25F: leave unconnected"
+"E10" = "bank 0 — NOT BONDED on LFE5U-25F: leave unconnected"
+"M5"  = "bank 6, LDQS77 pad — NOT BONDED on LFE5U-25F: leave unconnected"

@@ -1,0 +1,20 @@
+# fetched reference boards (CERN OHL; fetched by scripts/fetch_references.py, never committed)
+references/
+# generated outputs
+build/
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+.venv/
+# KiCad temporary files
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*-backups/
+_autosave-*
+*.kicad_prl
+*.lck
+fp-info-cache
+~*
