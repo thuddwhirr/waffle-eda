@@ -130,10 +130,12 @@ class LatticeGraph:
         return hit
 
     def via_site(self, node, own_pad) -> bool:
-        hx, hy = node
-        if hx % 2 and hy % 2:
-            return True
-        return self.rules.style == "in-pad" and node == own_pad
+        """Where a via may go: any lattice node that is not another ball's pad; the collision test decides whether
+        it fits. Diagonal gaps are the usual place; an empty ball position (depopulated packages, the OrangeCrab
+        csBGA285) or a wide channel serve too, as the references show. In the pad only when the style allows."""
+        if node == own_pad:
+            return self.rules.style == "in-pad"
+        return node not in self.pad_net
 
 
 # --- resources: what an escape occupies, for negotiation and for the hard final pass ---------------------------------
@@ -447,8 +449,21 @@ def escape_package(board: pcbnew.BOARD, package_ref: str, nets: set[str], rules:
             g.obs.remove(item)
             board.Delete(item)
 
+    def place_path(ball: Ball, first, second):
+        res = _path_resources(g, first, second)
+        for r in res:
+            usage[r] += 1
+        committed[ball.number] = (first, second, res, _commit(g, nets_of[ball.number], first, second))
+
+    # negotiated paths that share nothing are kept as they are; only the balls in conflict are re-routed
+    shared = {r for r, c in Counter(x for _, _, res in paths.values() for x in res).items() if c > 1}
+    clean = [b for b in balls if b.number in paths and not any(x in shared for x in paths[b.number][2])]
+    for ball in clean:
+        place_path(ball, paths[ball.number][0], paths[ball.number][1])
     blockers: dict = {}
     for ball in order:
+        if ball.number in committed:
+            continue
         why = place(ball)
         if why is not None:
             blockers[ball.number] = why
@@ -483,6 +498,7 @@ def escape_package(board: pcbnew.BOARD, package_ref: str, nets: set[str], rules:
             for r in res:
                 usage[r] += 1
             committed[n] = (first, second, res, _commit(g, nets_of[n], first, second))
+    result.counts["negotiated kept"] = len(clean)
 
     for ball in balls:
         power = ball.net in power_nets

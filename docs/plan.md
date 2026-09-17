@@ -34,7 +34,7 @@ zero, the original copper scores full marks. A synthetic BGA-pair generator (6 x
 bank) with known feasibility for unit tests. A measurement report for both references that states every rule with its
 evidence. Runs in seconds to a minute. Pick and fetch the class A and B references.
 
-**M2. Fan-out.** The deterministic BGA fan-out passes both class C references: every ball escaped, DRC clean, in both
+**M2. Fan-out** (done for the brief's two references, session 2; see decisions D13 to D15). The fan-out passes both class C references: every ball escaped, DRC clean, in both
 via styles (dog-bone and via-in-pad). Synthetic tests in place.
 
 **M3. Bus router.** Passes ButterStick, then LogicBone: all bus nets, DRC clean, lengths within the measured spread,
@@ -61,4 +61,11 @@ then automates what the last project did by hand well enough.
 Done: the survey and a registry of 23 boards across all classes; the strip-and-score harness, passing its two sanity
 checks on ButterStick and LogicBone (the stripped board scores zero, the original copper 0.99, in 5 to 16 seconds);
 the measurement report; the synthetic BGA-pair generator with four cases (6 x 6 straight and reversed, 9 x 16, 20 x 20
-with a bus in one bank), each loading and passing DRC with only its bus open. Next: M2, the fan-out.
+with a bus in one bank), each loading and passing DRC with only its bus open.
+
+## State of M2
+
+The lattice escape router (`waffle_eda/route/escape.py`) escapes every bus ball on ButterStick (in-pad) and LogicBone
+(dog-bone) with DRC below the originals' own violation counts, and every ball of the synthetic cases DRC clean, in a
+few seconds per package. Open: 8 of 50 balls on OrangeCrab's 0.5 mm-pitch FPGA and 1 of 39 on ULX3S, both reported
+with blockers. Next: M3, the bus router, which reuses the lattice, the obstacle index and the negotiation.

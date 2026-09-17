@@ -114,3 +114,57 @@ GND and VCC balls at the centre, the fab rules in the design settings, an outlin
 DRC with zero electrical violations and exactly its bus and power nets open. Feasibility per case is recorded as
 unknown until a router or a proof settles it (M2, M3); the reversed 6 x 6 is the first case expected to need layer
 changes.
+
+## 2026-09-17, session 2 (continued): M2, the fan-out
+
+**D13. How the references escape their bus balls (evidence for the fan-out).** Measured by
+`waffle_eda/bench/fanout_measure.py` (`build/fanout-<key>.json`): for every bus ball, its ring, the nearest via of
+its net in pitches, and the layers inside the package.
+
+| Board, package | Pitch, pad | Via at the ball | Outer rings on the top layer without a via | Via sizes |
+|---|---|---|---|---|
+| LogicBone IC1 (FPGA) | 0.8 mm, 0.3 mm | 32 of 34 in the diagonal gap, 2 one gap further | ring 1: 9 of 16, ring 2: 5 of 11, ring 3: 2 of 10 | 0.5 / 0.2 mm |
+| LogicBone IC2, IC3 (DRAM) | 0.8 mm, 0.42 mm | 22 and 26 diagonal, a few one gap further | ring 2: 5 of 15, ring 3: 3 of 17 | 0.5 / 0.2 mm |
+| ButterStick U4 (FPGA) | 0.8 mm, 0.4 mm | 46 of 53 in the pad | ring 1: 4 of 13 on F.Cu, 7 leave on B.Cu | 0.4 / 0.2 mm, filled and capped |
+| ButterStick U11, U12 (DRAM) | 0.8 mm, 0.4 mm | 10 and 8 in the pad, most balls leave on the top layer into the empty middle rows | rings 2 and 3 mostly | 0.4 / 0.2 mm |
+| OrangeCrab U3 (FPGA) | 0.5 mm, 0.23 mm | 17 diagonal, many one to two gaps away and off the lattice, in depopulated positions | ring 1: 9 of 20, ring 2: 4 of 12 | 0.28 and 0.3 / 0.15 mm |
+| OrangeCrab U4 (DRAM) | 0.8 mm, 0.4 mm | 24 diagonal, 8 near | ring 2: 2 of 18 | 0.3 / 0.15 mm |
+| ULX3S U1 (FPGA) | 0.8 mm, 0.4 mm | 12 diagonal; 27 of 39 nets have no via at all | rings 2 and 3 entirely on F.Cu | 0.419 / 0.2 mm; only B.Cu is available below |
+
+Rules the measurements support: the dog-bone via belongs in the diagonal gap and the outermost one or two rings
+leave on the top layer without a via (every board); via-in-pad is one board's choice, not the norm; where a
+package has empty positions (a DRAM's middle rows, a depopulated csBGA) the copper uses them; a package's
+escapes leave on several sides, not only toward the bus partner (ButterStick's DRAM: S 17, W 16, N 10). Rules the
+fan-out must be told per package: track width and via size differ per package on one board (OrangeCrab's 0.5 mm
+FPGA uses 0.089 mm tracks and 0.28 mm vias; its DRAM 0.105 mm and 0.3 mm). Two boards carry design rules their own
+copper violates (LogicBone's 0.25 mm hole clearance, 70 violations; ULX3S's 0.5 mm minimum via against its 0.419 mm
+vias), so the DRC gate for the fan-out compares violations touching the bus nets against the original's own
+counts by type, and the fan-out works to the net class clearance and the measured copper.
+
+**D14. KiCad's zone filler hangs on the OrangeCrab board.** `ZONE_FILLER.Fill` on all zones, and on the group of
+25 top-layer zones, never returns; every zone alone fills in 0.3 s and every other layer group in about a second.
+A hang inside a C++ call cannot be interrupted from Python, so `waffle_eda/kicad/refill.py` fills in a child
+process on the saved file: all zones, then per layer where that times out, then per zone. The harness reuses a
+stripped board it already has, because that refill takes about three minutes on OrangeCrab.
+
+**D15. The fan-out is a lattice router with negotiated congestion, not a recipe.** The recipe from `waffle-fpga`
+(`waffle_eda/route/fanout.py`, kept for comparison) reached 154 of 155 balls on ButterStick and 116 of 128 on
+LogicBone and could not go further: a trace along the package edge blocks the top layer, capacitors on the back
+block in-pad vias, the empty middle of a DRAM is where the original escapes. `waffle_eda/route/escape.py` treats
+the package region as a half-pitch lattice on every routable layer, checks every step and via against the real
+copper with KiCad's collision test, and resolves conflicts between the balls by negotiated congestion (PathFinder):
+each ball routes with a cost on lattice resources other balls use, the penalty rises per iteration, only balls in
+conflict are re-routed, and the final pass commits the conflict-free negotiated paths as they are and re-routes the
+rest with hard occupancy and a local rip-up repair. Resources are lattice nodes per layer, diagonal cells, and via
+neighbourhoods that grow with the pitch: at 0.5 mm a via blocks the four channels beside it and a diagonal its two
+corners, computed from the rule values, not assumed. Results, `scripts/fanout_bench.py`, on the problem boards with
+all other copper in place (session 2): synthetic cases 4 of 4 complete and DRC clean; ButterStick 155 of 155 balls,
+DRC clean, in-pad style; LogicBone 128 of 128, 2 hole-clearance hits against the original's 70; OrangeCrab 92 of 100
+(the 0.8 mm DRAM complete, the 0.5 mm-pitch FPGA 42 of 50); ULX3S 38 of 39. Two to five seconds per package.
+What was tried and dropped, with numbers: deepest-first order with cheap top-layer steps (deep balls consumed the
+outer rings' channels: 66 of 84 on the synthetic 20 x 20); a shared edge-clearance cache (one net's own copper read
+as clear for the next: shorts); a resource list with duplicates (single-user resources counted as shared, no
+convergence: 15 of 16 on a 6 x 6); a hard site assignment by bipartite matching before routing (less flexible than
+the cost preference: 39 against 45 of 50 on LogicBone IC1); re-routing every ball in the final pass (lost five where
+three conflicts existed). Open: the 0.5 mm-pitch packing (OrangeCrab U3, 8 balls) and one ULX3S ball whose only
+inner layer is contested; both fail with the per-ball blockers reported, as the definition requires.

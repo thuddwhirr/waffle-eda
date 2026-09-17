@@ -50,10 +50,13 @@ python3 scripts/report_references.py        # regenerates docs/references.md fro
 python3 scripts/bench_score.py butterstick --answer   # strip the DDR3 bus and score the original copper
 python3 scripts/survey_references.py owner/repo     # probe a candidate repository for KiCad boards
 python3 scripts/make_synthetic.py                   # write the synthetic BGA-pair cases to build/synthetic/
+python3 -m waffle_eda.bench.fanout_measure          # how each reference escapes its bus balls (build/fanout-*.json)
+python3 scripts/fanout_bench.py synthetic butterstick logicbone   # strip, escape, gate and DRC
 python3 -m pytest -q
 ```
 
 ## Status
 
-M1, the benchmark: 23 reference boards registered and measured ([`docs/references.md`](docs/references.md)), the strip-and-score
-harness passing its sanity checks. See [`docs/plan.md`](docs/plan.md).
+M2, the fan-out: a lattice escape router with negotiated congestion escapes every bus ball on ButterStick and
+LogicBone with DRC below the originals' own counts (decisions D13 to D15); 23 reference boards registered and measured
+([`docs/references.md`](docs/references.md)); the strip-and-score harness. See [`docs/plan.md`](docs/plan.md).
