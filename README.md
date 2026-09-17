@@ -6,8 +6,8 @@ Desired Outcome:
  - Take user description of desired features and refine it into a design document (capabilities, size, port layout, etc)
  - Take design document and build out a BOM (bill of materials), constrained by user's cost limits and manufacturer choice
  - Take parts list and build out a schematic (hopefully one a human EE could read and review)
- - Take design document, parts list and manufacturer choice and determine PCB charecteristcs (dimentions, layers, materials, via types, etc)
- - Taking PCB specifications, schematic, and BOM: 
+ - Take design document, parts list and manufacturer choice and determine PCB charecteristcs (dimensions, layers, materials, via types, etc)
+ - Place and Route loop: taking PCB specifications, schematic, and BOM: 
     - do a parts layout on the board. 
     - route traces
     - apply electric and design rule checks
