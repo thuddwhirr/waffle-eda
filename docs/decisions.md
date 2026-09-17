@@ -96,7 +96,9 @@ LogicBone 639, 227 clearance, 72 of them touching the bus), per-net length withi
 the packages, vias per net, layers used. Composite score is connectivity times a weighted sum, so "do nothing" scores
 0.000 and the answer 0.992 (ButterStick) and 0.997 (LogicBone); a run takes 5 to 16 seconds, DRC included. Pitfall
 recorded in the board helpers: remove items with `board.Delete`, not `board.Remove`, or SWIG prints a leak warning per
-item and the next load in the process can come back without its proxy class.
+item and the next load in the process can come back without its proxy class. Open: the LogicBone harness test failed
+once in a full-suite run (41 passed, 1 failed) and passed on every rerun, alone and in the suite; the assertion text
+was lost to a pipe. The test now prints the score summary on failure so a recurrence explains itself.
 
 **D11. Measured bus facts on the new boards.** OrangeCrab r0.2.1: DDR3L bus of 50 nets between a 0.5 mm-pitch
 csBGA285 and one FBGA-96, 6 layers, 42 nets with exactly two vias, 95 % of vias inside the footprints, lengths 15.0 to

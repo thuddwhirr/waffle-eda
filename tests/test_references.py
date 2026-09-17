@@ -64,6 +64,6 @@ def test_harness_do_nothing_scores_zero_and_answer_passes(key):
     problem, removed = harness.strip_bus(ref)
     assert removed["bus_nets"] == ref.bus_net_count
     nothing = harness.score(ref, problem)
-    assert nothing.connected == 0 and nothing.score == 0.0 and not nothing.passed
+    assert nothing.connected == 0 and nothing.score == 0.0 and not nothing.passed, nothing.summary()
     answer = harness.score(ref, refs.board_path(ref))
-    assert answer.passed and answer.connected == answer.bus_nets and answer.score >= 0.95
+    assert answer.passed and answer.connected == answer.bus_nets and answer.score >= 0.95, answer.summary()
