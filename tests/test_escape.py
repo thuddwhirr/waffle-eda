@@ -40,17 +40,18 @@ def _rules_from_measurements(ref):
     return fanout_bench.rules_for_reference(ref)[0]
 
 
-# Levels reached in session 2 (decisions D15): the brief's two references in full, the two extra boards partially.
+# The target: every bus ball of every BGA package on every bus reference (docs/plan.md, M2). These tests stay red
+# until the tool reaches it; the numbers are the packages' bus ball counts, never a level reached (CLAUDE.md).
 EXPECTED = {
     "butterstick": {"U4": 55, "U11": 50, "U12": 50},
     "logicbone": {"IC1": 50, "IC2": 39, "IC3": 39},
-    "orangecrab-r0.2.1": {"U3": 40, "U4": 50},
-    "ulx3s": {"U1": 38},
+    "orangecrab-r0.2.1": {"U3": 50, "U4": 50},
+    "ulx3s": {"U1": 39},
 }
 
 
 @pytest.mark.parametrize("key", sorted(EXPECTED))
-def test_reference_escapes_reach_the_recorded_level(key):
+def test_reference_escapes_every_bus_ball(key):
     ref = refs.REFERENCES[key]
     problem = harness.bench_dir() / f"{ref.key}-problem.kicad_pcb"
     fan = refs.repo_root() / "build" / f"fanout-{ref.key}.json"
@@ -66,4 +67,5 @@ def test_reference_escapes_reach_the_recorded_level(key):
         other = first if part != ref.bus_parts[0] else parts[ref.bus_parts[1]]
         side = lat.facing_side((other.x0 + other.X(other.cols - 1)) / 2, (other.y0 + other.Y(other.rows - 1)) / 2)
         result = esc.escape_package(board, part, bus, rules[part], exit_side=side)
-        assert len(result.escaped) >= expected, f"{key} {part}: {result.summary()} failed {result.failed}"
+        assert len(result.escaped) == expected == result.total, (
+            f"M2 target not met on {key} {part}: {result.summary()}; failed balls {result.failed}")
