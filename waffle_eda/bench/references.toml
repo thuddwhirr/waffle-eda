@@ -1,0 +1,323 @@
+# Reference boards: the ladder in docs/plan.md, evidence in docs/decisions.md (D3, D9).
+# Fetched by scripts/fetch_references.py into references/ as partial clones, never committed (see each licence).
+# bus_net_count is measured; a change means the board file or the pattern changed.
+
+[[reference]]
+key = "butterstick"
+title = "ButterStick r1.0"
+class = "C"
+repo = "https://github.com/butterstick-fpga/butterstick-hardware.git"
+branch = "main"
+commit = "0694ddfa9824a07f0c6c6981186e45f80187659c"
+board = "hardware/ButterStick_r1.0/ButterStick.kicad_pcb"
+checkout = "butterstick"
+licence = "CERN-OHL-1.2"
+licence_file = "LICENSE"
+attribution = "Greg Davill, butterstick-fpga"
+key_parts = ["U4", "U11", "U12"]
+bus_net_pattern = "^/FPGA-DDR3L/"
+bus_net_count = 55
+bus_parts = ["U4", "U11", "U12"]
+notes = "8 layers, 80 x 49 mm; ECP5UM5G-85 caBGA381; two DDR3L x16 FBGA-96 (dual rank) rotated 90; via-in-pad under the FPGA. KiCad 6 file."
+
+[[reference]]
+key = "logicbone"
+title = "LogicBone"
+class = "C"
+repo = "https://github.com/oskirby/logicbone.git"
+branch = "master"
+commit = "96e7bede72569be4db95d78e45a689c939225802"
+board = "logicbone.kicad_pcb"
+checkout = "logicbone"
+licence = "CERN-OHL-1.2"
+licence_file = "LICENSE.txt"
+attribution = "Owen Kirby, oskirby"
+key_parts = ["IC1", "IC2", "IC3"]
+bus_net_pattern = "^/FPGA Memory/(?:~\\{)?DDR3_(?!VREF)"
+bus_net_count = 50
+bus_parts = ["IC1", "IC2", "IC3"]
+notes = "8 layers, 87 x 55 mm; ECP5UM-85 caBGA381 rotated 90; two DDR3 x8 TFBGA-78 side by side; dog-bone fan-out. KiCad 5 file: active-low nets use the ~{} overline syntax, and DDR3_VREF is a supply under the same prefix."
+
+[[reference]]
+key = "butterstick-r0.2"
+title = "ButterStick r0.2"
+class = "C'"
+repo = "https://github.com/butterstick-fpga/butterstick-hardware.git"
+branch = "main"
+commit = "0694ddfa9824a07f0c6c6981186e45f80187659c"
+board = "hardware/ButterStick_r0.2/ButterStick.kicad_pcb"
+checkout = "butterstick"
+licence = "CERN-OHL-1.2"
+licence_file = "LICENSE"
+attribution = "Greg Davill, butterstick-fpga"
+key_parts = ["U3", "U5"]
+bus_net_pattern = "^HB[01]_"
+bus_net_count = 26
+bus_parts = ["U3", "U5"]
+notes = "6 layers; ECP5U25 caBGA381 with HyperRAM, no DDR3. Same checkout as butterstick. KiCad 5 file."
+
+[[reference]]
+key = "tinkerforge-temperature"
+title = "tinkerforge-temperature"
+class = "A"
+repo = "https://github.com/Tinkerforge/temperature-bricklet.git"
+commit = "ba8b99236d33919cbae500a840949f9c3a310997"
+board = "hardware/temperature.kicad_pcb"
+licence = "CERN-OHL-1.1"
+licence_file = "hardware/LICENSE.txt"
+attribution = "Tinkerforge GmbH"
+key_parts = ["U1"]
+notes = "2 layers, 15 x 25 mm, TSSOP-8 sensor and a SOT-563 regulator: the smallest board in the ladder, a smoke test for every stage."
+
+[[reference]]
+key = "olimex-esp32c3-devkit"
+title = "olimex-esp32c3-devkit"
+class = "A"
+repo = "https://github.com/OLIMEX/ESP32-C3-DevKit-Lipo.git"
+commit = "5d93e79d46cf3b05782d9fe0f95a8a2e1ca6abbe"
+board = "HARDWARE/ESP32-C3-DevKit-Lipo_Rev_D/ESP32-C3-DevKit-Lipo_Rev_D.kicad_pcb"
+licence = "GPL"
+licence_file = "LICENSE"
+attribution = "OLIMEX Ltd"
+key_parts = ["U3"]
+notes = "2 layers, 28 x 38 mm, ESP32-C3-MINI module, USB-C, LiPo charger. GPL hardware licence: benchmark use only, nothing redistributed."
+
+[[reference]]
+key = "olimex-rp2040-pico-pc"
+title = "olimex-rp2040-pico-pc"
+class = "A"
+repo = "https://github.com/OLIMEX/RP2040-PICO-PC.git"
+commit = "ed0402adcdf9395f33c8d50def897c33ce96b5c3"
+board = "HARDWARE/RP2040-PICO-PC hardware revision D/RP2040-PICO-PC_rev_D.kicad_pcb"
+licence = "GPL"
+licence_file = "LICENSE"
+attribution = "OLIMEX Ltd"
+key_parts = ["RP2040_PLATFORM1"]
+notes = "2 layers, 72 x 39 mm, Pico module socket, HDMI, microSD, audio. Through-hole heavy. GPL hardware licence."
+
+[[reference]]
+key = "open-book-c1"
+title = "open-book-c1"
+class = "A"
+repo = "https://github.com/joeycastillo/The-Open-Book.git"
+commit = "6bb483f92e58f4b75d8fcfc72c7c8022f19fe40b"
+board = "OSO-BOOK-C1/OSO-BOOK-C1.kicad_pcb"
+licence = "CC-BY-SA"
+licence_file = "LICENSE.md"
+attribution = "Joey Castillo"
+key_parts = ["U1"]
+notes = "2 layers, 85 x 115 mm, Pico module, e-paper connector. CC-BY-SA."
+
+[[reference]]
+key = "libresolar-mppt-2420"
+title = "libresolar-mppt-2420"
+class = "A"
+repo = "https://github.com/LibreSolar/mppt-2420-lc.git"
+commit = "c2211beb366b2b2f91e949e676a9cac4f9a408d9"
+board = "MPPT_charger_20A.kicad_pcb"
+licence = "CC-BY-SA"
+licence_file = "LICENSE"
+attribution = "Libre Solar"
+key_parts = ["U2"]
+notes = "2 layers, 115 x 61 mm, STM32 LQFP-48 and a 20 A power stage: power on continuous copper matters here. CC-BY-SA."
+
+[[reference]]
+key = "crkbd-corne-cherry"
+title = "crkbd-corne-cherry"
+class = "A"
+repo = "https://github.com/foostan/crkbd.git"
+commit = "63366fb7f51cf2a796462fdd90527e99dd126055"
+board = "pcbs/corne-cherry/hotswap/corne-cherry.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE_MIT"
+attribution = "foostan"
+key_parts = ["U1", "rU1"]
+notes = "2 layers, two keyboard halves on one 277 x 108 mm panel, RP2040 in QFN-56 0.4 mm pitch, many through-hole parts. MIT / CC-BY-4.0."
+
+[[reference]]
+key = "pico-ice-rev3"
+title = "pico-ice-rev3"
+class = "B"
+repo = "https://github.com/tinyvision-ai-inc/pico-ice.git"
+commit = "00e13360969d01fbb9663e4ea17f723c1a8e8400"
+board = "Board/Rev3/pico-ice.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE"
+attribution = "tinyVision.ai"
+key_parts = ["U3", "U6"]
+notes = "4 layers, 23 x 61 mm, RP2040 QFN-56 and iCE40 UP5K QFN-48, USB. MIT."
+
+[[reference]]
+key = "upduino-v3.01"
+title = "upduino-v3.01"
+class = "B"
+repo = "https://github.com/tinyvision-ai-inc/UPduino-v3.0.git"
+commit = "e2b944b45849d28b6c6c953b7a9a5667797935a0"
+board = "Board/v3.01/UPduino_v3.01.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE"
+attribution = "tinyVision.ai"
+key_parts = ["U3", "U2"]
+notes = "4 layers, 62 x 22 mm, iCE40 UP5K QFN-48 and FT232H QFN-48, USB. MIT."
+
+[[reference]]
+key = "sensor-watch-c1"
+title = "sensor-watch-c1"
+class = "B"
+repo = "https://github.com/joeycastillo/Sensor-Watch.git"
+commit = "90d307bb2297bdbbf463748a033431821250ebc5"
+board = "PCB/Main Boards/OSO-SWAT-C1/OSO-SWAT-C1.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE.md"
+attribution = "Joey Castillo"
+key_parts = ["U1"]
+notes = "4 layers, 24 x 24 mm round board, SAM L22 QFN-64, 0.089 mm tracks: the densest small board. MIT."
+
+[[reference]]
+key = "tinkerforge-master-v3.2"
+title = "tinkerforge-master-v3.2"
+class = "B"
+repo = "https://github.com/Tinkerforge/master-brick.git"
+commit = "fb5c11970958b6922efc0d621fbb1211e3b97a0c"
+board = "hardware/V3.2/master.kicad_pcb"
+licence = "CERN-OHL-1.1"
+licence_file = "hardware/LICENSE.txt"
+attribution = "Tinkerforge GmbH"
+key_parts = ["U1"]
+notes = "4 layers, 40 x 40 mm, ATSAM LQFP-100, USB, stacking connectors. CERN-OHL-1.1."
+
+[[reference]]
+key = "buspirate5-rev10"
+title = "buspirate5-rev10"
+class = "B"
+repo = "https://github.com/DangerousPrototypes/BusPirate5-hardware.git"
+commit = "acb9cd667ce608e7eb560a663938787343b424c4"
+board = "bus_pirate_pcb/5-REV10A/REV10a.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE.TXT"
+attribution = "Dangerous Prototypes"
+key_parts = ["U103"]
+notes = "4 layers, 80 x 80 mm, RP2040 QFN-56, many peripherals. MIT."
+
+[[reference]]
+key = "olimex-esp32-poe-m1"
+title = "olimex-esp32-poe-m1"
+class = "B"
+repo = "https://github.com/OLIMEX/ESP32-POE.git"
+commit = "deb38a377d50eadb04ddc7118a17a5ae58b1ee53"
+board = "HARDWARE/ESP32-PoE-hardware-revision-M1/ESP32-PoE_Rev_M1.kicad_pcb"
+licence = "Apache-2.0"
+licence_file = "LICENSE"
+attribution = "OLIMEX Ltd"
+key_parts = ["U6", "U4"]
+notes = "4 layers, 28 x 80 mm, ESP32-WROVER module, Ethernet PHY QFN-32, PoE. Apache-2.0."
+
+[[reference]]
+key = "tinytapeout-demo"
+title = "tinytapeout-demo"
+class = "B"
+repo = "https://github.com/TinyTapeout/tt-demo-pcb.git"
+commit = "bbf3dd1f771d5aed249b07ddf130b3ddc8261d60"
+board = "tinytapeout-demo.kicad_pcb"
+licence = "Apache-2.0"
+licence_file = "LICENSE"
+attribution = "Tiny Tapeout"
+key_parts = ["U6"]
+notes = "4 layers, 85 x 85 mm, RP2040, QFN-80 carrier, many headers. Apache-2.0."
+
+[[reference]]
+key = "mch2022-badge"
+title = "mch2022-badge"
+class = "B"
+repo = "https://github.com/badgeteam/mch2022-badge-hardware.git"
+commit = "9ca74d1f57c6973aa99dca3b2c3c9f96a1d95dab"
+board = "mch2022.kicad_pcb"
+licence = "CERN-OHL-P-2.0"
+licence_file = "LICENSE"
+attribution = "badge.team"
+key_parts = ["U5"]
+notes = "4 layers, 150 x 98 mm, ESP32-WROVER, RP2040, iCE40 UP5K, display and audio: a large four-layer board. CERN-OHL-P-2.0."
+
+[[reference]]
+key = "fomu-pvt"
+title = "fomu-pvt"
+class = "B"
+repo = "https://github.com/im-tomu/fomu-hardware.git"
+commit = "9fdebede731c1d963335d65d25c7663cb934f925"
+board = "archive/pvt/pcb/tomu-fpga.kicad_pcb"
+licence = "CC-BY-SA"
+licence_file = "LICENSE"
+attribution = "Tomu / Sean Cross"
+key_parts = ["U5"]
+notes = "4 layers, 13 x 9 mm, iCE40 UP5K in WLCSP-30 at 0.35 mm pitch, 0.1 mm tracks: the hardest fine-pitch case without a BGA lattice. CC-BY-SA."
+
+[[reference]]
+key = "tinyfpga-bx"
+title = "tinyfpga-bx"
+class = "B+"
+repo = "https://github.com/tinyfpga/TinyFPGA-BX.git"
+commit = "27c97a36958cb65ee7529a5410650d07b9a1a3d2"
+board = "board/TinyFPGA-BX.kicad_pcb"
+licence = "CERN-OHL-1.2"
+licence_file = "LICENSE"
+attribution = "Luke Valenty, TinyFPGA"
+key_parts = ["U1"]
+notes = "4 layers, 18 x 36 mm, iCE40 LP8K in an 81-ball 0.4 mm-pitch BGA: a small BGA fan-out on four layers. CERN-OHL-1.2. KiCad 4 file."
+
+[[reference]]
+key = "glasgow-revc3"
+title = "glasgow-revc3"
+class = "B+"
+repo = "https://github.com/GlasgowEmbedded/glasgow.git"
+commit = "924a1b0e8f7497169ad31b4823860e8434e3dd65"
+board = "hardware/boards/glasgow/revC3/glasgow.kicad_pcb"
+licence = "Apache-2.0"
+licence_file = "LICENSE-Apache-2.0.txt"
+attribution = "Glasgow Embedded, whitequark"
+key_parts = ["U30", "U1"]
+notes = "4 layers, 80 x 49 mm, iCE40 HX8K in BGA-121 0.8 mm and an FX2 QFN-56: a 0.8 mm BGA fan-out on four layers. Apache-2.0 / 0BSD."
+
+[[reference]]
+key = "ulx3s"
+title = "ulx3s"
+class = "B+"
+repo = "https://github.com/emard/ulx3s.git"
+commit = "6a92cec6b177191c5b0f80e260013a1f8ec147dd"
+board = "ulx3s.kicad_pcb"
+licence = "MIT"
+licence_file = "LICENSE.md"
+attribution = "Emard, Radiona"
+key_parts = ["U1", "U2"]
+bus_net_pattern = "^SDRAM_"
+bus_net_count = 39
+bus_parts = ["U1", "U2"]
+notes = "4 layers, 94 x 51 mm, ECP5 caBGA381 and a 16-bit SDR SDRAM in TSOP-54: the caBGA381 fan-out and a slow parallel bus on four layers. MIT."
+
+[[reference]]
+key = "cynthion"
+title = "cynthion"
+class = "B+"
+repo = "https://github.com/greatscottgadgets/cynthion-hardware.git"
+commit = "13aa71c2fb0be3837cd2ec580ee5d2c25fc1c678"
+board = "cynthion.kicad_pcb"
+licence = "CERN-OHL-P-2.0"
+licence_file = "LICENSE"
+attribution = "Great Scott Gadgets"
+key_parts = ["IC1"]
+notes = "6 layers, 56 x 56 mm, ECP5 caBGA256 with three USB PHYs: a 0.8 mm BGA and differential pairs on six layers, no DRAM. CERN-OHL-P-2.0."
+
+[[reference]]
+key = "orangecrab-r0.2.1"
+title = "orangecrab-r0.2.1"
+class = "C"
+repo = "https://github.com/orangecrab-fpga/orangecrab-hardware.git"
+commit = "c511d569fe2af39467041f888bc231020f40c6ac"
+board = "hardware/orangecrab_r0.2.1/OrangeCrab.kicad_pcb"
+licence = "CERN-OHL-1.2"
+licence_file = "LICENCE-CERN-OHL"
+attribution = "Greg Davill, orangecrab-fpga"
+key_parts = ["U3", "U4"]
+bus_net_pattern = "^RAM_"
+bus_net_count = 50
+bus_parts = ["U3", "U4"]
+notes = "6 layers, 51 x 23 mm, ECP5 csBGA285 at 0.5 mm pitch and one DDR3L x16 FBGA-96: one DRAM on six layers, the closest reference to the simplified target. CERN-OHL-1.2 / MIT."

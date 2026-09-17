@@ -46,9 +46,14 @@ pip install -e ".[dev]"                     # z3-solver, numpy, shapely, pytest
 python3 scripts/check_env.py                # KiCad 9, pcbnew, z3, Java, Xvfb
 python3 scripts/fetch_references.py         # clones the reference boards into references/
 python3 scripts/measure_references.py       # writes build/measure-<board>.json and prints a summary
+python3 scripts/report_references.py        # regenerates docs/references.md from the measurements
+python3 scripts/bench_score.py butterstick --answer   # strip the DDR3 bus and score the original copper
+python3 scripts/survey_references.py owner/repo     # probe a candidate repository for KiCad boards
+python3 scripts/make_synthetic.py                   # write the synthetic BGA-pair cases to build/synthetic/
 python3 -m pytest -q
 ```
 
 ## Status
 
-M0, foundation. See [`docs/plan.md`](docs/plan.md) for what comes next.
+M1, the benchmark: 23 reference boards registered and measured ([`docs/references.md`](docs/references.md)), the strip-and-score
+harness passing its sanity checks. See [`docs/plan.md`](docs/plan.md).

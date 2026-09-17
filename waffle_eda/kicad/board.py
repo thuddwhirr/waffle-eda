@@ -10,6 +10,8 @@ stage repeats it:
 * Connectivity queries are unreliable across calls; keep your own union-find when a stage needs connectivity.
 * Reshaping a zone's outline in place leaves the filler with stale data; replace the zone by a new object.
 * Footprint parents need casting; use ``m_Uuid.AsString()`` for identity.
+* Remove an item with ``board.Delete(item)``, not ``board.Remove(item)``: after Remove the Python proxy owns a
+  C++ object with no destructor and SWIG prints a memory-leak warning per item.
 """
 from __future__ import annotations
 
@@ -36,7 +38,10 @@ def nm(millimetres: float) -> int:
 
 def load_board(path: str | Path) -> pcbnew.BOARD:
     """Load a board file. Legacy (KiCad 5) files load with a best-effort zone conversion; refill before checks."""
-    return pcbnew.LoadBoard(str(path))
+    board = pcbnew.LoadBoard(str(path))
+    if board is None:  # pcbnew returns None for a file it cannot parse rather than raising
+        raise OSError(f"pcbnew could not load {path}")
+    return board
 
 
 def save_board(board: pcbnew.BOARD, path: str | Path) -> None:

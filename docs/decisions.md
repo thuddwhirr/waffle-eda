@@ -71,3 +71,44 @@ exist on 2026-09-17 (format, licence and layer count still to verify): `orangecr
 DDR3L in a Feather outline, class C), `emard/ulx3s` (ECP5 with SDRAM, no DDR3), `im-tomu/fomu-hardware` and
 `tinyfpga/TinyFPGA-BX` (small iCE40 boards), `icebreaker-fpga/icebreaker` (default branch `archive`). The class A and
 B survey is the first M1 task: open hardware, KiCad format, permissive licence, one or more per class.
+
+## 2026-09-17, session 2: M1, the benchmark
+
+**D9. The reference survey and the ladder.** 33 candidate repositories were probed with `scripts/survey_references.py`
+(shallow blobless clones, only the board and licence files fetched): 25 held KiCad boards, 108 board files in all, 7
+of which pcbnew 9.0.9 cannot load. Picked, 20 new boards plus the 3 from M0, all fetched and measured (see
+`references.md`). Rejected: `icebreaker-fpga/icebreaker`, `greatscottgadgets/greatfet`, `micropython/pyboard`,
+`jakkra/ZSWatch`, `sparkfun/SparkFun_Thing_Plus_RP2350`, `adafruit/Adafruit-Feather-RP2040-PCB`, `vroland/epdiy`
+(no `.kicad_pcb` at the pinned commit: other formats, or files elsewhere); `hydrabus/hydrabus`,
+`Tinkerforge/ethernet-extension`, `icebreaker-fpga/icebreaker-pmod` (no licence file); `Hanqaqa/Easyduino` (all six
+boards fail to load, a newer file format); `greatscottgadgets/hackrf` (RF layout is a non-goal). Two picks are GPL
+hardware (the OLIMEX class A boards) and three are CC-BY-SA; they are benchmark inputs only and nothing from them is
+redistributed. Two boards carry a bus other than DDR3 and enter the harness: ULX3S (SDRAM, 39 nets) and OrangeCrab
+(DDR3L, 50 nets under `RAM_`). Survey findings worth keeping: the KiCad footprint name is not a package type
+(TinyFPGA's BGA is called `CM81`), so the survey detects a BGA as a filled lattice of pad centres, which a perimeter
+package (LQFP) fails; `pcbnew.LoadBoard` returns None rather than raising for a file it cannot parse.
+
+**D10. The strip-and-score harness.** `waffle_eda/bench/harness.py` strips only the bus nets' tracks and vias (pads
+and every other net stay as obstacles) and scores a candidate against the original: connectivity and unconnected
+items from a fresh `kicad-cli pcb drc` run, electrical violations touching bus nets relative to the answer board's
+own count under the same rules (the references are not clean under KiCad 9: ButterStick 53 violations, 16 clearance;
+LogicBone 639, 227 clearance, 72 of them touching the bus), per-net length within the answer's spread, vias inside
+the packages, vias per net, layers used. Composite score is connectivity times a weighted sum, so "do nothing" scores
+0.000 and the answer 0.992 (ButterStick) and 0.997 (LogicBone); a run takes 5 to 16 seconds, DRC included. Pitfall
+recorded in the board helpers: remove items with `board.Delete`, not `board.Remove`, or SWIG prints a leak warning per
+item and the next load in the process can come back without its proxy class.
+
+**D11. Measured bus facts on the new boards.** OrangeCrab r0.2.1: DDR3L bus of 50 nets between a 0.5 mm-pitch
+csBGA285 and one FBGA-96, 6 layers, 42 nets with exactly two vias, 95 % of vias inside the footprints, lengths 15.0 to
+29.0 mm (median 15.3), on F.Cu, In2.Cu and B.Cu: one DRAM on six layers, the closest reference to the simplified
+target. ULX3S: SDRAM bus of 39 nets between a caBGA381 and a TSOP-54, 4 layers, 27 nets on the top layer only, 12 with
+two vias, 54 % of vias inside the footprints, lengths 16.5 to 32.9 mm, F.Cu and B.Cu only: a caBGA381 fan-out on four
+layers with a slow bus. ButterStick r0.2 (HyperRAM): 69 % of vias inside the footprints on the footprint-box test.
+
+**D12. Synthetic cases.** `waffle_eda/bench/synthetic.py` writes two-package BGA boards with pcbnew: rows x columns
+of 0.4 mm balls at 0.8 mm pitch, a bus between the facing columns in straight, reversed or random ball order, a few
+GND and VCC balls at the centre, the fab rules in the design settings, an outline and courtyards. Four cases: 6 x 6 on
+4 layers (straight and reversed), 9 x 16 on 6 layers, 20 x 20 on 8 layers with a three-column bus. Each loads, passes
+DRC with zero electrical violations and exactly its bus and power nets open. Feasibility per case is recorded as
+unknown until a router or a proof settles it (M2, M3); the reversed 6 x 6 is the first case expected to need layer
+changes.
