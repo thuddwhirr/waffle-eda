@@ -34,7 +34,7 @@ zero, the original copper scores full marks. A synthetic BGA-pair generator (6 x
 bank) with known feasibility for unit tests. A measurement report for both references that states every rule with its
 evidence. Runs in seconds to a minute. Pick and fetch the class A and B references.
 
-**M2. Fan-out** (done for the brief's two references, session 2; see decisions D13 to D15). The fan-out passes both class C references: every ball escaped, DRC clean, in both
+**M2. Fan-out** (not complete, session 2; see decisions D13 to D15: 313 of 322 bus balls against the answer key, nine failures on OrangeCrab and ULX3S). The fan-out passes both class C references: every ball escaped, DRC clean, in both
 via styles (dog-bone and via-in-pad). Synthetic tests in place.
 
 **M3. Bus router.** Passes ButterStick, then LogicBone: all bus nets, DRC clean, lengths within the measured spread,
@@ -65,7 +65,11 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## State of M2
 
-The lattice escape router (`waffle_eda/route/escape.py`) escapes every bus ball on ButterStick (in-pad) and LogicBone
-(dog-bone) with DRC below the originals' own violation counts, and every ball of the synthetic cases DRC clean, in a
-few seconds per package. Open: 8 of 50 balls on OrangeCrab's 0.5 mm-pitch FPGA and 1 of 39 on ULX3S, both reported
-with blockers. Next: M3, the bus router, which reuses the lattice, the obstacle index and the negotiation.
+Not complete. The lattice escape router (`waffle_eda/route/escape.py`) escapes every bus ball on ButterStick (in-pad)
+and LogicBone (dog-bone) with DRC below the originals' own violation counts, and every ball of the synthetic cases DRC
+clean, in a few seconds per package. It fails nine balls that the original boards escape: eight on OrangeCrab's 0.5 mm-
+pitch FPGA and one on ULX3S. Under the working agreement those are failures of the tool, not open items, and M2 is not
+passed until the owner decides otherwise: fix them (an exact packing for the 0.5 mm case, the single conflict on
+ULX3S), or declare 0.5 mm pitch outside the tool's claimed capability so it refuses that class with a stated reason.
+The escapes on the two passing boards also differ from the originals' (LogicBone: 22 vias against 34), and whether
+they are as good for a length-matched bus is only known once M3 routes the bus from them.
