@@ -5,6 +5,9 @@
     python3 scripts/gate.py m2     # fan-out: every bus ball on every BGA of every bus reference, zero electrical
                                    # violations under the reference's constraints; every synthetic case complete
                                    # and DRC clean
+    python3 scripts/gate.py m3     # bus: ButterStick and LogicBone, every bus net connected, zero violations under
+                                   # the constraints, every net's length within the original's spread, vias only
+                                   # inside the packages
 
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
 """
@@ -63,11 +66,34 @@ def gate_m2() -> list[tuple[str, bool, str]]:
     return rows
 
 
+M3_REFERENCES = ("butterstick", "logicbone")  # plan.md M3: "Passes ButterStick, then LogicBone"
+
+
+def gate_m3() -> list[tuple[str, bool, str]]:
+    import bus_bench  # noqa: E402  (scripts/)
+    rows = []
+    for key in M3_REFERENCES:
+        ref = refs.REFERENCES[key]
+        if not refs.is_fetched(ref):
+            rows.append((key, False, "not fetched"))
+            continue
+        result = bus_bench.run_reference(key, draw=False)
+        b = result["bus"]
+        drc = b["drc"]
+        ok = (b["routed"] == b["total"] and drc["electrical_bus"] == 0 and not drc["unconnected_bus_nets"]
+              and b["passed"] and b["length_within"] == b["bus_nets"] and not b["vias_outside"])
+        detail = (f"routed {b['routed']}/{b['total']}; DRC {drc['electrical_bus_by_type'] or 0}; unconnected "
+                  f"{len(drc['unconnected_bus_nets'])}; lengths in spread {b['length_within']}/{b['bus_nets']}; "
+                  f"nets with vias outside packages {len(b['vias_outside'])}")
+        rows.append((key, ok, detail))
+    return rows
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or argv[0] not in ("m1", "m2"):
+    if len(argv) != 1 or argv[0] not in ("m1", "m2", "m3"):
         print(__doc__)
         return 2
-    rows = gate_m1() if argv[0] == "m1" else gate_m2()
+    rows = {"m1": gate_m1, "m2": gate_m2, "m3": gate_m3}[argv[0]]()
     failed = [r for r in rows if not r[1]]
     print(f"\n=== GATE {argv[0].upper()}: {'PASS' if not failed else 'FAIL'} ({len(rows) - len(failed)} of {len(rows)} cases pass) ===")
     for key, ok, detail in sorted(rows, key=lambda r: r[1]):

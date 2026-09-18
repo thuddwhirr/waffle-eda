@@ -58,7 +58,8 @@ class Obstacles:
                 yield (cx, cy)
 
     def _insert(self, net: str, bb: pcbnew.BOX2I, item, kind: str) -> None:
-        entry = (net, bb, item, kind)
+        # identity by UUID: every iteration of a board yields new proxy objects for the same items (board.py)
+        entry = (net, bb, item, kind, item.m_Uuid.AsString())
         for cell in self._cells(bb):
             self.cells[cell].append(entry)
         self.count += 1
@@ -68,15 +69,21 @@ class Obstacles:
         self._insert(item.GetNetname(), item.GetBoundingBox(), item, kind)
 
     def remove(self, item) -> None:
+        uid = item.m_Uuid.AsString()
+        removed = False
         for cell in self._cells(item.GetBoundingBox()):
-            self.cells[cell] = [e for e in self.cells[cell] if e[2] is not item]
+            before = len(self.cells[cell])
+            self.cells[cell] = [e for e in self.cells[cell] if e[4] != uid]
+            removed = removed or len(self.cells[cell]) != before
+        if removed:
+            self.count -= 1
 
     def vias(self):
         seen = set()
         for entries in self.cells.values():
-            for net, bb, item, kind in entries:
-                if kind == "via" and id(item) not in seen:
-                    seen.add(id(item))
+            for net, bb, item, kind, uid in entries:
+                if kind == "via" and uid not in seen:
+                    seen.add(uid)
                     yield item
 
     @staticmethod
@@ -108,6 +115,7 @@ class Obstacles:
         clr = kb.nm(clearance_mm)
         hole_clr = kb.nm(hole_clearance_mm) if hole_clearance_mm else 0
         net = item.GetNetname()
+        own_uid = item.m_Uuid.AsString()
         is_via = item.GetClass() == "PCB_VIA"
         layer = None if is_via else item.GetLayer()
         bb = item.GetBoundingBox()  # returned by value: inflating it does not touch the item
@@ -116,13 +124,13 @@ class Obstacles:
         own_hole = pcbnew.SHAPE_CIRCLE(item.GetPosition(), item.GetDrillValue() // 2) if (is_via and hole_clr) else None
         seen = set()
         for cell in self._cells(bb):
-            for onet, obb, other, kind in self.cells.get(cell, ()):
-                if id(other) in seen or not obb.Intersects(bb):
+            for onet, obb, other, kind, uid in self.cells.get(cell, ()):
+                if uid in seen or not obb.Intersects(bb):
                     continue
                 if onet == net and kind != "shape" and not any_net:
                     continue
-                seen.add(id(other))
-                if other is item:
+                seen.add(uid)
+                if uid == own_uid:
                     continue
                 if self._collides(other, kind, shape, clr, layer, is_via, own_hole, hole_clr):
                     yield other
