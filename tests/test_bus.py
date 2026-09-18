@@ -19,7 +19,8 @@ def test_bus_connects_every_net_drc_clean(name, tmp_path):
                            via_drill_mm=case.via_drill_mm, inner_layers=tuple(n for n in names if n != "F.Cu"))
     bus = set(manifest["bus"])
     brules = busr.BusRules(track_mm=case.track_mm, clearance_mm=case.clearance_mm, via_mm=case.via_mm,
-                           via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0)
+                           via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0,
+                           hole_clearance_mm=case.clearance_mm)
     res = busr.route_bus(board, ["U1", "U2"], bus, brules)  # from the pads: the bus router fans out itself
     assert not res.failed, res.summary() + " " + str(res.failed)
     kb.refill_zones(board)
@@ -43,11 +44,15 @@ def test_length_tuning_reaches_the_window_drc_clean(tmp_path):
     for part, side in (("U1", "E"), ("U2", "W")):
         esc.escape_package(board, part, bus, rules, exit_side=side, power_nets=power)
     brules = busr.BusRules(track_mm=case.track_mm, clearance_mm=case.clearance_mm, via_mm=case.via_mm,
-                           via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0, spacing_mm=0.6)
+                           via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0, spacing_mm=0.6,
+                           hole_clearance_mm=case.clearance_mm)
     res = busr.route_bus(board, ["U1", "U2"], bus, brules)
     assert not res.failed
     before = {n: lengthr.net_length_mm(board, n) for n in bus}
     lo = 1.3 * max(before.values())
+    # a second pass with the window: nets far short take a detour through free board area, the tuner does the rest
+    res = busr.route_bus(board, ["U1", "U2"], bus, brules, length_windows={n: (lo, 3 * lo) for n in bus})
+    assert not res.failed
     tuned = lengthr.tune_lengths(board, sorted(bus), lo, 3 * lo, case.clearance_mm)
     assert not tuned.failed, tuned.failed
     for n in bus:

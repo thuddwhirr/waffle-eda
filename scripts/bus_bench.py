@@ -69,14 +69,15 @@ def run_reference(key: str, draw: bool = True) -> dict:
     # the inner layers under the DRAMs with vias the bus then cannot pass.
     in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
     rules_bus = busr.BusRules(**{**bus_rules(c).__dict__, "in_pad_packages": in_pad})
+    answer = refs.measure(ref)
+    lo, hi = answer["bus"]["length_mm"]["min"], answer["bus"]["length_mm"]["max"]
     t0 = time.time()
-    res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus)
+    res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus,
+                         length_windows={n: (lo, hi) for n in bus})
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)
     for n, why in sorted(res.failed.items()):
         print(f"      FAILED {n}: {why}")
     # length window: the original's spread (harness.score judges every net against it)
-    answer = refs.measure(ref)
-    lo, hi = answer["bus"]["length_mm"]["min"], answer["bus"]["length_mm"]["max"]
     arrays = [parts[p] for p in parts if parts[p].rows >= 4 and parts[p].cols >= 4]
 
     def in_array(x, y):

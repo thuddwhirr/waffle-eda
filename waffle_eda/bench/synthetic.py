@@ -61,6 +61,7 @@ def _set_rules(board: pcbnew.BOARD, case: BgaPairCase) -> None:
     ds = board.GetDesignSettings()
     ds.SetCopperLayerCount(case.layers)
     ds.m_MinClearance = kb.nm(case.clearance_mm)
+    ds.m_HoleClearance = kb.nm(case.clearance_mm)  # hole wall to copper of another net: the same value, stated
     ds.m_TrackMinWidth = kb.nm(case.track_mm)
     ds.m_ViasMinSize = kb.nm(case.via_mm)
     ds.m_MinThroughDrill = kb.nm(case.via_drill_mm)

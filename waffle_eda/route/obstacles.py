@@ -20,6 +20,10 @@ class Obstacles:
         self.board = board
         self.cells: dict[tuple[int, int], list] = defaultdict(list)
         self.count = 0
+        try:
+            self.edge_clearance_nm = int(board.GetDesignSettings().m_CopperEdgeClearance)
+        except Exception:
+            self.edge_clearance_nm = 0
         if items is not None:
             for item in items:
                 self.add(item)
@@ -37,17 +41,21 @@ class Obstacles:
             bb = t.GetBoundingBox()
             if window is None or window.Intersects(bb):
                 self._insert(t.GetNetname(), bb, t, "via" if t.GetClass() == "PCB_VIA" else "track")
-        # graphic copper: logos, text and shapes drawn on a copper layer carry no net and block that layer
+        # graphic copper: logos, text and shapes drawn on a copper layer carry no net and block that layer; the
+        # board outline (Edge.Cuts) blocks every layer at the board's copper-to-edge clearance
         copper = set(board.GetEnabledLayers().CuStack())
         drawings = list(board.GetDrawings())
         for fp in board.GetFootprints():
             drawings.extend(fp.GraphicalItems())
         for d in drawings:
-            if d.GetLayer() not in copper:
+            kind = "shape" if d.GetLayer() in copper else ("edge" if d.GetLayer() == pcbnew.Edge_Cuts else None)
+            if kind is None:
                 continue
             bb = d.GetBoundingBox()
+            if kind == "edge":
+                bb.Inflate(self.edge_clearance_nm)
             if window is None or window.Intersects(bb):
-                self._insert("", bb, d, "shape")
+                self._insert("", bb, d, kind)
 
     @staticmethod
     def _cells(bb: pcbnew.BOX2I):
@@ -150,6 +158,12 @@ class Obstacles:
                         return True
                 except Exception:  # text and unusual shapes: the bounding box already intersects
                     return True
+        elif kind == "edge":
+            try:
+                if other.GetEffectiveShape(other.GetLayer()).Collide(shape, max(clr, self.edge_clearance_nm)):
+                    return True
+            except Exception:
+                return True
         elif kind == "via" or is_via or other.IsOnLayer(layer):
             if other.GetEffectiveShape().Collide(shape, clr):
                 return True
