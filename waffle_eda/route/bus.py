@@ -425,17 +425,21 @@ class Occupancy:
 
 
 class Context:
+    """Costs on the occupancy for one search. In the final pass (``hard``) the exact collision test against the
+    committed copper decides; the occupancy blocks only when a spacing between bus nets is asked for, because the
+    occupancy is an approximation (a sample every eighth of a pitch) and would refuse paths the geometry allows."""
+
     def __init__(self, occ: Occupancy, history: dict, present: float, hard: bool = False):
         self.occ, self.history, self.present, self.hard = occ, history, present, hard
-        self.quiet = not history and present == 0.0 and not hard  # nothing to look up: the first round
         self.covers_committed = hard and occ.g.rules.spacing_mm >= occ.g.u + 1e-9
+        self.quiet = not history and present == 0.0 and not self.covers_committed  # nothing to look up
 
     def step_cost(self, layer, a, b) -> float | None:
-        """None when the step is too close to another bus net in hard mode (the spacing tuning needs)."""
+        """None when the step is too close to another bus net under the spacing (final pass only)."""
         if self.quiet:
             return 0.0
         if self.hard:
-            if self.occ.near_step(layer, a, b):
+            if self.covers_committed and self.occ.near_step(layer, a, b):
                 return None
             n = 0
         else:
@@ -453,7 +457,7 @@ class Context:
         if self.quiet:
             return 0.0
         if self.hard:
-            if self.occ.near_via(node):
+            if self.covers_committed and self.occ.near_via(node):
                 return None
             n = 0
         else:
