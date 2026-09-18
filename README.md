@@ -64,3 +64,8 @@ ball on every bus reference (ButterStick in both revisions, LogicBone, OrangeCra
 layers) and every synthetic case, with zero electrical violations under each reference's own constraints (gate M2:
 9 of 9 cases; decisions D17 to D20); 23 reference boards registered and measured
 ([`docs/references.md`](docs/references.md)); the strip-and-score harness. See [`docs/plan.md`](docs/plan.md).
+
+M3, the bus router, in progress and failing its gate: from the pads, by negotiated congestion on a union of the
+packages' quarter-pitch lattices, ButterStick routes 53 of 55 bus nets and LogicBone 45 of 50 with zero electrical
+violations and every via inside a package; 36 of 55 and 40 of 50 nets are within the reference's length spread
+(decisions D21 to D25, plan: State of M3).
