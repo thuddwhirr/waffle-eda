@@ -17,13 +17,10 @@ def test_bus_connects_every_net_drc_clean(name, tmp_path):
     names = [n for _, n in kb.copper_layers(board)]
     rules = fo.FanoutRules(track_mm=case.track_mm, clearance_mm=case.clearance_mm, via_mm=case.via_mm,
                            via_drill_mm=case.via_drill_mm, inner_layers=tuple(n for n in names if n != "F.Cu"))
-    bus, power = set(manifest["bus"]), {"GND", "VCC"}
-    for part, side in (("U1", "E"), ("U2", "W")):
-        r = esc.escape_package(board, part, bus, rules, exit_side=side, power_nets=power)
-        assert not r.failed, r.summary()
+    bus = set(manifest["bus"])
     brules = busr.BusRules(track_mm=case.track_mm, clearance_mm=case.clearance_mm, via_mm=case.via_mm,
                            via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0)
-    res = busr.route_bus(board, ["U1", "U2"], bus, brules)
+    res = busr.route_bus(board, ["U1", "U2"], bus, brules)  # from the pads: the bus router fans out itself
     assert not res.failed, res.summary() + " " + str(res.failed)
     kb.refill_zones(board)
     out = tmp_path / f"{name}-bus.kicad_pcb"

@@ -281,3 +281,15 @@ writes them: ButterStick, then LogicBone; all bus nets connected, DRC clean unde
 every net's length within the original's measured spread, layer changes only inside the packages; a failure is a
 diagnosis, never a list. The other bus references are run for information and reported; adding them to the M3 gate
 is the owner's call.
+
+**D22. The bus router fans out from the pads itself.** Measurement and tool change, 2026-09-18, under D21. With
+the M2 escapes as its terminals, the bus router routed every ButterStick net in its first round but 47 of 55 stayed
+contested for forty rounds, and on LogicBone one net never reached its second DRAM. The cause is the fan-out: a
+dog-bone via in every gap of a DRAM's array leaves no channel on the inner layers for a bus that has to pass
+through that array (the DRAMs sit 0.5 mm from the FPGA), while the original ButterStick escapes most DRAM balls on
+the top layer into the empty middle rows and keeps the inner layers for the bus (D13). A fan-out chosen without the
+bus in mind is not the bus's fan-out. So M3 strips the bus copper and routes each bus net from its pads: the pad is
+the island, the via goes where the negotiation puts it (in the pad where the package uses in-pad vias, in a gap or
+a channel otherwise, anywhere inside the footprint outside the array), and the top layer inside an array moves
+between half-pitch nodes as the escape router does. M2's escape router and gate stand as they are; they answer
+whether every ball can escape, and the bus router uses the same rules and the same geometry.

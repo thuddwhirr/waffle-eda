@@ -63,20 +63,13 @@ def run_reference(key: str, draw: bool = True) -> dict:
     board = kb.load_board(problem)
     bus = set(kb.nets_matching(board, ref.bus_net_pattern))
     parts = {r: Lattice(kb.footprint(board, r)) for r in ref.bus_parts}
-    first = parts[ref.bus_parts[0]]
-    out = {"fanout": {}}
-    sides = partner_sides(board, parts, bus)
-    for part, lat in parts.items():
-        if lat.rows < 4 or lat.cols < 4:
-            continue
-        other = first if part != ref.bus_parts[0] else parts[ref.bus_parts[1]]
-        side = lat.facing_side((other.x0 + other.X(other.cols - 1)) / 2, (other.y0 + other.Y(other.rows - 1)) / 2)
-        t0 = time.time()
-        r = esc.escape_package(board, part, bus, rules[part], exit_side=side, exit_sides=sides.get(part))
-        print(f"   fan-out {part}: {len(r.escaped)}/{r.total} escaped | {time.time() - t0:.1f}s", flush=True)
-        out["fanout"][part] = {"placed": len(r.escaped), "total": r.total, "failed": r.failed}
+    out = {}
+    # The bus router fans out from the pads itself (decisions D22): a fan-out chosen without the bus in mind fills
+    # the inner layers under the DRAMs with vias the bus then cannot pass.
+    in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
+    rules_bus = busr.BusRules(**{**bus_rules(c).__dict__, "in_pad_packages": in_pad})
     t0 = time.time()
-    res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, bus_rules(c))
+    res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus)
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)
     for n, why in sorted(res.failed.items()):
         print(f"      FAILED {n}: {why}")

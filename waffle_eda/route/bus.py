@@ -43,6 +43,7 @@ class BusRules:
     out_pitches: float = 1.5  # the zone around a package's pad array that uses the package's own lattice
     margin_mm: float = 4.0  # routing region beyond the packages' footprints
     spacing_mm: float = 0.0  # extra room the negotiation keeps between bus nets outside the pad arrays, for tuning
+    in_pad_packages: tuple[str, ...] = ()  # packages whose balls take a via in the pad (filled and capped)
 
 
 @dataclass
@@ -156,7 +157,8 @@ class BusGraph:
                     half = i % 2 == 0 and j % 2 == 0
                     in_array = -2 <= i <= (lat.cols - 1) * 4 + 2 and -2 <= j <= (lat.rows - 1) * 4 + 2
                     on_pad = i % 4 == 0 and j % 4 == 0 and (i // 4, j // 4) in lat.by_index
-                    via = self._in_footprint(x, y) and (not in_array or (half and not on_pad))
+                    in_pad = on_pad and lat.reference in self.rules.in_pad_packages
+                    via = self._in_footprint(x, y) and (not in_array or (half and (not on_pad or in_pad)))
                     node = self._add(x, y, pi, half, in_array, via)
                     if on_pad:
                         self.pad_net[node] = lat.by_index[(i // 4, j // 4)].net
@@ -196,6 +198,25 @@ class BusGraph:
                         if d2 <= r2:
                             self.adj[i].append((j, math.sqrt(d2)))
         self.buckets = buckets
+        # the top layer inside a pad array moves between half-pitch nodes (two steps): from a pad to a gap or a
+        # channel and on along the channels, as the escape router does; plus the one-step moves that leave the array
+        self.adj_top: dict[int, list] = {}
+        r2t = (1.45 * 2 * self.step) ** 2
+        for i, (x, y) in enumerate(self.xy):
+            if not self.in_array[i] or not self.half[i]:
+                continue
+            out = [(j, d) for j, d in self.adj[i] if not self.in_array[j]]
+            cx, cy = int(math.floor(x / cell)), int(math.floor(y / cell))
+            for dx in (-3, -2, -1, 0, 1, 2, 3):
+                for dy in (-3, -2, -1, 0, 1, 2, 3):
+                    for j in buckets.get((cx + dx, cy + dy), ()):
+                        if j == i or not self.half[j] or not self.in_array[j] or self.zone[j] != self.zone[i]:
+                            continue
+                        ox, oy = self.xy[j]
+                        d2 = (ox - x) ** 2 + (oy - y) ** 2
+                        if d2 <= r2t and d2 > 1e-9:
+                            out.append((j, math.sqrt(d2)))
+            self.adj_top[i] = out
 
     def nodes_near(self, x: float, y: float, radius: float):
         cell = self.step
@@ -214,10 +235,12 @@ class BusGraph:
         return tuple((dx, dy) for dx in range(-r, r + 1) for dy in range(-r, r + 1)
                      if math.hypot(dx, dy) * self.u < dist_mm - 1e-9)
 
-    def top_ok(self, node: int) -> bool:
+    def top_ok(self, node: int, net_name: str = "") -> bool:
+        """Where a top-layer track may run: anywhere outside the pad arrays; inside, the half-pitch nodes that are
+        not another net's pad (the net's own pad is where its route starts or ends)."""
         if not self.in_array[node]:
             return True
-        return self.half[node] and node not in self.pad_net
+        return self.half[node] and self.pad_net.get(node, net_name) == net_name
 
     # geometry -----------------------------------------------------------------------------------------------------
     def _track(self, layer, a: int, b: int, net):
@@ -526,6 +549,7 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
         corridor = g.region
     cx0, cy0, cx1, cy1 = corridor
     xy = g.xy
+    net_name = net.GetNetname()
 
     def h(node):
         x, y = g.xy[node]
@@ -563,12 +587,13 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
             goal = cur
             break
         on_top = layer == g.top
-        for nxt, length in g.adj[node]:
+        edges = g.adj_top.get(node, g.adj[node]) if on_top else g.adj[node]
+        for nxt, length in edges:
             nx, ny = xy[nxt]
             if nx < cx0 or nx > cx1 or ny < cy0 or ny > cy1:
                 continue
-            if on_top and not g.top_ok(nxt):
-                continue
+            if on_top and not g.top_ok(nxt, net_name) and layer not in target_nodes.get(nxt, ()):
+                continue  # a target node (the island's own copper) may always be entered
             # the fixed copper first (cached per edge), then the other bus nets (occupancy); with spacing kept by
             # the occupancy (sampled every u, a slack of u/2 a side) a step it admits is already clear of the
             # committed bus copper whenever the spacing exceeds that slack
@@ -586,7 +611,8 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 prev[state] = cur
                 counter += 1
                 heapq.heappush(heap, (nd + h(nxt), counter, state))
-        if nvias < costs.max_vias and g.via_site[node] and g.via_clear(node, net, obs):
+        if (nvias < costs.max_vias and g.via_site[node] and g.pad_net.get(node, net_name) == net_name
+                and g.via_clear(node, net, obs)):
             extra = ctx.via_cost(node)
             if extra is None:
                 continue
