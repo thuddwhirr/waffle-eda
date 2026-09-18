@@ -12,6 +12,9 @@ stage repeats it:
 * Footprint parents need casting; use ``m_Uuid.AsString()`` for identity.
 * Remove an item with ``board.Delete(item)``, not ``board.Remove(item)``: after Remove the Python proxy owns a
   C++ object with no destructor and SWIG prints a memory-leak warning per item.
+* A shape built in Python (``pcbnew.SHAPE_CIRCLE(...)``) exposes only the ``Collide(SEG, ...)`` overload; make the
+  shape from ``GetEffectiveShape()`` (typed as the base ``SHAPE``) the receiver and pass the built shape as the
+  argument, or the call raises a ``TypeError`` about ``SEG const &``.
 """
 from __future__ import annotations
 

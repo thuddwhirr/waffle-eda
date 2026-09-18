@@ -125,7 +125,8 @@ class Obstacles:
                 if hole_clr and kind in ("via", "pad"):
                     # the other item's hole against our copper
                     hole = self._hole_shape(other, kind)
-                    if hole is not None and hole.Collide(shape, hole_clr):
+                    # our item's shape is the receiver: a Python-built SHAPE_CIRCLE only accepts a SEG (board.py)
+                    if hole is not None and shape.Collide(hole, hole_clr):
                         return other
                 if own_hole is not None and kind in ("pad", "track", "via", "shape"):
                     # our via's hole against the other item's copper, on any layer it has
