@@ -67,9 +67,23 @@ def run_reference(key: str, draw: bool = True) -> dict:
     board = kb.load_board(problem)
     bus = set(kb.nets_matching(board, ref.bus_net_pattern))
     parts = {r: Lattice(kb.footprint(board, r)) for r in ref.bus_parts}
-    out = {}
+    out = {"fanout": {}}
     # The bus router fans out from the pads itself (decisions D22): a fan-out chosen without the bus in mind fills
-    # the inner layers under the DRAMs with vias the bus then cannot pass.
+    # the inner layers under the DRAMs with vias the bus then cannot pass. The FPGA is the exception: the bus does
+    # not pass through it, its deep balls need every lane, and the escape router assigns those lanes well; so its
+    # escapes are kept (BUS_FANOUT=first, the default; none or all for experiments).
+    fanout = {"first": ref.bus_parts[:1], "all": list(ref.bus_parts), "none": []}[os.environ.get("BUS_FANOUT", "first")]
+    sides = partner_sides(board, parts, bus)
+    for part in fanout:
+        lat = parts[part]
+        others = [l for r, l in parts.items() if r != part]
+        cx = sum((o.x0 + o.X(o.cols - 1)) / 2 for o in others) / len(others)
+        cy = sum((o.y0 + o.Y(o.rows - 1)) / 2 for o in others) / len(others)
+        t0 = time.time()
+        r = esc.escape_package(board, part, bus, rules[part], exit_side=lat.facing_side(cx, cy),
+                               exit_sides=sides.get(part))
+        print(f"   fan-out {part}: {len(r.escaped)}/{r.total} escaped | {time.time() - t0:.1f}s", flush=True)
+        out["fanout"][part] = {"placed": len(r.escaped), "total": r.total, "failed": r.failed}
     in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
     rules_bus = busr.BusRules(**{**bus_rules(c).__dict__, "in_pad_packages": in_pad})
     answer = refs.measure(ref)
