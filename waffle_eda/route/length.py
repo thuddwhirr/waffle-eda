@@ -116,6 +116,8 @@ def lengthen(board, obs: Obstacles, net_name: str, min_mm: float, max_mm: float,
         return True, f"{before:.2f} mm, in window"
     deficit = min_mm - before
     room = max_mm - before
+    # a trombone, one bump as deep as the deficit asks (capped), before the small bumps
+    amplitudes = tuple(sorted({min(round(deficit / 2, 2), 8.0), 6.0, 4.0, 2.5, *amplitudes}, reverse=True))
     tried = 0
     runs = sorted(_net_tracks(board, net_name), key=lambda t: -t.GetLength())
     for track in runs:

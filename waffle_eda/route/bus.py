@@ -50,7 +50,7 @@ class BusRules:
 class Costs:
     via_mm: float = 1.5  # a via costs this much track
     other_layer_mm: float = 0.0
-    iterations: int = 40
+    iterations: int = 60
     present: float = 0.6
     history: float = 0.4
     max_vias: int = 2
@@ -863,8 +863,14 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             else:
                 leftovers.append(name)
     result.counts["negotiated kept"] = kept
+    depth = {}
+    for name in names:
+        rings = [b.ring for isl in islands[name] for pad in isl["pads"] for lat in lats
+                 for b in [lat.balls.get(pad.GetNumber())] if b is not None and lat.reference ==
+                 pcbnew.Cast_to_FOOTPRINT(pad.GetParent()).GetReference()]
+        depth[name] = max(rings) if rings else 0
     order = sorted([n for n in names if n not in committed],
-                   key=lambda n: (n not in paths, sum(len(p) for p, _ in paths.get(n, [])), n))
+                   key=lambda n: (n not in paths, -depth[n], sum(len(p) for p, _ in paths.get(n, [])), n))
     failed: dict = {}
     for name in order:
         diag = place(name)
