@@ -54,6 +54,7 @@ class Costs:
     history: float = 0.4
     max_vias: int = 2
     corridor_mm: float = 3.0  # a net's search stays within its islands' bounding box grown by this much
+    pop_budget: int = 150000  # states a single search may settle before it is called off (runs are bounded)
     repair_partners: int = 6  # nets ripped up around a stranded net in the final pass
     stall_rounds: int = 4
     max_radius_hops: int = 4
@@ -547,11 +548,16 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
     target_nodes = defaultdict(set)
     for layer, node in targets:
         target_nodes[node].add(layer)
+    pops = 0
     while heap:
         f, _, cur = heapq.heappop(heap)
         d = dist[cur]
         if f > d + h(cur[1]) + 1e-9:
             continue
+        pops += 1
+        if pops > costs.pop_budget:
+            blockers[f"search budget of {costs.pop_budget} states spent"] += 1
+            return None, blockers
         layer, node, nvias = cur
         if layer in target_nodes.get(node, ()):
             goal = cur
@@ -563,14 +569,15 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 continue
             if on_top and not g.top_ok(nxt):
                 continue
+            # the fixed copper first (cached per edge), then the other bus nets (occupancy); with spacing kept by
+            # the occupancy (sampled every u, a slack of u/2 a side) a step it admits is already clear of the
+            # committed bus copper whenever the spacing exceeds that slack
+            if not g.segment_clear(layer, node, nxt, net, obs, committed=not ctx.covers_committed):
+                blockers[g.segment_blocker(layer, node, nxt, net, obs)] += 1
+                continue
             extra = ctx.step_cost(layer, node, nxt)
             if extra is None:
                 blockers["spacing to another bus net"] += 1
-                continue
-            # with spacing kept by the occupancy (sampled every u, so a slack of u/2 a side), a step it admits is
-            # already clear of the committed bus copper whenever the spacing exceeds that slack
-            if not g.segment_clear(layer, node, nxt, net, obs, committed=not ctx.covers_committed):
-                blockers[g.segment_blocker(layer, node, nxt, net, obs)] += 1
                 continue
             nd = d + length + extra
             state = (layer, nxt, nvias)
@@ -623,26 +630,31 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
     connected: set = set(islands[order[0]]["covered"])
     done = {order[0]}
     segments = []
+    def centre(nodes):
+        xs = [g.xy[n][0] for _, n in nodes]
+        ys = [g.xy[n][1] for _, n in nodes]
+        return (sum(xs) / len(xs), sum(ys) / len(ys)) if xs else (0.0, 0.0)
+
     while len(done) < len(islands):
-        targets: set = set()
-        for i in range(len(islands)):
-            if i not in done:
-                targets |= islands[i]["covered"]
-        if not connected or not targets:
+        if not connected:
             return None, {"why": "an island covers no routable node", "blockers": Counter()}
+        cx, cy = centre(connected)
+        remaining = [i for i in range(len(islands)) if i not in done and islands[i]["covered"]]
+        if not remaining:
+            return None, {"why": "an island covers no routable node", "blockers": Counter()}
+        nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - cx,
+                                                          centre(islands[i]["covered"])[1] - cy))
+        targets = islands[nearest]["covered"]
         path, second = _search(g, net, connected, targets, costs, ctx, obs, corridor)
         if path is None:  # the corridor is a speed-up, not a rule: the whole region gets a try before failing
             path, second = _search(g, net, connected, targets, costs, ctx, obs, None)
         if path is None:
-            return None, {"why": f"no path from the connected copper to {len(islands) - len(done)} island(s)",
-                          "blockers": second}
-        # which island did we reach?
-        end = path[-1]
-        for i in range(len(islands)):
-            if i not in done and end in islands[i]["covered"]:
-                done.add(i)
-                connected |= islands[i]["covered"]
-                break
+            pads = [pcbnew.Cast_to_FOOTPRINT(p.GetParent()).GetReference() + "." + p.GetNumber()
+                    for p in islands[nearest]["pads"]]
+            return None, {"why": f"no path from the connected copper to the island of {pads or 'copper'} "
+                                 f"({len(islands) - len(done)} island(s) left)", "blockers": second}
+        done.add(nearest)
+        connected |= islands[nearest]["covered"]
         connected |= set(path)
         segments.append((path, second))
     return segments, None
