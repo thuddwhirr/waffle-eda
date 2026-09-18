@@ -35,7 +35,7 @@ zero, the original copper scores full marks. A synthetic BGA-pair generator (6 x
 bank) with known feasibility for unit tests. A measurement report for both references that states every rule with its
 evidence. Runs in seconds to a minute. Pick and fetch the class A and B references.
 
-**M2. Fan-out** (not complete, session 2; see decisions D13 to D15: 313 of 322 bus balls against the answer key, nine failures on OrangeCrab and ULX3S). The fan-out passes both class C references: every ball escaped, DRC clean, in both
+**M2. Fan-out** (not complete; the session 3 gate under decisions D17 and D18: 7 of 9 cases, 452 of 461 bus balls, nine failures on OrangeCrab and ULX3S; decisions D13 to D18). The fan-out passes both class C references: every ball escaped, DRC clean, in both
 via styles (dog-bone and via-in-pad). Synthetic tests in place.
 
 **M3. Bus router.** Passes ButterStick, then LogicBone: all bus nets, DRC clean, lengths within the measured spread,
@@ -72,11 +72,19 @@ the cost model do.
 
 ## State of M2
 
-Not complete. The lattice escape router (`waffle_eda/route/escape.py`) escapes every bus ball on ButterStick (in-pad)
-and LogicBone (dog-bone) with DRC below the originals' own violation counts, and every ball of the synthetic cases DRC
-clean, in a few seconds per package. It fails nine balls that the original boards escape: eight on OrangeCrab's 0.5 mm-
-pitch FPGA and one on ULX3S. Under the working agreement those are failures of the tool, not open items, and M2 is not
-passed until the owner decides otherwise: fix them (an exact packing for the 0.5 mm case, the single conflict on
-ULX3S), or declare 0.5 mm pitch outside the tool's claimed capability so it refuses that class with a stated reason.
-The escapes on the two passing boards also differ from the originals' (LogicBone: 22 vias against 34), and whether
-they are as good for a length-matched bus is only known once M3 routes the bus from them.
+Not complete. Gate M2 under decisions D17 and D18 (session 3): FAIL, 7 of 9 cases pass, 452 of 461 bus balls escaped.
+Failing cases first:
+
+- orangecrab-r0.2.1 U3 (0.5 mm pitch): 42 of 50 balls escaped. C17, B7, J16, H16, G16, G15, F15 and D4 are not
+  escaped: the top-layer channels they need are taken by the board's own copper (P1.35V, ECP5_VREF, IO_9 to IO_11,
+  ADC_MUX1 tracks and vias) and the lattice has no free path left for them at this pitch.
+- ulx3s U1: 38 of 39. N18 (ring 3) has no free lattice path on this two-layer board.
+
+Passing: every synthetic case complete and DRC clean; ButterStick 155 of 155 (via-in-pad), LogicBone 128 of 128,
+ButterStick r0.2 39 of 39, OrangeCrab U4 50 of 50; every ball we route on every board has zero electrical violations
+under the reference's constraints, which the originals meet by construction. Under the working agreement the nine
+balls are failures of the tool, not open items, and M2 is not passed until they escape or the owner removes the case
+from scope in the decisions log: fix them (an exact packing for the 0.5 mm case, the single ball on ULX3S), or declare
+0.5 mm pitch outside the tool's claimed capability so it refuses that class with a stated reason. The escapes on the
+passing boards differ from the originals' in via count and layer use, and whether they are as good for a
+length-matched bus is only known once M3 routes the bus from them.

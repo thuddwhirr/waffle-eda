@@ -60,6 +60,7 @@ python3 -m pytest -q
 ## Status
 
 M2, the fan-out, not complete: a lattice escape router with negotiated congestion escapes every bus ball on
-ButterStick and LogicBone with DRC below the originals' own counts, and fails nine balls the originals escape on
-OrangeCrab and ULX3S (decisions D13 to D15); 23 reference boards registered and measured
+ButterStick (both revisions) and LogicBone with zero electrical violations under each reference's own constraints
+(decisions D17 and D18), and fails nine balls the originals escape: eight on OrangeCrab's 0.5 mm-pitch FPGA and one on
+ULX3S (gate M2: 7 of 9 cases); 23 reference boards registered and measured
 ([`docs/references.md`](docs/references.md)); the strip-and-score harness. See [`docs/plan.md`](docs/plan.md).
