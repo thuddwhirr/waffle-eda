@@ -24,6 +24,7 @@ from waffle_eda.route.lattice import Lattice
 # Room kept between bus nets outside the pad arrays so that the serpentines of the length tuning fit: a bump of
 # amplitude A needs the neighbour at least A away. Overridable for experiments with BUS_SPACING.
 SPACING_MM = float(os.environ.get("BUS_SPACING", "0.8"))
+OUT_DIR = Path(os.environ.get("BUS_OUT_DIR", "build/bench"))  # where the routed boards and drawings go
 
 
 def bus_rules(c: constraints.Constraints, spacing_mm: float = SPACING_MM) -> busr.BusRules:
@@ -87,14 +88,15 @@ def run_reference(key: str, draw: bool = True) -> dict:
     print(f"   lengths: {tuned.summary()} (window {lo} to {hi} mm) | {time.time() - t0:.1f}s", flush=True)
     for n, why in sorted(tuned.failed.items())[:8]:
         print(f"      SHORT {n}: {why}")
-    result_path = Path("build/bench") / f"{key}-bus.kicad_pcb"
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    result_path = OUT_DIR / f"{key}-bus.kicad_pcb"
     kb.save_board(board, result_path)
     refill.refill_file(result_path)
-    work = Path("build/constraints") / key
+    work = OUT_DIR / "constraints" / key
     drc = harness.drc_with_rules(result_path, c.rules_text(), work / "bus", bus, tag="bus")
     print(f"   DRC under the reference's constraints: {drc['electrical_bus']} {drc['electrical_bus_by_type']}, "
           f"unconnected bus nets {len(drc['unconnected_bus_nets'])}", flush=True)
-    score = harness.score(ref, result_path)
+    score = harness.score(ref, result_path, work_dir=work / "score")
     print(f"   {score.summary()}", flush=True)
     outside = [(n, v["vias"] - v["vias_in_package"]) for n, v in score.nets.items() if v["vias"] > v["vias_in_package"]]
     short = [(n, v["length_mm"]) for n, v in score.nets.items()
@@ -120,7 +122,7 @@ def main(argv: list[str]) -> int:
     results = {}
     for key in argv or ["butterstick", "logicbone"]:
         results[key] = run_reference(key)
-    Path("build/bench/bus-results.json").write_text(json.dumps(results, indent=1, default=str))
+    (OUT_DIR / "bus-results.json").write_text(json.dumps(results, indent=1, default=str))
     return 0
 
 
