@@ -8,10 +8,13 @@ Writes build/bench/<key>-bus.kicad_pcb and build/bench/<key>-bus.png, prints one
 """
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import sys
 import time
+
+faulthandler.enable()  # a crash in the bindings prints the Python stack instead of a bare abort
 from pathlib import Path
 
 import _path  # noqa: F401
