@@ -50,10 +50,11 @@ def _clear(obs: Obstacles, item, net_name: str, clearance_mm: float, hole_cleara
     return obs.clear(item, clearance_mm, hole_clearance_mm=hole_clearance_mm) is None  # other nets only
 
 
-def _serpentine(board, obs: Obstacles, track, amplitude: float, pitch: float, side: int, clearance_mm: float,
+def _serpentine(board, obs: Obstacles, track, amplitudes, pitch: float, clearance_mm: float,
                 hole_clearance_mm: float, want_mm: float) -> tuple[list, float]:
-    """Candidate replacement tracks for ``track`` with bumps of ``amplitude`` to ``side``; returns (tracks, added
-    length). Bumps that collide are skipped. Stops adding bumps once ``want_mm`` is reached."""
+    """Candidate replacement tracks for ``track`` with a bump every ``pitch``, each bump the largest of
+    ``amplitudes`` that fits on either side; returns (tracks, added length). Bumps that fit nowhere are skipped.
+    Stops adding bumps once ``want_mm`` is reached."""
     a, b = track.GetStart(), track.GetEnd()
     P = (kb.mm(a.x), kb.mm(a.y))
     Q = (kb.mm(b.x), kb.mm(b.y))
@@ -61,29 +62,36 @@ def _serpentine(board, obs: Obstacles, track, amplitude: float, pitch: float, si
     if L < 3 * pitch:
         return [], 0.0
     d = ((Q[0] - P[0]) / L, (Q[1] - P[1]) / L)
-    n = (-d[1] * side, d[0] * side)
     layer, width, net = track.GetLayer(), kb.mm(track.GetWidth()), track.GetNet()
     name = net.GetNetname()
-    lead = pitch  # straight lead-in and lead-out, so the corners clear whatever the run's ends touch
+    lead = pitch / 2  # straight lead-in and lead-out, so the corners clear whatever the run's ends touch
     m = int((L - 2 * lead) // (2 * pitch))
     if m < 1:
         return [], 0.0
 
-    def pt(s: float, off: float):
+    def pt(s: float, off: float, side: int):
+        n = (-d[1] * side, d[0] * side)
         return (P[0] + d[0] * s + n[0] * off, P[1] + d[1] * s + n[1] * off)
 
     pts = [P]
     added = 0.0
-    s = lead
     for i in range(m):
         if added >= want_mm:
             break
         base = lead + 2 * i * pitch
-        bump = [pt(base, 0.0), pt(base, amplitude), pt(base + pitch, amplitude), pt(base + pitch, 0.0)]
-        legs = [_make_track(board, layer, width, bump[k], bump[k + 1], net) for k in range(3)]
-        if all(_clear(obs, leg, name, clearance_mm, hole_clearance_mm) for leg in legs):
-            pts += bump
-            added += 2 * amplitude
+        for amplitude in amplitudes:
+            placed = False
+            for side in (1, -1):
+                bump = [pt(base, 0.0, side), pt(base, amplitude, side), pt(base + pitch, amplitude, side),
+                        pt(base + pitch, 0.0, side)]
+                legs = [_make_track(board, layer, width, bump[k], bump[k + 1], net) for k in range(3)]
+                if all(_clear(obs, leg, name, clearance_mm, hole_clearance_mm) for leg in legs):
+                    pts += bump
+                    added += 2 * amplitude
+                    placed = True
+                    break
+            if placed:
+                break
     pts.append(Q)
     if added == 0.0:
         return [], 0.0
@@ -99,8 +107,8 @@ def _serpentine(board, obs: Obstacles, track, amplitude: float, pitch: float, si
 
 
 def lengthen(board, obs: Obstacles, net_name: str, min_mm: float, max_mm: float, clearance_mm: float,
-             hole_clearance_mm: float = 0.0, amplitudes=(1.0, 0.7, 0.5, 0.35), pitch_mm: float = 0.3,
-             min_run_mm: float = 1.0, skip_region=None) -> tuple[bool, str]:
+             hole_clearance_mm: float = 0.0, amplitudes=(1.2, 0.9, 0.7, 0.5, 0.35, 0.25), pitch_mm: float = 0.3,
+             min_run_mm: float = 0.7, skip_region=None) -> tuple[bool, str]:
     """Bring ``net_name`` to at least ``min_mm`` (never above ``max_mm``) with serpentines on its straight runs.
     ``skip_region(x, y)`` says where runs are left alone (inside the pad arrays). Returns (ok, note)."""
     before = net_length_mm(board, net_name)
@@ -121,21 +129,11 @@ def lengthen(board, obs: Obstacles, net_name: str, min_mm: float, max_mm: float,
             continue
         tried += 1
         obs.remove(track)
-        best = None
-        for amp in amplitudes:
-            for side in (1, -1):
-                tracks, added = _serpentine(board, obs, track, amp, pitch_mm, side, clearance_mm, hole_clearance_mm,
-                                            min(deficit, room))
-                if added > 0 and (best is None or added > best[1]):
-                    best = (tracks, added)
-                if best is not None and best[1] >= deficit:
-                    break
-            if best is not None and best[1] >= deficit:
-                break
-        if best is None:
+        tracks, added = _serpentine(board, obs, track, amplitudes, pitch_mm, clearance_mm, hole_clearance_mm,
+                                    min(deficit, room))
+        if added <= 0:
             obs.add(track)
             continue
-        tracks, added = best
         board.Delete(track)
         for t in tracks:
             board.Add(t)
