@@ -256,3 +256,22 @@ are fixed as M2 work. The benchmark does not change: the problem board keeps eve
 and the router must escape every bus ball through what the board leaves. The lattice model, which put vias only on
 half-pitch nodes and paths only on lattice edges, is what has to change: the original fan-outs at 0.5 mm put vias off
 the lattice and run longer top-layer paths. M2 passes only when `scripts/gate.py m2` exits 0.
+
+**D20. The escape router routes inner layers on a quarter-pitch grid and negotiates per ball.** Measurement and
+tool change, 2026-09-18, under D19. Why the old router missed nine balls the boards escape: its half-pitch lattice
+had no legal inner-layer line next to a via row at 0.5 mm pitch (the line between two via rows is 0.25 mm from
+each, and a 0.28 mm via, a 0.089 mm track and 0.0886 mm of clearance need 0.273), while the OrangeCrab fan-out
+runs its inner tracks 0.04 mm off the ball rows, where the geometry works; and its negotiation stalled on small
+clusters that a settled third ball could have resolved. What changed (`waffle_eda/route/escape.py`): inner layers
+and the top layer outside the array are a quarter-pitch grid, the top layer inside the array keeps the half-pitch
+nodes (a channel at a fine pitch has no slack), vias sit on half-pitch nodes inside the array and anywhere outside;
+conflicts between escapes are judged on an eighth-pitch grid with offsets derived from the rules (track + clearance,
+via radius + clearance + half a track, via + clearance) and counted per other ball, not per sample, so that a long
+overlap costs what a short one does; when the contested set stops shrinking the contested balls' partners are ripped
+up too, then the partners' partners, with the contested balls choosing first; the final pass commits under the exact
+collision test against committed copper, with the negotiated history as guidance and nothing blocked by the model;
+a stranded ball has its neighbours ripped up and re-placed around it in a growing radius and several orders. A
+version that counted conflicts per sample made one overlap cost ten balls' worth and stopped negotiating; a version
+that blocked on the model in the final pass refused paths the geometry allowed. Results in `docs/plan.md`. Tools
+kept from the work: `scripts/draw_package.py` draws a package region (bus copper saturated, the rest faint) as SVG
+and PNG through the headless Chromium on this machine; `ESCAPE_TRACE=1` prints the negotiation round by round.
