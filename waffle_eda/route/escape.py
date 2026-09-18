@@ -113,19 +113,22 @@ class LatticeGraph:
         key = (net.GetNetname(), layer, a, b) if a <= b else (net.GetNetname(), layer, b, a)
         hit = self.edge_cache.get(key)
         if hit is None:
-            hit = self.obs.clear(self._track(layer, a, b, net), self.rules.clearance_mm) is None
+            hit = self.obs.clear(self._track(layer, a, b, net), self.rules.clearance_mm,
+                                 hole_clearance_mm=self.rules.hole_clearance_mm) is None
             self.edge_cache[key] = hit
         return hit
 
     def segment_blocker(self, layer, a, b, net) -> str:
-        hit = self.obs.clear(self._track(layer, a, b, net), self.rules.clearance_mm)
+        hit = self.obs.clear(self._track(layer, a, b, net), self.rules.clearance_mm,
+                             hole_clearance_mm=self.rules.hole_clearance_mm)
         return f"{self.board.GetLayerName(layer)}: {hit.GetClass()} of {hit.GetNetname()!r}" if hit is not None else "?"
 
     def via_clear(self, node, net) -> bool:
         key = (net.GetNetname(), node)
         hit = self.via_cache.get(key)
         if hit is None:
-            hit = self.obs.clear(self._via(node, net), self.rules.clearance_mm) is None
+            hit = self.obs.clear(self._via(node, net), self.rules.clearance_mm,
+                                 hole_clearance_mm=self.rules.hole_clearance_mm) is None
             self.via_cache[key] = hit
         return hit
 

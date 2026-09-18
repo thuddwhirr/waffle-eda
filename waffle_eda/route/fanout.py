@@ -36,6 +36,7 @@ class FanoutRules:
     top_rings: int = 2  # rings that may leave on the top layer without a via (1 or 2)
     out_pitches: float = 1.5  # where escapes end, in pitches beyond the outer row
     stub_mm: float | None = None  # width of the pad-to-via stub; default the track width
+    hole_clearance_mm: float = 0.0  # a hole's wall to copper of another net (0: not enforced)
 
 
 @dataclass

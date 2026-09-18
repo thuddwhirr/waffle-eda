@@ -32,12 +32,12 @@ def test_synthetic_cases_escape_completely(name, tmp_path):
 
 
 def _rules_from_measurements(ref):
-    """The bench's per-package rules, from the measurement files (scripts/measure_references.py and
-    waffle_eda.bench.fanout_measure must have run)."""
-    import sys
-    sys.path.insert(0, str(refs.repo_root() / "scripts"))
-    import fanout_bench  # noqa: E402
-    return fanout_bench.rules_for_reference(ref)[0]
+    """The router's rules from the reference's constraints file (decisions D17)."""
+    from waffle_eda.bench import constraints
+    if not constraints.constraints_path(ref).is_file():
+        pytest.skip(f"{ref.key}: constraints not measured (python3 -m waffle_eda.bench.constraints)")
+    c = constraints.measure(ref)
+    return {part: constraints.fanout_rules(c, part) for part in c.packages}
 
 
 # The target: every bus ball of every BGA package on every bus reference (docs/plan.md, M2). These tests stay red
@@ -47,6 +47,7 @@ EXPECTED = {
     "logicbone": {"IC1": 50, "IC2": 39, "IC3": 39},
     "orangecrab-r0.2.1": {"U3": 50, "U4": 50},
     "ulx3s": {"U1": 39},
+    "butterstick-r0.2": {"U3": 26, "U5": 13},
 }
 
 
@@ -54,9 +55,8 @@ EXPECTED = {
 def test_reference_escapes_every_bus_ball(key):
     ref = refs.REFERENCES[key]
     problem = harness.bench_dir() / f"{ref.key}-problem.kicad_pcb"
-    fan = refs.repo_root() / "build" / f"fanout-{ref.key}.json"
-    if not refs.is_fetched(ref) or not problem.is_file() or not fan.is_file():
-        pytest.skip(f"{key}: fetch, measure and strip first (scripts/fanout_bench.py)")
+    if not refs.is_fetched(ref) or not problem.is_file():
+        pytest.skip(f"{key}: fetch and strip first (scripts/fanout_bench.py)")
     rules = _rules_from_measurements(ref)
     board = kb.load_board(problem)
     bus = set(kb.nets_matching(board, ref.bus_net_pattern))

@@ -51,6 +51,8 @@ python3 scripts/bench_score.py butterstick --answer   # strip the DDR3 bus and s
 python3 scripts/survey_references.py owner/repo     # probe a candidate repository for KiCad boards
 python3 scripts/make_synthetic.py                   # write the synthetic BGA-pair cases to build/synthetic/
 python3 -m waffle_eda.bench.fanout_measure          # how each reference escapes its bus balls (build/fanout-*.json)
+python3 -m waffle_eda.bench.constraints             # each reference's constraints as if agreed upstream (build/constraints-*.json)
+python3 scripts/gate.py m2                          # the milestone gate: PASS or FAIL, one line per case
 python3 scripts/fanout_bench.py synthetic butterstick logicbone   # strip, escape, gate and DRC
 python3 -m pytest -q
 ```

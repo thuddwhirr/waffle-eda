@@ -16,7 +16,7 @@ from collections import Counter
 from pathlib import Path
 
 import _path  # noqa: F401
-from waffle_eda.bench import harness, references as refs, synthetic
+from waffle_eda.bench import constraints, harness, references as refs, synthetic
 from waffle_eda.kicad import board as kb, refill
 from waffle_eda.route import fanout as fo, escape as esc
 
@@ -33,36 +33,10 @@ NOISE = ("memory leak",)
 
 
 def rules_for_reference(ref: refs.Reference) -> tuple[dict[str, fo.FanoutRules], dict]:
-    """Per package: rules from the board's net class clearance and the bus copper measured under that package
-    (track width, via size, via style), with the layers the bus uses (decisions D13)."""
-    board = kb.load_board(refs.board_path(ref))
-    ds = board.GetDesignSettings()
-    try:
-        nc = ds.m_NetSettings.GetDefaultNetclass()
-    except AttributeError:
-        nc = ds.m_NetSettings.m_DefaultNetClass
-    clearance = kb.mm(nc.GetClearance())
-    fan = json.loads((refs.repo_root() / "build" / f"fanout-{ref.key}.json").read_text())
-    measure = json.loads((refs.repo_root() / "build" / f"measure-{ref.key}.json").read_text())
-    inner = tuple(l for l in measure["bus"]["layers_used"] if l != "F.Cu")
-    rules, facts = {}, {"clearance": clearance, "inner": inner}
-    for part, p in fan["packages"].items():
-        widths, via_sizes, classes = Counter(), Counter(), Counter()
-        for ball in p["balls"]:
-            for w, n in ball["widths_inside"].items():
-                widths[float(w)] += n
-            if ball["via"] and ball["via_class"] in ("in-pad", "diagonal", "channel"):
-                via_sizes[(ball["via"]["dia"], ball["via"]["drill"])] += 1
-                classes[ball["via_class"]] += 1
-        # the narrowest width used in numbers under this package: what fits between its pads
-        common = [w for w, n in widths.items() if n >= 0.05 * sum(widths.values())]
-        track = min(common) if common else widths.most_common(1)[0][0]
-        via_d, via_drill = via_sizes.most_common(1)[0][0] if via_sizes else (0.45, 0.2)
-        style = "in-pad" if classes and classes.most_common(1)[0][0] == "in-pad" else "dogbone"
-        rules[part] = fo.FanoutRules(track_mm=track, clearance_mm=clearance, via_mm=via_d, via_drill_mm=via_drill,
-                                     inner_layers=inner, style=style)
-        facts[part] = {"track": track, "via": (via_d, via_drill), "style": style}
-    return rules, facts
+    """Per package: the router's rules from the reference's constraints file (decisions D17)."""
+    c = constraints.measure(ref)
+    rules = {part: constraints.fanout_rules(c, part) for part in c.packages}
+    return rules, {"constraints": constraints.summary(c)}
 
 
 def drc_summary(board_path: Path, nets: set[str], baseline: dict | None, tag: str) -> dict:
@@ -101,7 +75,7 @@ def run_synthetic(name: str) -> dict:
 def run_reference(key: str) -> dict:
     ref = refs.REFERENCES[key]
     rules, facts = rules_for_reference(ref)
-    print(f"== {key}: rules {facts}", flush=True)
+    print(f"== {key}: {facts['constraints']}", flush=True)
     problem, removed = harness.strip_bus(ref)
     board = kb.load_board(problem)
     bus = set(kb.nets_matching(board, ref.bus_net_pattern))
@@ -124,8 +98,13 @@ def run_reference(key: str) -> dict:
     result_path = Path("build/bench") / f"{key}-fanout.kicad_pcb"
     kb.save_board(board, result_path)
     refill.refill_file(result_path)
-    baseline = harness.drc_facts(harness.answer_drc(ref), bus)
-    results["drc"] = drc_summary(result_path, bus, baseline, "board's own rules")
+    c = constraints.measure(ref)
+    work = Path("build/constraints") / key
+    ours = constraints.drc_with_rules(result_path, c.rules_text(), work / "ours", bus, tag="fanout")
+    orig = constraints.drc_with_rules(refs.board_path(ref), c.rules_text(), work / "original", bus, tag="original")
+    print(f"   DRC under the reference's constraints: ours {ours['electrical_bus']} {ours['electrical_bus_by_type']}"
+          f" | original {orig['electrical_bus']} {orig['electrical_bus_by_type']}", flush=True)
+    results["drc"] = {"ours": ours, "original": orig}
     return results
 
 

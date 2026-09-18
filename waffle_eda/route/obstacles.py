@@ -73,15 +73,30 @@ class Obstacles:
                     seen.add(id(item))
                     yield item
 
-    def clear(self, item, clearance_mm: float, skip=None) -> object | None:
-        """The first other-net obstacle ``item`` collides with at ``clearance_mm``, or None when it clears all."""
+    @staticmethod
+    def _hole_shape(other, kind):
+        """The drilled hole of a via or a through-hole pad as a shape, or None."""
+        if kind == "via":
+            return pcbnew.SHAPE_CIRCLE(other.GetPosition(), other.GetDrillValue() // 2)
+        if kind == "pad" and other.GetDrillSize().x > 0:
+            try:
+                return other.GetEffectiveHoleShape()
+            except Exception:
+                return pcbnew.SHAPE_CIRCLE(other.GetPosition(), other.GetDrillSize().x // 2)
+        return None
+
+    def clear(self, item, clearance_mm: float, skip=None, hole_clearance_mm: float = 0.0) -> object | None:
+        """The first other-net obstacle ``item`` collides with at ``clearance_mm`` (copper to copper) or at
+        ``hole_clearance_mm`` (a hole's wall to copper), or None when it clears all."""
         clr = kb.nm(clearance_mm)
+        hole_clr = kb.nm(hole_clearance_mm) if hole_clearance_mm else 0
         net = item.GetNetname()
         is_via = item.GetClass() == "PCB_VIA"
         layer = None if is_via else item.GetLayer()
         bb = item.GetBoundingBox()  # returned by value: inflating it does not touch the item
-        bb.Inflate(clr)
+        bb.Inflate(max(clr, hole_clr))
         shape = item.GetEffectiveShape()
+        own_hole = pcbnew.SHAPE_CIRCLE(item.GetPosition(), item.GetDrillValue() // 2) if (is_via and hole_clr) else None
         seen = set()
         for cell in self._cells(bb):
             for onet, obb, other, kind in self.cells.get(cell, ()):
@@ -107,4 +122,22 @@ class Obstacles:
                 elif kind == "via" or is_via or other.IsOnLayer(layer):
                     if other.GetEffectiveShape().Collide(shape, clr):
                         return other
+                if hole_clr and kind in ("via", "pad"):
+                    # the other item's hole against our copper
+                    hole = self._hole_shape(other, kind)
+                    if hole is not None and hole.Collide(shape, hole_clr):
+                        return other
+                if own_hole is not None and kind in ("pad", "track", "via", "shape"):
+                    # our via's hole against the other item's copper, on any layer it has
+                    if kind == "pad":
+                        for L in other.GetLayerSet().CuStack():
+                            if other.GetEffectiveShape(L).Collide(own_hole, hole_clr):
+                                return other
+                    else:
+                        try:
+                            other_shape = other.GetEffectiveShape() if kind != "shape" else other.GetEffectiveShape(other.GetLayer())
+                            if other_shape.Collide(own_hole, hole_clr):
+                                return other
+                        except Exception:
+                            pass
         return None

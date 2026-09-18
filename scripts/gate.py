@@ -51,13 +51,14 @@ def gate_m2() -> list[tuple[str, bool, str]]:
         result = fanout_bench.run_reference(ref.key)
         parts = [k for k in result if k != "drc"]
         escaped = all(result[p]["placed"] == result[p]["total"] for p in parts)
-        baseline = harness.drc_facts(harness.answer_drc(ref), set())  # per-type counts come from the bench result
-        ours = result["drc"]["electrical_bus_by_type"]
-        orig = harness.drc_facts(harness.answer_drc(ref), set(fanout_bench.kb.nets_matching(
-            fanout_bench.kb.load_board(refs.board_path(ref)), ref.bus_net_pattern)))["electrical_bus_by_type"]
-        not_worse = all(ours.get(t, 0) <= orig.get(t, 0) for t in set(ours) | set(orig))
+        ours = result["drc"]["ours"]
+        orig = result["drc"]["original"]
+        clean = ours["electrical_bus"] == 0
         detail = ", ".join(f"{p} {result[p]['placed']}/{result[p]['total']}" for p in parts)
-        rows.append((ref.key, escaped and not_worse, f"{detail}; DRC touching the bus {ours} vs original {orig}"))
+        detail += f"; DRC under the reference's constraints: ours {ours['electrical_bus_by_type'] or 0}"
+        if orig["electrical_bus"]:
+            detail += f" (original itself {orig['electrical_bus_by_type']}: constraints suspect)"
+        rows.append((ref.key, escaped and clean and orig["electrical_bus"] == 0, detail))
     return rows
 
 

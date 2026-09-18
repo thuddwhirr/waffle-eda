@@ -215,3 +215,16 @@ Consequences that stand from the first version: the benchmark's DRC criterion sh
 copper under each reference's demonstrated rule values, fed to the router as its rules (pending the owner's word);
 the fab tier for the target is a cost-ceiling decision the owner makes before M6, with confirmed capability and
 quotes captured as profiles. Lesson recorded: an automated page summary is not a source; read the text.
+
+**D17. The benchmark hands the router each reference's constraints as if agreed upstream.** Owner's decision,
+2026-09-18. For every reference, the benchmark builds a constraints file that stands for the output of stages 1 to
+4 that a real run would have produced for that board: the packages as chosen parts (pitch, pad size, ball map), the
+fab class the board's own bus copper demonstrably meets (copper spacing and hole-to-copper distance measured by
+binary search with an overriding rules file; track width, via pad and drill measured under each package), the
+layers the bus may use, the via style and the board thickness. The router is fed those values and judged under
+them: the gate requires zero electrical violations of our bus copper under the same rules, which the original
+meets by construction. This replaces the relative comparison of violation counts (D10, D15) and removes the rule
+values KiCad 9 injects into old files (D16) from the benchmark. The router had been working at each board's net
+class clearance, 0.089 mm on ULX3S where the copper holds 0.127 mm, and without any hole-to-copper rule; both are
+now inputs. Fab tiers and prices are a separate question for the target (D16); the references decide nothing about
+any fab.
