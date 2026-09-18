@@ -455,8 +455,11 @@ def _commit(g: LatticeGraph, net, layer_nodes, vias) -> list:
 
 def escape_package(board: pcbnew.BOARD, package_ref: str, nets: set[str], rules: FanoutRules,
                    exit_side: str | None = None, power_nets: set[str] = frozenset(),
-                   costs: Costs | None = None) -> FanoutResult:
+                   costs: Costs | None = None, exit_sides: dict[str, str] | None = None) -> FanoutResult:
+    """``exit_side`` is the package side the escapes leave toward; ``exit_sides`` overrides it per net name (the
+    bus router prefers each net to leave toward its partner on the other package)."""
     costs = costs or Costs()
+    exit_sides = exit_sides or {}
     fp = kb.footprint(board, package_ref)
     if fp is None:
         raise KeyError(package_ref)
@@ -495,7 +498,8 @@ def escape_package(board: pcbnew.BOARD, package_ref: str, nets: set[str], rules:
         for ball in todo:
             if ball.number in paths:
                 occ.add(*paths.pop(ball.number), ball.number, -1)
-            first, second = _search(g, ball, nets_of[ball.number], exit_side, costs, ball.net in power_nets, ctx)
+            first, second = _search(g, ball, nets_of[ball.number], exit_sides.get(ball.net, exit_side), costs,
+                                    ball.net in power_nets, ctx)
             if first is None:
                 last_blockers[ball.number] = second
                 continue
@@ -549,7 +553,7 @@ def escape_package(board: pcbnew.BOARD, package_ref: str, nets: set[str], rules:
 
     def place(ball: Ball):
         net = nets_of[ball.number]
-        first, second = _search(g, ball, net, exit_side, costs, ball.net in power_nets, ctx)
+        first, second = _search(g, ball, net, exit_sides.get(ball.net, exit_side), costs, ball.net in power_nets, ctx)
         if first is None:
             return second
         place_path(ball, first, second)

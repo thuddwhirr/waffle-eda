@@ -9,6 +9,7 @@ Writes build/bench/<key>-bus.kicad_pcb and build/bench/<key>-bus.png, prints one
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,10 +21,37 @@ from waffle_eda.route import bus as busr, escape as esc, fanout as fo, length as
 from waffle_eda.route.lattice import Lattice
 
 
-def bus_rules(c: constraints.Constraints) -> busr.BusRules:
+# Room kept between bus nets outside the pad arrays so that the serpentines of the length tuning fit: a bump of
+# amplitude A needs the neighbour at least A away. Overridable for experiments with BUS_SPACING.
+SPACING_MM = float(os.environ.get("BUS_SPACING", "0.8"))
+
+
+def bus_rules(c: constraints.Constraints, spacing_mm: float = SPACING_MM) -> busr.BusRules:
     """The bus runs at the board's narrowest bus track and smallest bus via, on the layers the bus uses."""
     return busr.BusRules(track_mm=c.min_track_mm, clearance_mm=c.clearance_mm, via_mm=c.min_via_mm,
-                         via_drill_mm=c.min_drill_mm, layers=tuple(c.layers), hole_clearance_mm=c.hole_to_copper_mm)
+                         via_drill_mm=c.min_drill_mm, layers=tuple(c.layers), hole_clearance_mm=c.hole_to_copper_mm,
+                         spacing_mm=spacing_mm)
+
+
+def partner_sides(board, parts: dict, bus: set[str]) -> dict[str, dict[str, str]]:
+    """For each package and bus net, the side of the package that faces the net's pads on the other packages, so
+    that an escape leaves toward what the bus router has to reach."""
+    pads: dict[str, dict[str, list]] = {}
+    for part in parts:
+        fp = kb.footprint(board, part)
+        for pad in fp.Pads():
+            if pad.GetNetname() in bus:
+                p = pad.GetPosition()
+                pads.setdefault(pad.GetNetname(), {}).setdefault(part, []).append((kb.mm(p.x), kb.mm(p.y)))
+    out: dict[str, dict[str, str]] = {part: {} for part in parts}
+    for net, by_part in pads.items():
+        for part, lat in parts.items():
+            others = [xy for p2, xys in by_part.items() if p2 != part for xy in xys]
+            if part in by_part and others:
+                cx = sum(x for x, _ in others) / len(others)
+                cy = sum(y for _, y in others) / len(others)
+                out[part][net] = lat.facing_side(cx, cy)
+    return out
 
 
 def run_reference(key: str, draw: bool = True) -> dict:
@@ -37,13 +65,14 @@ def run_reference(key: str, draw: bool = True) -> dict:
     parts = {r: Lattice(kb.footprint(board, r)) for r in ref.bus_parts}
     first = parts[ref.bus_parts[0]]
     out = {"fanout": {}}
+    sides = partner_sides(board, parts, bus)
     for part, lat in parts.items():
         if lat.rows < 4 or lat.cols < 4:
             continue
         other = first if part != ref.bus_parts[0] else parts[ref.bus_parts[1]]
         side = lat.facing_side((other.x0 + other.X(other.cols - 1)) / 2, (other.y0 + other.Y(other.rows - 1)) / 2)
         t0 = time.time()
-        r = esc.escape_package(board, part, bus, rules[part], exit_side=side)
+        r = esc.escape_package(board, part, bus, rules[part], exit_side=side, exit_sides=sides.get(part))
         print(f"   fan-out {part}: {len(r.escaped)}/{r.total} escaped | {time.time() - t0:.1f}s", flush=True)
         out["fanout"][part] = {"placed": len(r.escaped), "total": r.total, "failed": r.failed}
     t0 = time.time()

@@ -54,6 +54,7 @@ class Costs:
     history: float = 0.4
     max_vias: int = 2
     corridor_mm: float = 3.0  # a net's search stays within its islands' bounding box grown by this much
+    repair_partners: int = 6  # nets ripped up around a stranded net in the final pass
     stall_rounds: int = 4
     max_radius_hops: int = 4
     seed: int = 1
@@ -392,6 +393,7 @@ class Context:
     def __init__(self, occ: Occupancy, history: dict, present: float, hard: bool = False):
         self.occ, self.history, self.present, self.hard = occ, history, present, hard
         self.quiet = not history and present == 0.0 and not hard  # nothing to look up: the first round
+        self.covers_committed = hard and occ.g.rules.spacing_mm >= occ.g.u + 1e-9
 
     def step_cost(self, layer, a, b) -> float | None:
         """None when the step is too close to another bus net in hard mode (the spacing tuning needs)."""
@@ -561,12 +563,14 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 continue
             if on_top and not g.top_ok(nxt):
                 continue
-            if not g.segment_clear(layer, node, nxt, net, obs):
-                blockers[g.segment_blocker(layer, node, nxt, net, obs)] += 1
-                continue
             extra = ctx.step_cost(layer, node, nxt)
             if extra is None:
                 blockers["spacing to another bus net"] += 1
+                continue
+            # with spacing kept by the occupancy (sampled every u, so a slack of u/2 a side), a step it admits is
+            # already clear of the committed bus copper whenever the spacing exceeds that slack
+            if not g.segment_clear(layer, node, nxt, net, obs, committed=not ctx.covers_committed):
+                blockers[g.segment_blocker(layer, node, nxt, net, obs)] += 1
                 continue
             nd = d + length + extra
             state = (layer, nxt, nvias)
@@ -627,6 +631,8 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
         if not connected or not targets:
             return None, {"why": "an island covers no routable node", "blockers": Counter()}
         path, second = _search(g, net, connected, targets, costs, ctx, obs, corridor)
+        if path is None:  # the corridor is a speed-up, not a rule: the whole region gets a try before failing
+            path, second = _search(g, net, connected, targets, costs, ctx, obs, None)
         if path is None:
             return None, {"why": f"no path from the connected copper to {len(islands) - len(done)} island(s)",
                           "blockers": second}
@@ -740,6 +746,11 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         if TRACE:
             print(f"      it {it}: {len(paths)}/{len(names)} routed, {len(contested)} contested, "
                   f"{len(todo)} re-routed, {time.time() - t_it:.1f}s", flush=True)
+            for name in names:
+                if name not in paths and name in diagnoses:
+                    d = diagnoses[name]
+                    top = ", ".join(f"{k} x{v}" for k, v in d["blockers"].most_common(3))
+                    print(f"         unrouted {name}: {d['why']}; {top or 'nothing recorded'}", flush=True)
         if not contested:
             break
         for keys in contested.values():
@@ -795,21 +806,22 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         diag = place(name)
         if diag is not None:
             failed[name] = diag
-    # repair: rip up the nets whose copper blocks a failed net and route it first
+    # repair: rip up the nets whose copper blocks a failed net (the most blocking first, a bounded number) and
+    # route it first, then re-place them; keep the result only when every one of them is placed again
     for name in list(failed):
-        partners = set()
+        partners: Counter = Counter()
         for key, count in failed[name]["blockers"].items():
             if ": our " in key:
-                partners.add(key.split(" of '", 1)[1].rstrip("'"))
-        if not partners:  # blocked by spacing: the nets whose occupancy touches this net's corridor
+                partners[key.split(" of '", 1)[1].rstrip("'")] += count
+        if not partners:  # blocked by spacing: the nets whose copper lies in this net's corridor
             cx0, cy0, cx1, cy1 = _corridor(g, islands[name], 0.5)
             for other, (segs, _) in committed.items():
-                if any(cx0 <= g.xy[n][0] <= cx1 and cy0 <= g.xy[n][1] <= cy1 for path, _ in segs for _, n in path):
-                    partners.add(other)
-        partners &= set(committed)
-        if not partners:
+                inside = sum(1 for path, _ in segs for _, n in path if cx0 <= g.xy[n][0] <= cx1 and cy0 <= g.xy[n][1] <= cy1)
+                if inside:
+                    partners[other] += inside
+        saved = [n for n, _ in partners.most_common(costs.repair_partners) if n in committed]
+        if not saved:
             continue
-        saved = list(partners)
         for p in saved:
             unplace(p)
         ok = place(name) is None

@@ -100,3 +100,20 @@ def test_same_net_is_not_an_obstacle():
     board.Add(_via(board, nets["A"], 0, 0))
     obs = Obstacles(board)
     assert obs.clear(_track(board, nets["A"], 0.1), 0.5, hole_clearance_mm=0.5) is None
+
+
+def test_remove_by_fresh_proxy_after_board_delete():
+    """KiCad yields a new proxy object per iteration; removal must go by identity of the item, not of the proxy,
+    or a deleted track stays indexed and the next collision test dereferences freed memory."""
+    board, nets = _board()
+    t = _track(board, nets["A"], 0.35)
+    board.Add(t)
+    obs = Obstacles(board)
+    fresh = [x for x in board.GetTracks() if x.GetNetname() == "A"][0]
+    assert fresh is not t
+    assert obs.clear(_track(board, nets["B"], 0.35), 0.05) is not None
+    obs.remove(fresh)
+    assert obs.count == 0
+    board.Delete(fresh)
+    assert obs.clear(_track(board, nets["B"], 0.35), 0.05) is None
+    assert obs.clear(_via(board, nets["B"], 0.35, 0), 0.5) is None
