@@ -41,7 +41,7 @@ class BusRules:
     layers: tuple[str, ...]  # copper layers the bus may use, by name (the top layer included when allowed)
     hole_clearance_mm: float = 0.0
     out_pitches: float = 1.5  # the zone around a package's pad array that uses the package's own lattice
-    margin_mm: float = 4.0  # routing region beyond the packages' footprints
+    margin_mm: float = 6.0  # routing region beyond the packages' footprints
     spacing_mm: float = 0.0  # extra room the negotiation keeps between bus nets outside the pad arrays, for tuning
     in_pad_packages: tuple[str, ...] = ()  # packages whose balls take a via in the pad (filled and capped)
 
@@ -58,9 +58,10 @@ class Costs:
     pop_budget: int = 150000  # states a single search may settle before it is called off (runs are bounded)
     repair_partners: int = 6  # nets ripped up around a stranded net in the final pass
     detour_min_mm: float = 3.0  # a net shorter than its window by more than this is re-routed through a detour
-    detour_candidates: int = 8  # detour points tried per net
+    detour_candidates: int = 12  # detour points tried per net
     stall_rounds: int = 4
     max_radius_hops: int = 4
+    max_radius_mm: float = 4.0  # the widest rip-up around a stuck pair's paths, in the fallback by distance
     seed: int = 1
 
 
@@ -853,6 +854,26 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                                 grown |= occ.near_via(node)
                     forced = grown
                 forced -= set(contested)
+                # a pair stuck on one spot has no partners but each other: then every net whose path passes within
+                # a growing distance of the contested paths is ripped up too, so that the third net in the way
+                # gives way (the escape router's radius fallback)
+                if not forced or hops > costs.max_radius_hops:
+                    radius = min(0.5 * 2 ** max(0, hops - 1), costs.max_radius_mm)
+                    boxes = []
+                    for name in contested:
+                        for path, _ in paths.get(name, []):
+                            xs = [g.xy[n][0] for _, n in path]
+                            ys = [g.xy[n][1] for _, n in path]
+                            boxes.append((min(xs) - radius, min(ys) - radius, max(xs) + radius, max(ys) + radius))
+                    for other, segs in paths.items():
+                        if other in contested or other in forced:
+                            continue
+                        if any(bx0 <= g.xy[n][0] <= bx1 and by0 <= g.xy[n][1] <= by1
+                               for bx0, by0, bx1, by1 in boxes for path, _ in segs for _, n in path):
+                            forced.add(other)
+                    if TRACE:
+                        print(f"      stalled {since_better} rounds: ripping up {len(forced)} nets within "
+                              f"{radius} mm of the contested paths", flush=True)
 
     # --- final pass: the negotiated paths are kept where nothing contests them and the exact collision test
     # against the copper committed so far agrees; only the contested or unrouted nets are searched again, with the
@@ -955,13 +976,14 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             direct = math.hypot(bx - ax, by - ay)
             out = []
             for w, (x, y) in enumerate(g.xy):
-                if g.in_array[w] or g._in_footprint(x, y):
+                if g.in_array[w]:  # the empty middle of a DRAM and the free board area both serve
                     continue
                 if abs(x / 1.0 - round(x / 1.0)) > 0.05 or abs(y / 1.0 - round(y / 1.0)) > 0.05:
                     continue  # one candidate per square millimetre
                 est = math.hypot(x - ax, y - ay) + math.hypot(bx - x, by - y) - direct
-                if deficit * 0.8 <= est <= deficit + 4.0:
-                    out.append((abs(est - deficit - 1.0), w))
+                if deficit * 0.5 <= est <= deficit + 4.0:
+                    # the closest to the deficit from above first, then the longest of the shorter ones
+                    out.append(((0, est - deficit) if est >= deficit else (1, deficit - est), w))
             out.sort()
             return [w for _, w in out[:costs.detour_candidates]]
 
