@@ -28,8 +28,9 @@ reference boards fetched by script and loading in pcbnew 9, the `waffle-fpga` to
 provenance, a first measurement of both references.
 
 **M1. Benchmark harness** (done, session 2). For each class C reference: strip only the DDR3 bus copper, keep everything else as
-obstacles, and score a candidate result against the original copper: nets connected, DRC clean under the board's own
-rules, lengths within the board's measured spread, vias inside the packages, layers used. The "do nothing" tool scores
+obstacles, and score a candidate result against the original copper: nets connected, zero electrical violations
+touching the bus under the reference's constraints (D17, D18; session 3, before that relative to the original's count),
+lengths within the board's measured spread, vias inside the packages, layers used. The "do nothing" tool scores
 zero, the original copper scores full marks. A synthetic BGA-pair generator (6 x 6, 9 x 16, 20 x 20 with a bus in one
 bank) with known feasibility for unit tests. A measurement report for both references that states every rule with its
 evidence. Runs in seconds to a minute. Pick and fetch the class A and B references.

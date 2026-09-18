@@ -8,7 +8,7 @@ next to a copy of the board. The original copper meets its own constraints by co
 from __future__ import annotations
 
 import json
-import shutil
+import math
 from collections import Counter
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -40,40 +40,26 @@ class Constraints:
     layers: tuple[str, ...]  # copper layers the bus uses
     thickness_mm: float | None
     packages: dict[str, PackageConstraints]
+    bus_nets: tuple[str, ...] = ()
 
     def rules_text(self) -> str:
-        """A KiCad rules file that enforces exactly these values on every item of the board."""
-        return (
-            "(version 1)\n"
-            f"(rule reference_constraints\n"
-            f"  (constraint clearance (min {self.clearance_mm:.4f}mm))\n"
-            f"  (constraint hole_clearance (min {self.hole_to_copper_mm:.4f}mm))\n"
-            f"  (constraint track_width (min {self.min_track_mm:.4f}mm))\n"
-            f"  (constraint via_diameter (min {self.min_via_mm:.4f}mm))\n"
-            f"  (constraint hole_size (min {self.min_drill_mm:.4f}mm))\n"
-            f"  (constraint annular_width (min {self.min_annular_mm:.4f}mm)))\n"
-        )
+        """A KiCad rules file that enforces exactly these values on the bus nets (harness.rules_file)."""
+        return harness.rules_file(self.bus_nets, {
+            "clearance": self.clearance_mm, "hole_clearance": self.hole_to_copper_mm,
+            "track_width": self.min_track_mm, "via_diameter": self.min_via_mm,
+            "hole_size": self.min_drill_mm, "annular_width": self.min_annular_mm})
+
+
+VERSION = 3  # bump when the measurement changes; cached files of another version are re-measured
 
 
 def constraints_path(ref: refs.Reference) -> Path:
     return refs.repo_root() / "build" / f"constraints-{ref.key}.json"
 
 
-def _copy_board(src: Path, work_dir: Path, name: str = "board") -> Path:
-    work_dir.mkdir(parents=True, exist_ok=True)
-    for ext in (".kicad_pcb", ".kicad_pro"):
-        s = src.with_suffix(ext)
-        if s.is_file():
-            shutil.copy(s, work_dir / (name + ext))
-    return work_dir / (name + ".kicad_pcb")
-
-
-def drc_with_rules(board_path: Path, rules_text: str, work_dir: Path, bus_nets: set[str], tag: str = "drc") -> dict:
-    """Run KiCad's DRC on a copy of ``board_path`` under ``rules_text``; return the electrical facts for the bus."""
-    copy = _copy_board(board_path, work_dir)
-    (work_dir / "board.kicad_dru").write_text(rules_text)
-    report = harness.run_drc(copy, work_dir / f"{tag}.json")
-    return harness.drc_facts(report, bus_nets)
+def _floor4(x: float) -> float:
+    """Round down to 0.1 um so a rule never exceeds the copper it was measured from."""
+    return math.floor(x * 10000 + 1e-6) / 10000
 
 
 def _largest_met(board_path: Path, work_dir: Path, bus: set[str], constraint: str, vtype: str,
@@ -82,8 +68,8 @@ def _largest_met(board_path: Path, work_dir: Path, bus: set[str], constraint: st
     best = lo
     for _ in range(steps):
         mid = (lo + hi) / 2
-        facts = drc_with_rules(board_path, f"(version 1)\n(rule probe (constraint {constraint} (min {mid:.4f}mm)))\n",
-                               work_dir, bus, tag="probe")
+        facts = harness.drc_with_rules(board_path, harness.rules_file(bus, {constraint: mid}), work_dir, bus,
+                                       tag="probe")
         if facts["electrical_bus_by_type"].get(vtype, 0) == 0:
             best, lo = mid, mid
         else:
@@ -98,9 +84,10 @@ def measure(ref: refs.Reference, force: bool = False) -> Constraints:
     mtime = board_file.stat().st_mtime
     if path.is_file() and not force:
         data = json.loads(path.read_text())
-        if data.get("board_mtime") == mtime:
+        if data.get("board_mtime") == mtime and data.pop("version", None) == VERSION:
             data["packages"] = {k: PackageConstraints(**v) for k, v in data["packages"].items()}
             data["layers"] = tuple(data["layers"])
+            data["bus_nets"] = tuple(data["bus_nets"])
             return Constraints(**data)
     board = kb.load_board(board_file)
     bus = set(kb.nets_matching(board, ref.bus_net_pattern))
@@ -135,20 +122,30 @@ def measure(ref: refs.Reference, force: bool = False) -> Constraints:
         style = "in-pad" if classes and classes.most_common(1)[0][0] == "in-pad" else "dogbone"
         packages[part] = PackageConstraints(pitch_mm=p["pitch_mm"], pad_mm=p["pad_mm"], track_mm=track,
                                             via_mm=via_d, via_drill_mm=via_drill, style=style)
-    common = [w for w, n in widths.items() if n >= 5]
-    min_track = min(common) if common else min(widths)
-    min_via = min(d for d, _ in vias) if vias else 0.45
-    min_drill = min(drill for _, drill in vias) if vias else 0.2
-    min_annular = min((d - drill) / 2 for d, drill in vias) if vias else 0.125
+    # The demonstrated minima are those of every bus track, arc and via on the board, not of the common sizes
+    # under the packages: a single 0.1 mm neck on LogicBone is copper its fab had to make.
+    track_widths = [kb.mm(t.GetWidth()) for t in kb.track_segments(board) + kb.track_arcs(board)
+                    if t.GetNetname() in bus]
+    via_sizes = [(kb.via_diameter_mm(v), kb.via_drill_mm(v)) for v in kb.vias(board) if v.GetNetname() in bus]
+    min_track = _floor4(min(track_widths)) if track_widths else min(widths)
+    min_via = _floor4(min(d for d, _ in via_sizes)) if via_sizes else 0.45
+    min_drill = _floor4(min(drill for _, drill in via_sizes)) if via_sizes else 0.2
+    min_annular = _floor4(min((d - drill) / 2 for d, drill in via_sizes)) if via_sizes else 0.125
     try:
         thickness = kb.mm(board.GetDesignSettings().GetBoardThickness())
     except Exception:
         thickness = None
     c = Constraints(reference=ref.key, board_mtime=mtime, clearance_mm=clearance, hole_to_copper_mm=hole,
                     min_track_mm=min_track, min_via_mm=min_via, min_drill_mm=min_drill,
-                    min_annular_mm=round(min_annular, 4), layers=tuple(m["bus"]["layers_used"]),
-                    thickness_mm=thickness, packages=packages)
-    path.write_text(json.dumps(asdict(c), indent=1))
+                    min_annular_mm=min_annular, layers=tuple(m["bus"]["layers_used"]),
+                    thickness_mm=thickness, packages=packages, bus_nets=tuple(sorted(bus)))
+    # The original meets its own constraints by construction; anything else is a measurement error, and a
+    # constraints file that the original fails would judge the router against a rule nobody demonstrated.
+    facts = harness.drc_with_rules(board_file, c.rules_text(), work / "original", bus, tag="original")
+    if facts["electrical_bus"]:
+        raise RuntimeError(f"{ref.key}: the original's bus copper violates the measured constraints "
+                           f"{facts['electrical_bus_by_type']}; the measurement is wrong, not the board")
+    path.write_text(json.dumps({**asdict(c), "version": VERSION}, indent=1))
     return c
 
 

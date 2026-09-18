@@ -228,3 +228,24 @@ values KiCad 9 injects into old files (D16) from the benchmark. The router had b
 class clearance, 0.089 mm on ULX3S where the copper holds 0.127 mm, and without any hole-to-copper rule; both are
 now inputs. Fab tiers and prices are a separate question for the target (D16); the references decide nothing about
 any fab.
+
+**D18. DRC counts are exact only under bus-scoped rules; M1 is judged at zero, like M2.** Measurement, 2026-09-18.
+KiCad 9.0.9's DRC stops reporting a violation type at a cap, and which violations it keeps differs from run to run.
+Observed on the LogicBone original: 199 to 202 hole-to-copper and solder-mask violations whatever the rule, and 501
+under a 0.5 mm clearance rule against 502 under a 2.0 mm one; three identical runs each reported 200 hole-to-copper
+violations, of which 77, 75 and 74 touched a bus net, where the answer report cached in session 2 had 70. Any count
+taken where a type reaches the cap is truncated and not repeatable. This bit the M1 harness test on LogicBone (the
+original scored 76 to 79 against its own cached 72 and failed against itself) and, in principle, the D17 search and
+gate, where a bus violation could go unreported behind two hundred non-bus ones. Fix: the rules file the benchmark
+writes (`harness.rules_file`) holds every rule-driven electrical constraint to zero for all items and applies the
+measured values only to pairs with a bus net, through an explicit `A.NetName == ... || B.NetName == ...` condition
+(a net class injected into the copied project file did not take effect under kicad-cli; the explicit list costs
+two seconds on LogicBone). Bus counts are then exact while the bus itself has fewer violations than the cap, and a
+nonzero count is nonzero either way. The M1 harness now judges a candidate under the same rules and the same target
+as M2: zero electrical violations touching the bus, the answer's count being zero by construction; the relative
+criterion of D10 is retired. Two corrections found in the same pass: the constraints file's minima are taken over
+every bus track, arc and via on the board rather than the common sizes under the packages (LogicBone's bus has three
+0.1 mm necks that the common 0.135 mm value failed, so the original failed its own file), and `measure` runs the
+original under the file it writes and raises if it fails. A reused problem board reports what was stripped from a
+manifest instead of None. A pcbnew pitfall found by the first gate run under D17 (a `SHAPE_CIRCLE` built in Python
+collides only with a `SEG`) is recorded in `board.py` and covered by `tests/test_obstacles.py`.

@@ -2,8 +2,9 @@
 """The milestone gate: PASS only when every reference in the milestone's class passes in full. Exit 0 on PASS.
 
     python3 scripts/gate.py m1     # strip-and-score harness: do nothing scores 0, the original copper passes
-    python3 scripts/gate.py m2     # fan-out: every bus ball on every BGA of every bus reference, DRC not worse
-                                   # than the original by type; every synthetic case complete and DRC clean
+    python3 scripts/gate.py m2     # fan-out: every bus ball on every BGA of every bus reference, zero electrical
+                                   # violations under the reference's constraints; every synthetic case complete
+                                   # and DRC clean
 
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
 """

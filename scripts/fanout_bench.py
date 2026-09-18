@@ -100,8 +100,8 @@ def run_reference(key: str) -> dict:
     refill.refill_file(result_path)
     c = constraints.measure(ref)
     work = Path("build/constraints") / key
-    ours = constraints.drc_with_rules(result_path, c.rules_text(), work / "ours", bus, tag="fanout")
-    orig = constraints.drc_with_rules(refs.board_path(ref), c.rules_text(), work / "original", bus, tag="original")
+    ours = harness.drc_with_rules(result_path, c.rules_text(), work / "ours", bus, tag="fanout")
+    orig = harness.drc_with_rules(refs.board_path(ref), c.rules_text(), work / "original", bus, tag="original")
     print(f"   DRC under the reference's constraints: ours {ours['electrical_bus']} {ours['electrical_bus_by_type']}"
           f" | original {orig['electrical_bus']} {orig['electrical_bus_by_type']}", flush=True)
     results["drc"] = {"ours": ours, "original": orig}
