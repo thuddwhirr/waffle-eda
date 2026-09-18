@@ -307,6 +307,15 @@ class BusGraph:
                                         hole_clearance_mm=self.rules.hole_clearance_mm) is None
         return True
 
+    def path_clear(self, path, vias, net, obs: Obstacles) -> bool:
+        """A whole path against the fixed and the committed copper (exact)."""
+        prev = None
+        for layer, node in path:
+            if prev is not None and prev[0] == layer and not self.segment_clear(layer, prev[1], node, net, obs):
+                return False
+            prev = (layer, node)
+        return all(self.via_clear(node, net, obs) for node in vias)
+
     # occupancy sampling -------------------------------------------------------------------------------------------
     def qkey(self, x: float, y: float) -> tuple[int, int]:
         return (int(round(x / self.u)), int(round(y / self.u)))
@@ -812,23 +821,27 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                     forced = grown
                 forced -= set(contested)
 
-    # --- final pass: exact geometry against committed copper ---------------------------------------------------------
+    # --- final pass: the negotiated paths are kept where nothing contests them and the exact collision test
+    # against the copper committed so far agrees; only the contested or unrouted nets are searched again, with the
+    # spacing between bus nets kept by the occupancy ---------------------------------------------------------------
     result = BusResult()
     result.counts["iterations"] = it + 1
     occ = Occupancy(g)
     ctx = Context(occ, history, 0.0, hard=True)
     committed: dict = {}
-    order = sorted(names, key=lambda n: (n not in paths, n in contested, sum(len(p) for p, _ in paths.get(n, [])), n))
 
-    def place(name):
-        segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
-        if segs is None:
-            return diag
+    def commit_segments(name, segs):
         items = []
         for path, vias in segs:
             items += _commit(g, net_objs[name], path, vias)
             occ.add(path, vias, name, 1)
         committed[name] = (segs, items)
+
+    def place(name):
+        segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+        if segs is None:
+            return diag
+        commit_segments(name, segs)
         return None
 
     def unplace(name):
@@ -839,13 +852,27 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             g.committed.remove(item)
             board.Delete(item)
 
+    kept = 0
+    leftovers = []
+    for name in names:
+        if name in paths and not contested.get(name):
+            segs = paths[name]
+            if all(g.path_clear(path, vias, net_objs[name], obs) for path, vias in segs):
+                commit_segments(name, segs)
+                kept += 1
+            else:
+                leftovers.append(name)
+    result.counts["negotiated kept"] = kept
+    order = sorted([n for n in names if n not in committed],
+                   key=lambda n: (n not in paths, sum(len(p) for p, _ in paths.get(n, [])), n))
     failed: dict = {}
     for name in order:
         diag = place(name)
         if diag is not None:
             failed[name] = diag
     # repair: rip up the nets whose copper blocks a failed net (the most blocking first, a bounded number) and
-    # route it first, then re-place them; keep the result only when every one of them is placed again
+    # route it first, then re-place them; when one of them cannot be placed again, everything ripped up is put
+    # back as it was
     for name in list(failed):
         partners: Counter = Counter()
         for key, count in failed[name]["blockers"].items():
@@ -860,22 +887,20 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         saved = [n for n, _ in partners.most_common(costs.repair_partners) if n in committed]
         if not saved:
             continue
-        for p in saved:
-            unplace(p)
+        saved_segs = {n: committed[n][0] for n in saved}
+        for n in saved:
+            unplace(n)
         ok = place(name) is None
-        again = []
-        for p in saved:
-            if place(p) is not None:
-                again.append(p)
+        again = [n for n in saved if place(n) is not None]
         if ok and not again:
             failed.pop(name)
             continue
-        for p in [x for x in saved if x in committed]:
-            unplace(p)
+        for n in [x for x in saved if x in committed]:
+            unplace(n)
         if name in committed:
             unplace(name)
-        for p in saved:
-            place(p)
+        for n in saved:
+            commit_segments(n, saved_segs[n])
     for name in names:
         if name in committed:
             segs, items = committed[name]
