@@ -6,7 +6,7 @@ def test_pcbway_profile_loads():
     assert p.vendor == "PCBWay"
     assert p.supports_layers(8)
     assert not p.supports_layers(7)
-    assert p.capability["min_track_outer_mm"] == 0.127  # PCBWay capability page, 2026-09-18 (decisions D16)
+    assert p.capability["min_track_outer_mm"] == 0.1016  # 4 mil, PCBWay standard tier (decisions D16)
     assert "eight_layer_1p6mm" in p.stackups
     assert len(p.stackups["eight_layer_1p6mm"]["dielectrics"]) == 7
 

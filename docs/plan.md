@@ -65,8 +65,9 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## Pending owner decisions
 
-The fab tier or vendor for the target board, and the gate's DRC criterion for the benchmark: see decisions D16.
-Nothing in M3 or later depends on them yet; M6 and the cost model do.
+The fab tier for the target board (PCBWay standard with 0.45/0.15 vias is marginal; advanced tier or a thinner board is
+comfortable) and the gate's DRC criterion for the benchmark: see decisions D16. Nothing in M3 depends on them; M6 and
+the cost model do.
 
 ## State of M2
 

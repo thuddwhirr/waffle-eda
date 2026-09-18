@@ -171,32 +171,47 @@ inner layer is contested; both fail with the per-ball blockers reported, as the 
 
 ## 2026-09-18, session 3: manufacturability of the references and the target
 
-**D16. No reference board's bus copper is within PCBWay's published standard capability, and neither is a
-dog-bone fan-out of the target FPGA.** Raised by the owner when the gate's DRC criterion came up. Evidence, measured
-on 2026-09-18 by binary search with an overriding rules file (`build/rules/demonstrated.json`): the largest rule
-value under which each board's own bus copper has zero violations, against PCBWay's capability page fetched the
-same day (outer layers 5/6 mil width/spacing, inner 4/5 mil, annular ring 0.15 mm, minimum drill 0.15 mm, inner-layer
-hole isolation 7 mil at 4 layers and 8 to 10 mil from 6 layers up; via-in-pad and blind vias under the advanced
-offer). The profile captured on 2026-09-10 by the previous project read 4/4 mil; the tier those figures belong to
-must be confirmed on PCBWay's quote page before any rule is fixed.
+**D16. Manufacturability of the references and the target at PCBWay, corrected.** Raised by the owner. The first
+version of this entry, written on 2026-09-18 from an automated summary of PCBWay's capability page, assigned rows of
+the advanced-tier table (5/6 mil outer, 0.5 mm vias) to the standard tier and concluded that a 0.8 mm caBGA could
+not be dog-boned there. The page text, read directly the same day, says otherwise. What PCBWay publishes
+(https://www.pcbway.com/capabilities.html, 2026-09-18):
 
-| Board | Bus copper spacing | Bus tracks | Vias, annular ring | Hole to copper | Against PCBWay standard |
+* Standard quick-order tier: minimum trace and spacing 0.1 mm (4 mil); drill 0.15 to 6.0 mm, holes under 0.2 mm
+  at extra charge; minimum annular ring 0.15 mm (6 mil); 1 to 14 layers.
+* Advanced tier, 0.5 oz outer copper before plating, by difficulty (normal / medium / high): outer trace and spacing
+  4/5 mil, 4/4 mil or 3.5/3.5 mil locally between a BGA's pads, finer on review; inner 4/4 mil normal, 4/3.5 mil
+  medium; via annular ring 5 mil normal, 4 mil medium; inner-layer hole isolation on 8 layers 9 mil normal, 7 mil
+  medium, 6 mil high; thickness-to-hole ratio 8 normal, 10 medium, above 12 not offered; via-in-pad, filled vias,
+  blind and buried vias.
+
+The references' bus copper, measured on 2026-09-18 by binary search with an overriding rules file
+(`build/rules/demonstrated.json`), against the standard tier:
+
+| Board | Bus spacing | Bus tracks | Via pad/drill, ring | Hole to copper | Outside the standard tier on |
 |---|---|---|---|---|---|
-| ButterStick (8 L) | 0.089 mm | 0.089, 0.10, 0.12 mm | 0.4/0.2 and 0.45/0.2, ring 0.10 and 0.125 mm | 0.189 mm | spacing, tracks, ring, hole isolation, via-in-pad: outside on all five |
-| LogicBone (8 L) | 0.080 mm | 0.135 mm | 0.5/0.2, ring 0.15 mm | 0.229 mm | spacing outside; the rest inside |
-| OrangeCrab (6 L) | 0.089 mm | 0.089, 0.105, 0.12 mm | 0.3/0.15 and 0.28/0.15, ring 0.075 and 0.065 mm | 0.154 mm | outside on spacing, tracks, ring and hole isolation |
-| ULX3S (4 L) | 0.127 mm | 0.127, 0.19 mm | 0.42/0.2, ring 0.11 mm | 0.236 mm | outer spacing and ring outside |
-| waffle-fpga's own rules (D12 of the old log) | 0.10 mm in the BGA areas, 0.125 elsewhere | 0.10 to 0.21 mm | 0.45/0.2, ring 0.125 mm | 0.25 mm rule | spacing and ring outside the figures fetched today |
+| ButterStick (8 L) | 0.089 mm | 0.089, 0.10, 0.12 mm | 0.4/0.2 and 0.45/0.2, ring 0.10 and 0.125 mm | 0.189 mm | spacing, tracks, ring; via-in-pad is advanced |
+| LogicBone (8 L) | 0.080 mm | 0.135 mm | 0.5/0.2, ring 0.15 mm | 0.229 mm | spacing only (3.15 mil) |
+| OrangeCrab (6 L) | 0.089 mm | 0.089, 0.105, 0.12 mm | 0.3/0.15 and 0.28/0.15, ring 0.075 and 0.065 mm | 0.154 mm | spacing, tracks, ring (2.6 mil, below the advanced tier's 4 mil medium) |
+| ULX3S (4 L) | 0.127 mm | 0.127, 0.19 mm | 0.42/0.2, ring 0.11 mm | 0.236 mm | ring only (4.3 mil) |
+| waffle-fpga's own rules | 0.10 mm | 0.10 mm and up | 0.45/0.2, ring 0.125 mm | 0.25 mm rule | ring (4.9 mil), within the advanced tier's 5 mil at rounding |
 
-Consequences. (1) The references are valid answer keys for routing under their own demonstrated rules, which is what
-the benchmark measures; they are not evidence that PCBWay standard can build such a board. (2) At PCBWay's standard
-figures a full-population 0.8 mm caBGA cannot be dog-boned: a 0.5/0.2 via, the smallest with a 0.15 mm ring, leaves
-0.3 mm between via columns, and a 4 mil track needs 0.356 mm with 5 mil spacing on each side; on the outer layers a
-6 mil spacing leaves no channel between 0.4 mm pads at all. The target board therefore needs either PCBWay's advanced
-tier (finer spacing, filled and capped via-in-pad, as ButterStick used) or another fab whose confirmed capability
-matches the references (3.5 mil or finer, rings of 0.1 mm or less). This is a cost-ceiling and fab decision, locked
-constraints in the definition, so it is the owner's; it also fixes which references' techniques the tool may use on
-the target. (3) The gate's DRC criterion for the benchmark should be zero violations of our bus copper under each
-reference's demonstrated rule values, with those values also fed to the router as its rules, since the reference met
-them; the fab-capability check is a separate report against a confirmed profile. Decision pending from the owner:
-the fab tier or vendor for the target, and confirmation of the gate criterion in (3).
+So none of the four references is entirely within the standard tier, each for a different reason, and everything
+they do except OrangeCrab's 2.6 mil rings is within PCBWay's advanced tier at normal or medium difficulty. The
+references remain valid answer keys for routing under their own demonstrated rules, which the benchmark measures;
+they are not evidence about any one fab.
+
+The target, a 0.8 mm caBGA with 0.4 mm pads at the standard tier's 4/4 mil and 0.15 mm ring: a 0.5/0.2 via in the
+diagonal gap clears the pads (0.116 mm) and the top-layer channel between two pads carries one track (0.197 mm
+free), but the 0.3 mm between 0.5 mm via columns cannot carry a 4 mil track with 4 mil on each side (0.305 mm
+needed), so the inner rings cannot run out between the dog-bone vias. With 0.45/0.15 vias the gap is 0.35 mm and the
+track fits with 0.045 mm to spare; that needs the 0.15 mm drill (surcharge, and 10.7:1 on a 1.6 mm board, which the
+advanced table calls medium difficulty; 8:1 on a 1.2 mm board). The dog-bone fan-out of the target is therefore
+feasible at the standard tier with 0.45/0.15 vias, marginal on drill and aspect ratio, and comfortable at the
+advanced tier or with a thinner board. Board thickness and the fab tier are variables the tool can trade, with a
+cost attached, once quotes are captured.
+
+Consequences that stand from the first version: the benchmark's DRC criterion should be zero violations of our bus
+copper under each reference's demonstrated rule values, fed to the router as its rules (pending the owner's word);
+the fab tier for the target is a cost-ceiling decision the owner makes before M6, with confirmed capability and
+quotes captured as profiles. Lesson recorded: an automated page summary is not a source; read the text.
