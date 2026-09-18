@@ -8,24 +8,27 @@ vendor = "PCBWay"
 source = "PCBWay published capability pages, captured 2026-09-10 (waffle-fpga vendor-notes.md); confirm at quote time"
 
 [capability]
+# Captured 2026-09-18 from https://www.pcbway.com/capabilities.html (standard offer). The earlier capture of
+# 2026-09-10 read 4/4 mil for outer trace and space; which tier that figure belongs to (standard, advanced or
+# quick-order) must be confirmed on the quote page before any design rule is fixed (decisions D16).
 layer_counts = [1, 2, 4, 6, 8, 10, 12, 14]
 thickness_mm = [0.2, 3.2]
-min_track_outer_mm = 0.10          # 4 mil at 1 oz
-min_clearance_outer_mm = 0.10      # 4 mil at 1 oz
-min_track_inner_mm = 0.10          # 4 mil at 1 oz
+min_track_outer_mm = 0.127         # 5 mil at 1 oz (page of 2026-09-18); the 2026-09-10 capture read 0.10
+min_clearance_outer_mm = 0.152     # 6 mil at 1 oz (page of 2026-09-18); the 2026-09-10 capture read 0.10
+min_track_inner_mm = 0.1016        # 4 mil at 1 oz
 min_clearance_inner_mm = 0.127     # 5 mil at 1 oz
 min_drill_mm = 0.15
-min_annular_ring_mm = 0.15
-standard_via_pad_mm = 0.45         # the via the last project used for BGA dog-bones and signals
+min_annular_ring_mm = 0.15         # 6 mil
+standard_via_pad_mm = 0.50         # the smallest via with a 0.15 mm ring on a 0.20 mm drill
 standard_via_drill_mm = 0.20
-hole_clearance_mm = 0.20           # the last project's rules used 0.25 mm hole-to-hole
+hole_clearance_mm = 0.203          # inner-layer hole isolation ring: 7 mil at 4 layers, 8 to 10 mil from 6 layers up
 copper_to_edge_mm = 0.30
 outer_copper_oz = 1.0
 inner_copper_oz = 1.0
-via_in_pad = "option"              # extra cost; needs filled and capped vias
+via_in_pad = "option"              # listed as an available feature; filled and capped vias under the advanced offer
 filled_capped_vias = "option"
-blind_buried_vias = "option"
-controlled_impedance = "option"    # coupon per panel; PCBWay supplies the stack-up and widths at quote time
+blind_buried_vias = "option"       # advanced offer
+controlled_impedance = "option"    # +/-10 %, +/-5 ohm at 50 ohm and below
 surface_finishes = ["HASL", "ENIG", "ENEPIG"]
 material = "FR-4"
 smallest_passive = "0201"

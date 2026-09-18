@@ -168,3 +168,35 @@ convergence: 15 of 16 on a 6 x 6); a hard site assignment by bipartite matching 
 the cost preference: 39 against 45 of 50 on LogicBone IC1); re-routing every ball in the final pass (lost five where
 three conflicts existed). Open: the 0.5 mm-pitch packing (OrangeCrab U3, 8 balls) and one ULX3S ball whose only
 inner layer is contested; both fail with the per-ball blockers reported, as the definition requires.
+
+## 2026-09-18, session 3: manufacturability of the references and the target
+
+**D16. No reference board's bus copper is within PCBWay's published standard capability, and neither is a
+dog-bone fan-out of the target FPGA.** Raised by the owner when the gate's DRC criterion came up. Evidence, measured
+on 2026-09-18 by binary search with an overriding rules file (`build/rules/demonstrated.json`): the largest rule
+value under which each board's own bus copper has zero violations, against PCBWay's capability page fetched the
+same day (outer layers 5/6 mil width/spacing, inner 4/5 mil, annular ring 0.15 mm, minimum drill 0.15 mm, inner-layer
+hole isolation 7 mil at 4 layers and 8 to 10 mil from 6 layers up; via-in-pad and blind vias under the advanced
+offer). The profile captured on 2026-09-10 by the previous project read 4/4 mil; the tier those figures belong to
+must be confirmed on PCBWay's quote page before any rule is fixed.
+
+| Board | Bus copper spacing | Bus tracks | Vias, annular ring | Hole to copper | Against PCBWay standard |
+|---|---|---|---|---|---|
+| ButterStick (8 L) | 0.089 mm | 0.089, 0.10, 0.12 mm | 0.4/0.2 and 0.45/0.2, ring 0.10 and 0.125 mm | 0.189 mm | spacing, tracks, ring, hole isolation, via-in-pad: outside on all five |
+| LogicBone (8 L) | 0.080 mm | 0.135 mm | 0.5/0.2, ring 0.15 mm | 0.229 mm | spacing outside; the rest inside |
+| OrangeCrab (6 L) | 0.089 mm | 0.089, 0.105, 0.12 mm | 0.3/0.15 and 0.28/0.15, ring 0.075 and 0.065 mm | 0.154 mm | outside on spacing, tracks, ring and hole isolation |
+| ULX3S (4 L) | 0.127 mm | 0.127, 0.19 mm | 0.42/0.2, ring 0.11 mm | 0.236 mm | outer spacing and ring outside |
+| waffle-fpga's own rules (D12 of the old log) | 0.10 mm in the BGA areas, 0.125 elsewhere | 0.10 to 0.21 mm | 0.45/0.2, ring 0.125 mm | 0.25 mm rule | spacing and ring outside the figures fetched today |
+
+Consequences. (1) The references are valid answer keys for routing under their own demonstrated rules, which is what
+the benchmark measures; they are not evidence that PCBWay standard can build such a board. (2) At PCBWay's standard
+figures a full-population 0.8 mm caBGA cannot be dog-boned: a 0.5/0.2 via, the smallest with a 0.15 mm ring, leaves
+0.3 mm between via columns, and a 4 mil track needs 0.356 mm with 5 mil spacing on each side; on the outer layers a
+6 mil spacing leaves no channel between 0.4 mm pads at all. The target board therefore needs either PCBWay's advanced
+tier (finer spacing, filled and capped via-in-pad, as ButterStick used) or another fab whose confirmed capability
+matches the references (3.5 mil or finer, rings of 0.1 mm or less). This is a cost-ceiling and fab decision, locked
+constraints in the definition, so it is the owner's; it also fixes which references' techniques the tool may use on
+the target. (3) The gate's DRC criterion for the benchmark should be zero violations of our bus copper under each
+reference's demonstrated rule values, with those values also fed to the router as its rules, since the reference met
+them; the fab-capability check is a separate report against a confirmed profile. Decision pending from the owner:
+the fab tier or vendor for the target, and confirmation of the gate criterion in (3).

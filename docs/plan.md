@@ -63,6 +63,11 @@ checks on ButterStick and LogicBone (the stripped board scores zero, the origina
 the measurement report; the synthetic BGA-pair generator with four cases (6 x 6 straight and reversed, 9 x 16, 20 x 20
 with a bus in one bank), each loading and passing DRC with only its bus open.
 
+## Pending owner decisions
+
+The fab tier or vendor for the target board, and the gate's DRC criterion for the benchmark: see decisions D16.
+Nothing in M3 or later depends on them yet; M6 and the cost model do.
+
 ## State of M2
 
 Not complete. The lattice escape router (`waffle_eda/route/escape.py`) escapes every bus ball on ButterStick (in-pad)
