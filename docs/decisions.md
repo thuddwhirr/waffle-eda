@@ -249,3 +249,10 @@ every bus track, arc and via on the board rather than the common sizes under the
 original under the file it writes and raises if it fails. A reused problem board reports what was stripped from a
 manifest instead of None. A pcbnew pitfall found by the first gate run under D17 (a `SHAPE_CIRCLE` built in Python
 collides only with a `SEG`) is recorded in `board.py` and covered by `tests/test_obstacles.py`.
+
+**D19. 0.5 mm pitch stays in scope; the tool is fixed, not the criteria.** Owner's decision, 2026-09-18. The nine
+failing balls of the M2 gate (OrangeCrab U3, eight balls at 0.5 mm pitch; ULX3S N18) are failures of the router and
+are fixed as M2 work. The benchmark does not change: the problem board keeps every non-bus item as a fixed obstacle,
+and the router must escape every bus ball through what the board leaves. The lattice model, which put vias only on
+half-pitch nodes and paths only on lattice edges, is what has to change: the original fan-outs at 0.5 mm put vias off
+the lattice and run longer top-layer paths. M2 passes only when `scripts/gate.py m2` exits 0.
