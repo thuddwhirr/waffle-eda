@@ -91,3 +91,26 @@ Every ball we route on every board has zero electrical violations under the refe
 originals meet by construction; every original passes its own constraints file. Per package the escape takes one to
 eleven seconds. The escapes differ from the originals' in via count and layer use, and whether they are as good
 for a length-matched bus is only known once M3 routes the bus from them. M3 starts on the owner's word.
+
+## State of M3
+
+FAIL, in progress (session 3, decisions D21 to D25). Criteria as written: all bus nets, DRC clean, lengths within
+the measured spread, layer changes only at the packages, on ButterStick then LogicBone. Best complete runs of
+`scripts/bus_bench.py` (the gate runs the same bench), each about an hour:
+
+| board | routed | electrical violations | lengths within spread | vias inside packages | run |
+| --- | --- | --- | --- | --- | --- |
+| ButterStick | 53 of 55 | 0 | 36 of 55 (29.5 to 43.6 mm) | 100 % | pads, tuner in the DRAM hollows |
+| LogicBone | 45 of 50 | 0 | 40 of 50 (12.4 to 43.5 mm) | 100 % | FPGA fan-out kept, DRAMs from pads |
+
+Failing cases and their blockers. ButterStick: CKE0 (to U4.F18) and DQ5 (to U12.H8) end the negotiation
+contested with an adjacent ball's net and are walled in by the other 53 nets in the final pass; each routes alone
+on the stripped board in a second, and with the bus copper within 1.5 mm of its pads removed, but no re-packing of
+that neighbourhood (greedy, or negotiated locally) has placed all of it again. Nineteen nets are below the
+reference's shortest length, the command nets (CK, CKE, CS, ODT) by 9 to 16 mm: the reference makes those lengths
+with meanders inside the DRAM footprints and ours has no room left there once routed. LogicBone: five nets
+(A1 to RN2.2, A12 to IC3.K7, A15 to IC3.J7, DQ5 to IC2.E8, DQ7 to IC2.E7) walled in the same way at the DRAM
+balls; ten nets short. The negotiation plateaus on both boards with a handful of crossing conflicts of three or
+four samples each (two single-layer routes between in-pad vias that must cross): more vias per leg and a wider
+corridor lower the plateau (24 to 13 contested at twenty rounds) without clearing it; re-routing every net every
+round, waypoints from the first round and uniform spacing made it worse.

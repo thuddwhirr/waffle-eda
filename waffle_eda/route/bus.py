@@ -1007,7 +1007,20 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                         for other in near - {name}:
                             partners[other] += 1
                     short = ", ".join(f"{o.split('/')[-1]} x{c}" for o, c in partners.most_common(4))
-                    print(f"         {name.split('/')[-1]}: conflicts with {short}", flush=True)
+                    where: Counter = Counter()
+                    xs, ys = [], []
+                    for key in contested[name]:
+                        if key[0] == "t":
+                            where[f"track {board.GetLayerName(key[1])}"] += 1
+                            xs.append(key[2] * g.u)
+                            ys.append(key[3] * g.u)
+                        else:
+                            where["via"] += 1
+                            xs.append(g.xy[key[1]][0])
+                            ys.append(g.xy[key[1]][1])
+                    spot = f"x {min(xs):.1f}..{max(xs):.1f} y {min(ys):.1f}..{max(ys):.1f}" if xs else ""
+                    print(f"         {name.split('/')[-1]}: conflicts with {short}; "
+                          f"{dict(where)} at {spot}", flush=True)
             for name in names:
                 if name not in paths and name in diagnoses:
                     d = diagnoses[name]
