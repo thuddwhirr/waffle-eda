@@ -293,3 +293,44 @@ the island, the via goes where the negotiation puts it (in the pad where the pac
 a channel otherwise, anywhere inside the footprint outside the array), and the top layer inside an array moves
 between half-pitch nodes as the escape router does. M2's escape router and gate stand as they are; they answer
 whether every ball can escape, and the bus router uses the same rules and the same geometry.
+
+**D23. Length comes from meanders inside the DRAM area, not from detours through free board area.** Measurement
+and tool change, 2026-09-18, under D21. The original ButterStick keeps its whole bus (55 nets, 29.5 to 43.6 mm)
+inside the two DRAM footprints and a margin of a millimetre or two around them, on four layers, and makes the
+lengths with tight serpentines in the empty middle columns of each DRAM and along the DRAM edges; the rest of the
+board is packed with the other nets' copper and offers nothing. The bus router's first detour stage (a waypoint
+in free board area for a net far below its window) therefore never fired on ButterStick: its estimate took the
+two largest islands, which on ButterStick are the net's two DRAM pads 0.2 mm apart, and its candidates were
+looked for on whole millimetres the quarter-pitch grid never lands on. Fixed (the estimate spans the tree's start
+island and the farthest island, candidates are the node nearest each square millimetre, the second leg leaves the
+waypoint and may not retrace the first, any island may start, the search learns how much longer a routed detour
+runs than its estimate) the detours fire, but once the other 54 nets are placed a net is walled in: on the routed
+v2 board every net that failed later routes alone on the stripped board in a second, and on the packed board no
+waypoint is reachable from either of its ends. Giving the short nets their waypoint before the negotiation (v4,
+38 nets) made every round seven times slower with every net contested; giving it only to nets more than 10 mm
+short (v6, 20 nets) kept 50 of 55 nets contested where the plain negotiation has 19 by the tenth round. So the
+detour stays a final-pass tool, the serpentine tuner is allowed inside the packages wherever it is more than half
+a pitch from a pad (the DRAM hollows are where the reference meanders), and the router reports which nets its
+tuner could not lengthen. Numbers: ButterStick v5 (pads, tuner in the hollows, nine detours) 36 of 55 nets within
+the window against 28 before, with the command nets (CK, CKE, CS, ODT) 9 to 16 mm short.
+
+**D24. A stranded net is repaired by negotiating its neighbourhood, not by re-placing it greedily.** Measurement,
+2026-09-18. On the v5 ButterStick board the two stranded nets (CKE0 to U4.F18, DQ5 to U12.H8) route at once when
+the bus copper within 1.5 mm of their pads is removed (17 nets), yet the final pass's repair, which rips those
+nets up, places the stranded net and then re-places the others one by one, fails: one of the neighbours is
+stranded instead, and everything is put back. The repair now negotiates the stranded net together with its
+ripped-up neighbours against all other copper (fixed and committed) for a bounded number of rounds and commits only
+a result in which every one of them is routed and uncontested; the exact geometry test decides at commit time and
+a net the samples misjudged is searched again. Ripping up on the diagnosis's named blockers alone is kept as the
+first, cheaper attempt. Measured on the v5 board around CKE0 the local negotiation of 18 nets still plateaus at
+six contested after twelve rounds: the stall is the negotiation's, not the repair's (D25).
+
+**D25. The negotiation's outcome depended on the order of the board's tracks; islands are now ordered by geometry.**
+Measurement and tool change, 2026-09-18. The 20x20 synthetic bus case converged in six rounds in one process and
+ran sixty rounds and stranded one net in two others, with identical boards and escapes. The cause: a net's islands
+were listed in the order of the board's items, the tree started from the first of two equal islands, and that
+order varied with the process's string hashing upstream. The islands are sorted by size and then by their
+lowest point, so a run is now the same in every process (checked: the per-round path digests agree across hash
+seeds). That the same problem converges under one order and stalls under another is the negotiation's weakness to
+work on: the stall sets in with a few pairs that each have no conflict-free path while the nets holding the
+alternatives are never asked to move.

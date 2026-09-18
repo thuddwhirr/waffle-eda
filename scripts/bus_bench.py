@@ -30,6 +30,16 @@ SPACING_MM = float(os.environ.get("BUS_SPACING", "0.8"))
 OUT_DIR = Path(os.environ.get("BUS_OUT_DIR", "build/bench"))  # where the routed boards and drawings go
 
 
+def bus_costs() -> busr.Costs:
+    """``BUS_COSTS`` overrides the router's cost fields, e.g. ``max_vias=3,corridor_mm=6``."""
+    costs = busr.Costs()
+    for item in filter(None, os.environ.get("BUS_COSTS", "").split(",")):
+        key, value = item.split("=")
+        current = getattr(costs, key.strip())
+        setattr(costs, key.strip(), type(current)(float(value)) if isinstance(current, int) else float(value))
+    return costs
+
+
 def bus_rules(c: constraints.Constraints, spacing_mm: float = SPACING_MM) -> busr.BusRules:
     """The bus runs at the board's narrowest bus track and smallest bus via, on the layers the bus uses."""
     return busr.BusRules(track_mm=c.min_track_mm, clearance_mm=c.clearance_mm, via_mm=c.min_via_mm,
@@ -90,7 +100,7 @@ def run_reference(key: str, draw: bool = True) -> dict:
     lo, hi = answer["bus"]["length_mm"]["min"], answer["bus"]["length_mm"]["max"]
     t0 = time.time()
     res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus,
-                         length_windows={n: (lo, hi) for n in bus})
+                         costs=bus_costs(), length_windows={n: (lo, hi) for n in bus})
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)
     for n, why in sorted(res.failed.items()):
         print(f"      FAILED {n}: {why}")
@@ -98,7 +108,14 @@ def run_reference(key: str, draw: bool = True) -> dict:
     arrays = [parts[p] for p in parts if parts[p].rows >= 4 and parts[p].cols >= 4]
 
     def in_array(x, y):
-        return any(l.inside_array(x, y, 0.5) for l in arrays)
+        """Within half a pitch of a pad: the tuner keeps off the fan-out, not off a DRAM's hollow middle, where
+        the reference boards put their meanders."""
+        for l in arrays:
+            fi, fj = (x - l.x0) / l.pitch, (y - l.y0) / l.pitch
+            i, j = round(fi), round(fj)
+            if abs(fi - i) <= 0.5 + 1e-9 and abs(fj - j) <= 0.5 + 1e-9 and (i, j) in l.by_index:
+                return True
+        return False
 
     t0 = time.time()
     tuned = lengthr.tune_lengths(board, sorted(bus), lo, hi, c.clearance_mm, c.hole_to_copper_mm,

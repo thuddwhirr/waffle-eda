@@ -59,6 +59,11 @@ class Costs:
     repair_partners: int = 6  # nets ripped up around a stranded net in the final pass
     detour_min_mm: float = 3.0  # a net shorter than its window by more than this is re-routed through a detour
     detour_candidates: int = 12  # detour points tried per net
+    waypoint_deficit_mm: float = math.inf  # a net this far below its window gets a waypoint before the negotiation
+    repair_radius_mm: tuple = (1.5, 3.0)  # a stranded net's neighbourhood is re-packed within these radii
+    repair_rounds: int = 2  # passes over the stranded nets (a re-packing can free what another needs)
+    repair_negotiation: int = 12  # rounds of the local negotiation around a stranded net
+    reroute_all: bool = False  # every round re-routes every net, not only the contested ones
     stall_rounds: int = 4
     max_radius_hops: int = 4
     max_radius_mm: float = 4.0  # the widest rip-up around a stuck pair's paths, in the fallback by distance
@@ -551,6 +556,10 @@ def _islands(board, net_name: str, g: BusGraph, layer_ids: set[int]) -> list[dic
                         covered.add((L, node))
         out.append({"members": members, "covered": covered, "kinds": dict(kinds),
                     "pads": [items[i][1] for i in members if items[i][0] == "pad"]})
+    # the order of the board's tracks depends on the order they were added in, which a set of net names upstream
+    # can vary from one process to the next; the islands are ordered by their geometry so that the tree, and with
+    # it the negotiation, is the same in every run
+    out.sort(key=lambda isl: (-len(isl["covered"]), min(p for m in isl["members"] for p in pts[m])))
     return out
 
 
@@ -579,6 +588,10 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
     prev = {}
     heap = []
     counter = 0
+    _dbg = os.environ.get("BUS_DEBUG_SEARCH") == net_name.split("/")[-1]
+    if _dbg:
+        print(f"SEARCH {net_name} sources {sorted(sources)[:8]} targets {sorted(targets)[:8]} corridor {corridor}", flush=True)
+        print(f"SEARCH src-order {list(sources)[:12]}", flush=True)
     for layer, node in sources:
         state = (layer, node, 0)
         dist[state] = 0.0
@@ -597,6 +610,8 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
         if f > d + h(cur[1]) + 1e-9:
             continue
         pops += 1
+        if _dbg and pops <= 40:
+            print(f"SEARCH pop {pops} {cur} f={f:.4f} d={d:.4f}", flush=True)
         if pops > costs.pop_budget:
             blockers[f"search budget of {costs.pop_budget} states spent"] += 1
             return None, blockers
@@ -698,9 +713,9 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             if not islands[start]["covered"]:
                 continue
             sources = set(islands[start]["covered"])
+            # the legs stay inside the corridor: a waypoint it cannot reach is a poor one, and exhausting the whole
+            # region (packed with the board's other copper) costs the full search budget each time
             path, vias = _search(g, net, sources, targets, costs, ctx, obs, corridor)
-            if path is None:
-                path, vias = _search(g, net, sources, targets, costs, ctx, obs, None)
             if path is None:
                 last = {"why": "no path to the detour point", "blockers": vias}
                 continue
@@ -712,9 +727,6 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             avoid = frozenset(path[:-1]) | frozenset(sources)
             path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], costs, ctx, obs, corridor,
                                    avoid=avoid)
-            if path2 is None:
-                path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], costs, ctx, obs, None,
-                                       avoid=avoid)
             if path2 is None:
                 last = {"why": "no path from the detour point onwards", "blockers": vias2}
                 continue
@@ -835,7 +847,7 @@ def _detour_candidates(g: BusGraph, board, rules: BusRules, islands: list[dict],
 
 
 def _detour(cands: list, deficit: float, lo: float, hi: float, cur: float, attempt, max_tries: int,
-            prior: float = 1.6):
+            prior: float = 1.6, budget_s: float = 90.0):
     """Try waypoints until the routed length lands in [lo, hi]. ``attempt(node)`` routes the net through the
     waypoint and returns (length, segments) or None. A routed detour runs longer than its straight-line estimate
     (it winds around the packages and the other nets), by a ratio learnt from each success: the next waypoint is
@@ -847,7 +859,8 @@ def _detour(cands: list, deficit: float, lo: float, hi: float, cur: float, attem
     tries = successes = 0
     want = min(max(deficit / ratio, deficit * 0.5), deficit + 4.0)
     spread = (deficit * 0.5 + 4.0) / 6  # after an unreachable waypoint the next is looked for further out
-    while cands and tries < max_tries:
+    t0 = time.time()
+    while cands and tries < max_tries and time.time() - t0 < budget_s:
         i = min(range(len(cands)), key=lambda k: abs(cands[k][0] - want))
         est, w = cands.pop(i)
         tries += 1
@@ -914,7 +927,7 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
     for it in range(costs.iterations):
         t_it = time.time()
         ctx = Context(occ, history, costs.present * it)
-        todo = [n for n in names if n not in paths or contested.get(n)]
+        todo = [n for n in names if n not in paths or contested.get(n) or costs.reroute_all]
         extra = [n for n in names if n in forced and n not in todo]
         if it > 0:
             rng.shuffle(todo)
@@ -933,7 +946,7 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             paths[name] = segs
             for path, vias in segs:
                 occ.add(path, vias, name, 1)
-        if it == 0 and length_windows:
+        if it == 0 and length_windows and costs.waypoint_deficit_mm < math.inf:
             # a net whose first, uncontested route falls short of its window by more than the tuner can add is
             # given a waypoint now, so that the negotiation places the long route rather than a short one the
             # other nets then wall in (on ButterStick the reference's bus lives inside the DRAM area, meandered;
@@ -945,8 +958,8 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                     continue
                 lo, hi = length_windows.get(name, (0.0, math.inf))
                 cur = base_mm[name] + _path_mm(g, paths[name])
-                if lo - cur <= costs.detour_min_mm:
-                    continue
+                if lo - cur < costs.waypoint_deficit_mm:
+                    continue  # the tuner's serpentines and a detour in the final pass can add this much
 
                 def attempt(w, name=name):
                     segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx0, obs, waypoint=w)
@@ -976,6 +989,15 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         if TRACE:
             print(f"      it {it}: {len(paths)}/{len(names)} routed, {len(contested)} contested, "
                   f"{len(todo)} re-routed, {time.time() - t_it:.1f}s", flush=True)
+            if os.environ.get("BUS_DEBUG_ROUNDS"):
+                print(f"         todo {[n.split('/')[-1] for n in todo]}", flush=True)
+                print(f"         contested {sorted(n.split('/')[-1] for n in contested)}", flush=True)
+                print(f"         lengths {[round(_path_mm(g, paths[n]), 2) for n in names if n in paths]}", flush=True)
+                import hashlib
+                for n in names:
+                    if n in paths:
+                        d = hashlib.sha1(repr([(path, vias) for path, vias in paths[n]]).encode()).hexdigest()[:8]
+                        print(f"         path {n.split('/')[-1]} {d}", flush=True)
             if contested and (it % 10 == 9 or it == costs.iterations - 1):
                 # who is in conflict with whom: the partners of each contested net
                 for name in sorted(contested)[:12]:
@@ -1094,34 +1116,103 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
     # repair: rip up the nets whose copper blocks a failed net (the most blocking first, a bounded number) and
     # route it first, then re-place them; when one of them cannot be placed again, everything ripped up is put
     # back as it was
-    for name in list(failed):
-        partners: Counter = Counter()
-        for key, count in failed[name]["blockers"].items():
-            if ": our " in key:
-                partners[key.split(" of '", 1)[1].rstrip("'")] += count
-        if not partners:  # blocked by spacing: the nets whose copper lies in this net's corridor
-            cx0, cy0, cx1, cy1 = _corridor(g, islands[name], 0.5)
-            for other, (segs, _) in committed.items():
-                inside = sum(1 for path, _ in segs for _, n in path if cx0 <= g.xy[n][0] <= cx1 and cy0 <= g.xy[n][1] <= cy1)
-                if inside:
-                    partners[other] += inside
-        saved = [n for n, _ in partners.most_common(costs.repair_partners) if n in committed]
+    def repair_with(name, saved) -> bool:
+        """Rip up ``saved`` and negotiate them together with ``name`` against everything else, committed and
+        fixed; commit the result when every one of them is routed and uncontested, otherwise put everything back
+        as it was. A greedy re-placement is not enough: the stranded net fits once its neighbours are ripped up,
+        but re-placing them one by one strands one of them instead."""
+        saved = [n for n in saved if n in committed]
         if not saved:
-            continue
+            return False
         saved_segs = {n: committed[n][0] for n in saved}
         for n in saved:
             unplace(n)
-        ok = place(name) is None
-        again = [n for n in saved if place(n) is not None]
-        if ok and not again:
-            failed.pop(name)
-            continue
-        for n in [x for x in saved if x in committed]:
-            unplace(n)
-        if name in committed:
-            unplace(name)
+        subset = [name] + sorted(saved, key=lambda n: (-depth[n], n))
+        occ2 = Occupancy(g)
+        hist2: dict = defaultdict(float)
+        paths2: dict = {}
+        contested2: dict = {}
+        rng2 = random.Random(costs.seed)
+        for it2 in range(costs.repair_negotiation):
+            ctx2 = Context(occ2, hist2, costs.present * (it2 + 1))
+            todo = [n for n in subset if n not in paths2 or contested2.get(n)]
+            if it2 > 0:
+                rng2.shuffle(todo)
+            for n in todo:
+                for path, vias in paths2.pop(n, []):
+                    occ2.add(path, vias, n, -1)
+                segs, _ = _route_net(g, net_objs[n], islands[n], costs, ctx2, obs, waypoint=waypoints.get(n))
+                if segs is None and n in waypoints:
+                    segs, _ = _route_net(g, net_objs[n], islands[n], costs, ctx2, obs)
+                if segs is None:
+                    continue
+                paths2[n] = segs
+                for path, vias in segs:
+                    occ2.add(path, vias, n, 1)
+            contested2 = {}
+            for n, segs in paths2.items():
+                c = [k for path, vias in segs for k in occ2.conflicts(path, vias, n)]
+                if c:
+                    contested2[n] = c
+            if len(paths2) == len(subset) and not contested2:
+                break
+            for keys in contested2.values():
+                for k in keys:
+                    hist2[k] += costs.history
+        ok = len(paths2) == len(subset) and not contested2
+        placed = []
+        if ok:
+            for n in subset:  # exact geometry decides, one by one; a net the samples misjudged is searched again
+                segs = paths2[n]
+                if not all(g.path_clear(path, vias, net_objs[n], obs) for path, vias in segs):
+                    if place(n) is not None:
+                        ok = False
+                        break
+                else:
+                    commit_segments(n, segs)
+                placed.append(n)
+        if ok:
+            return True
+        for n in placed:
+            if n in committed:
+                unplace(n)
         for n in saved:
             commit_segments(n, saved_segs[n])
+        return False
+
+    for _round in range(costs.repair_rounds):
+        for name in list(failed):
+            partners: Counter = Counter()
+            for key, count in failed[name]["blockers"].items():
+                if ": our " in key:
+                    partners[key.split(" of '", 1)[1].rstrip("'")] += count
+            if not partners:  # blocked by spacing: the nets whose copper lies in this net's corridor
+                cx0, cy0, cx1, cy1 = _corridor(g, islands[name], 0.5)
+                for other, (segs, _) in committed.items():
+                    inside = sum(1 for path, _ in segs for _, n in path if cx0 <= g.xy[n][0] <= cx1 and cy0 <= g.xy[n][1] <= cy1)
+                    if inside:
+                        partners[other] += inside
+            if repair_with(name, [n for n, _ in partners.most_common(costs.repair_partners)]):
+                failed.pop(name)
+                continue
+            # the named blockers are only the first wall: re-pack the whole neighbourhood of the stranded net's pads,
+            # within a growing radius, the stranded net first
+            points = [g.xy[n] for isl in islands[name] for _, n in isl["covered"]]
+            for radius in costs.repair_radius_mm:
+                near = []
+                for other, (segs, _) in committed.items():
+                    if other == name:
+                        continue
+                    d = min((math.hypot(g.xy[n][0] - px, g.xy[n][1] - py) for path, _ in segs for _, n in path
+                             for px, py in points), default=math.inf)
+                    if d <= radius:
+                        near.append((d, other))
+                saved = [o for _, o in sorted(near)[:30]]
+                if TRACE:
+                    print(f"      repair {name.split('/')[-1]}: re-packing {len(saved)} nets within {radius} mm", flush=True)
+                if repair_with(name, saved):
+                    failed.pop(name)
+                    break
     # --- detours: nets far below their length window get a waypoint in free board area ----------------------------
     if length_windows:
         from waffle_eda.route.length import net_length_mm
