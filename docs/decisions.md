@@ -275,3 +275,9 @@ version that counted conflicts per sample made one overlap cost ten balls' worth
 that blocked on the model in the final pass refused paths the geometry allowed. Results in `docs/plan.md`. Tools
 kept from the work: `scripts/draw_package.py` draws a package region (bus copper saturated, the rest faint) as SVG
 and PNG through the headless Chromium on this machine; `ESCAPE_TRACE=1` prints the negotiation round by round.
+
+**D21. M3 starts.** Owner's word, 2026-09-18, on the M2 gate output (PASS, 9 of 9). M3's criteria stand as the plan
+writes them: ButterStick, then LogicBone; all bus nets connected, DRC clean under the reference's constraints,
+every net's length within the original's measured spread, layer changes only inside the packages; a failure is a
+diagnosis, never a list. The other bus references are run for information and reported; adding them to the M3 gate
+is the owner's call.
