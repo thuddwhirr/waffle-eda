@@ -556,8 +556,10 @@ def _islands(board, net_name: str, g: BusGraph, layer_ids: set[int]) -> list[dic
 
 # --- the search ------------------------------------------------------------------------------------------------------
 def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Context, obs: Obstacles,
-            corridor: tuple[float, float, float, float] | None = None):
-    """Multi-source A* from any (layer, node) in ``sources`` to any in ``targets``, inside ``corridor`` (mm)."""
+            corridor: tuple[float, float, float, float] | None = None, avoid: frozenset = frozenset()):
+    """Multi-source A* from any (layer, node) in ``sources`` to any in ``targets``, inside ``corridor`` (mm).
+    ``avoid`` holds (layer, node) pairs the path may not enter (a detour's first leg, so the second cannot retrace
+    it and count the same copper twice)."""
     xs = [g.xy[n][0] for _, n in targets]
     ys = [g.xy[n][1] for _, n in targets]
     tx0, tx1, ty0, ty1 = min(xs), max(xs), min(ys), max(ys)
@@ -610,6 +612,8 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 continue
             if on_top and not g.top_ok(nxt, net_name) and layer not in target_nodes.get(nxt, ()):
                 continue  # a target node (the island's own copper) may always be entered
+            if avoid and (layer, nxt) in avoid:
+                continue
             # the fixed copper first (cached per edge), then the other bus nets (occupancy); with spacing kept by
             # the occupancy (sampled every u, a slack of u/2 a side) a step it admits is already clear of the
             # committed bus copper whenever the spacing exceeds that slack
@@ -634,7 +638,7 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 continue
             vc = costs.via_mm + extra
             for other in g.layers:
-                if other == layer:
+                if other == layer or (avoid and (other, node) in avoid):
                     continue
                 state = (other, node, nvias + 1)
                 nd = d + vc
@@ -674,21 +678,52 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
     connected: set = set(islands[order[0]]["covered"])
     done = {order[0]}
     segments = []
+    def centre(nodes):
+        xs = [g.xy[n][0] for _, n in nodes]
+        ys = [g.xy[n][1] for _, n in nodes]
+        return (sum(xs) / len(xs), sum(ys) / len(ys)) if xs else (0.0, 0.0)
+
     if waypoint is not None:
+        # the detour leaves from whichever island can reach the waypoint (largest first: a DRAM pad walled in by
+        # the other nets' copper often cannot, while the FPGA's fan-out can), then continues from the waypoint only,
+        # never retracing the first leg, to the island nearest the waypoint: otherwise the detour would be a stub
+        # (or the same copper twice) rather than a longer route
         wx, wy = g.xy[waypoint]
         cx0, cy0, cx1, cy1 = corridor
         corridor = (min(cx0, wx - costs.corridor_mm), min(cy0, wy - costs.corridor_mm),
                     max(cx1, wx + costs.corridor_mm), max(cy1, wy + costs.corridor_mm))
         targets = {(L, waypoint) for L in g.layers}
-        path, second = _search(g, net, connected, targets, costs, ctx, obs, corridor)
-        if path is None:
-            return None, {"why": "no path to the detour point", "blockers": second}
-        connected |= set(path)
-        segments.append((path, second))
-    def centre(nodes):
-        xs = [g.xy[n][0] for _, n in nodes]
-        ys = [g.xy[n][1] for _, n in nodes]
-        return (sum(xs) / len(xs), sum(ys) / len(ys)) if xs else (0.0, 0.0)
+        last = {"why": "no path to the detour point", "blockers": Counter()}
+        for start in order:
+            if not islands[start]["covered"]:
+                continue
+            sources = set(islands[start]["covered"])
+            path, vias = _search(g, net, sources, targets, costs, ctx, obs, corridor)
+            if path is None:
+                path, vias = _search(g, net, sources, targets, costs, ctx, obs, None)
+            if path is None:
+                last = {"why": "no path to the detour point", "blockers": vias}
+                continue
+            remaining = [i for i in range(len(islands)) if i != start and islands[i]["covered"]]
+            if not remaining:
+                return None, {"why": "an island covers no routable node", "blockers": Counter()}
+            nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - wx,
+                                                              centre(islands[i]["covered"])[1] - wy))
+            avoid = frozenset(path[:-1]) | frozenset(sources)
+            path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], costs, ctx, obs, corridor,
+                                   avoid=avoid)
+            if path2 is None:
+                path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], costs, ctx, obs, None,
+                                       avoid=avoid)
+            if path2 is None:
+                last = {"why": "no path from the detour point onwards", "blockers": vias2}
+                continue
+            done = {start, nearest}
+            connected = sources | set(path) | set(path2) | set(islands[nearest]["covered"])
+            segments = [(path, vias), (path2, vias2)]
+            break
+        else:
+            return None, last
 
     while len(done) < len(islands):
         if not connected:
@@ -749,6 +784,90 @@ def _commit(g: BusGraph, net, path, vias) -> list:
     return added
 
 
+def _path_mm(g: BusGraph, segs: list) -> float:
+    """Track length of routed segments (the vias add nothing)."""
+    total = 0.0
+    for path, _ in segs:
+        for (la, a), (lb, b) in zip(path, path[1:]):
+            if la == lb:
+                total += math.hypot(g.xy[b][0] - g.xy[a][0], g.xy[b][1] - g.xy[a][1])
+    return total
+
+
+def _detour_candidates(g: BusGraph, board, rules: BusRules, islands: list[dict], deficit: float) -> list:
+    """Waypoints for a detour of about ``deficit`` mm, as (estimate, node) sorted by the estimate: the node nearest
+    each square millimetre's centre (the grid's phase is the first package's, so no node need sit on a whole
+    millimetre) outside the pad arrays (the empty middle of a DRAM and the free board area both serve) and inside
+    the board outline, whose straight-line added length lies between half the deficit and the deficit plus 4 mm.
+    The estimate spans the tree's start island (the largest, as _route_net grows it) and the island farthest from
+    it: the net's real span, not its two biggest pads (on ButterStick the two DRAM pads of a net sit 0.2 mm apart
+    on opposite sides of the board)."""
+    edges = board.GetBoardEdgesBoundingBox()
+    inset = rules.track_mm / 2 + kb.mm(board.GetDesignSettings().m_CopperEdgeClearance)
+    ex0, ey0 = kb.mm(edges.GetLeft()) + inset, kb.mm(edges.GetTop()) + inset
+    ex1, ey1 = kb.mm(edges.GetRight()) - inset, kb.mm(edges.GetBottom()) - inset
+    cents = []
+    for i in sorted(islands, key=lambda i: -len(i["covered"])):
+        xs = [g.xy[n][0] for _, n in i["covered"]]
+        ys = [g.xy[n][1] for _, n in i["covered"]]
+        cents.append((sum(xs) / len(xs), sum(ys) / len(ys)))
+    if len(cents) < 2:
+        return []
+    (ax, ay) = cents[0]
+    (bx, by) = max(cents[1:], key=lambda c: math.hypot(c[0] - ax, c[1] - ay))
+    direct = math.hypot(bx - ax, by - ay)
+    cells: dict = {}
+    for w, (x, y) in enumerate(g.xy):
+        if g.in_array[w] or not (ex0 <= x <= ex1 and ey0 <= y <= ey1):
+            continue
+        cell = (math.floor(x), math.floor(y))
+        off = abs(x - cell[0] - 0.5) + abs(y - cell[1] - 0.5)
+        if cell not in cells or off < cells[cell][0]:
+            cells[cell] = (off, w)
+    out = []
+    for _, w in cells.values():
+        x, y = g.xy[w]
+        est = math.hypot(x - ax, y - ay) + math.hypot(bx - x, by - y) - direct
+        if deficit * 0.5 <= est <= deficit + 4.0:
+            out.append((est, w))
+    out.sort()
+    return out
+
+
+def _detour(cands: list, deficit: float, lo: float, hi: float, cur: float, attempt, max_tries: int,
+            prior: float = 1.6):
+    """Try waypoints until the routed length lands in [lo, hi]. ``attempt(node)`` routes the net through the
+    waypoint and returns (length, segments) or None. A routed detour runs longer than its straight-line estimate
+    (it winds around the packages and the other nets), by a ratio learnt from each success: the next waypoint is
+    the one whose estimate, at that ratio, adds the deficit. Returns the best (length, segments, waypoint) at or
+    below ``hi``, or None."""
+    cands = list(cands)
+    ratio = prior
+    best = None
+    tries = successes = 0
+    want = min(max(deficit / ratio, deficit * 0.5), deficit + 4.0)
+    spread = (deficit * 0.5 + 4.0) / 6  # after an unreachable waypoint the next is looked for further out
+    while cands and tries < max_tries:
+        i = min(range(len(cands)), key=lambda k: abs(cands[k][0] - want))
+        est, w = cands.pop(i)
+        tries += 1
+        got = attempt(w)
+        if got is None:
+            want = est + spread if est + spread <= deficit + 4.0 else deficit * 0.5
+            continue
+        new_len, segs = got
+        if lo - 1e-3 <= new_len <= hi + 1e-3:
+            return new_len, segs, w
+        successes += 1
+        if new_len <= hi + 1e-3 and new_len > cur + 1.0 and (best is None or new_len > best[0]):
+            best = (new_len, segs, w)
+        ratio = max(0.5, (new_len - cur) / max(est, 1e-6))
+        want = min(max(deficit / ratio, deficit * 0.5), deficit + 4.0)
+        if successes >= 4:
+            break
+    return best
+
+
 def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs: Costs | None = None,
               length_windows: dict | None = None) -> BusResult:
     """``length_windows`` maps a net to (min_mm, max_mm): a routed net shorter than its window by more than
@@ -783,6 +902,11 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
     occ = Occupancy(g)
     history: dict = defaultdict(float)
     paths: dict = {}  # net -> list of (path, vias)
+    waypoints: dict = {}  # net -> node its route passes through, so that it comes out long enough
+    base_mm: dict = {}
+    if length_windows:
+        from waffle_eda.route.length import net_length_mm
+        base_mm = {name: net_length_mm(board, name) for name in names}  # the fan-out's own copper
     contested: dict = {}
     diagnoses: dict = {}
     rng = random.Random(costs.seed)
@@ -800,13 +924,48 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             if name in paths:
                 for path, vias in paths.pop(name):
                     occ.add(path, vias, name, -1)
-            segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+            segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=waypoints.get(name))
+            if segs is None and name in waypoints:  # the detour is a wish, the connection a must
+                segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
             if segs is None:
                 diagnoses[name] = diag
                 continue
             paths[name] = segs
             for path, vias in segs:
                 occ.add(path, vias, name, 1)
+        if it == 0 and length_windows:
+            # a net whose first, uncontested route falls short of its window by more than the tuner can add is
+            # given a waypoint now, so that the negotiation places the long route rather than a short one the
+            # other nets then wall in (on ButterStick the reference's bus lives inside the DRAM area, meandered;
+            # there is no free board area to detour through afterwards)
+            t_w = time.time()
+            ctx0 = Context(occ, history, 0.0)
+            for name in names:
+                if name not in paths:
+                    continue
+                lo, hi = length_windows.get(name, (0.0, math.inf))
+                cur = base_mm[name] + _path_mm(g, paths[name])
+                if lo - cur <= costs.detour_min_mm:
+                    continue
+
+                def attempt(w, name=name):
+                    segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx0, obs, waypoint=w)
+                    return None if segs is None else (base_mm[name] + _path_mm(g, segs), segs)
+
+                cands = _detour_candidates(g, board, rules, islands[name], lo - cur)
+                # aim at the lower half of the window: the negotiation lengthens routes, the tuner only adds
+                got = _detour(cands, lo - cur, lo, (lo + hi) / 2, cur, attempt, costs.detour_candidates)
+                if got is None:
+                    continue
+                waypoints[name] = got[2]
+                for path, vias in paths.pop(name):
+                    occ.add(path, vias, name, -1)
+                paths[name] = got[1]
+                for path, vias in got[1]:
+                    occ.add(path, vias, name, 1)
+            if TRACE:
+                print(f"      waypoints for {len(waypoints)} nets short of their window, {time.time() - t_w:.1f}s",
+                      flush=True)
         contested = {}
         for name, segs in paths.items():
             c = []
@@ -892,7 +1051,9 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         committed[name] = (segs, items)
 
     def place(name):
-        segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+        segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=waypoints.get(name))
+        if segs is None and name in waypoints:
+            segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
         if segs is None:
             return diag
         commit_segments(name, segs)
@@ -965,51 +1126,45 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
     if length_windows:
         from waffle_eda.route.length import net_length_mm
 
-        def detour_points(name, deficit):
-            isl = sorted(islands[name], key=lambda i: -len(i["covered"]))[:2]
-            cents = []
-            for i in isl:
-                xs = [g.xy[n][0] for _, n in i["covered"]]
-                ys = [g.xy[n][1] for _, n in i["covered"]]
-                cents.append((sum(xs) / len(xs), sum(ys) / len(ys)))
-            (ax, ay), (bx, by) = cents[0], cents[-1]
-            direct = math.hypot(bx - ax, by - ay)
-            out = []
-            for w, (x, y) in enumerate(g.xy):
-                if g.in_array[w]:  # the empty middle of a DRAM and the free board area both serve
-                    continue
-                if abs(x / 1.0 - round(x / 1.0)) > 0.05 or abs(y / 1.0 - round(y / 1.0)) > 0.05:
-                    continue  # one candidate per square millimetre
-                est = math.hypot(x - ax, y - ay) + math.hypot(bx - x, by - y) - direct
-                if deficit * 0.5 <= est <= deficit + 4.0:
-                    # the closest to the deficit from above first, then the longest of the shorter ones
-                    out.append(((0, est - deficit) if est >= deficit else (1, deficit - est), w))
-            out.sort()
-            return [w for _, w in out[:costs.detour_candidates]]
-
         for name in names:
             if name not in committed:
                 continue
             lo, hi = length_windows.get(name, (0.0, math.inf))
             cur = net_length_mm(board, name)
+            if cur > hi + 1e-3 and name in waypoints:  # the negotiation grew the detour past the window
+                saved_segs = committed[name][0]
+                unplace(name)
+                segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+                if segs is not None:
+                    commit_segments(name, segs)
+                    cur = net_length_mm(board, name)
+                if segs is None or cur > hi + 1e-3:
+                    if segs is not None:
+                        unplace(name)
+                    commit_segments(name, saved_segs)
+                    continue
+                result.counts["shortened"] += 1
             if lo - cur <= costs.detour_min_mm:
                 continue
             saved_segs = committed[name][0]
             unplace(name)
-            placed = False
-            for w in detour_points(name, lo - cur):
-                segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=w)
+
+            def attempt(w, name=name):
+                segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=w)
                 if segs is None:
-                    continue
+                    return None
                 commit_segments(name, segs)
                 new_len = net_length_mm(board, name)
-                if new_len <= hi + 1e-3 and new_len > cur + 1.0:
-                    placed = True
-                    result.counts["detours"] += 1
-                    break
                 unplace(name)
-            if not placed:
+                return new_len, segs
+
+            cands = _detour_candidates(g, board, rules, islands[name], lo - cur)
+            best = _detour(cands, lo - cur, lo, hi, cur, attempt, costs.detour_candidates)
+            if best is None:
                 commit_segments(name, saved_segs)
+            else:
+                commit_segments(name, best[1])
+                result.counts["detours"] += 1
 
     for name in names:
         if name in committed:
