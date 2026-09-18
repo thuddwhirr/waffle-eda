@@ -793,6 +793,16 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         if TRACE:
             print(f"      it {it}: {len(paths)}/{len(names)} routed, {len(contested)} contested, "
                   f"{len(todo)} re-routed, {time.time() - t_it:.1f}s", flush=True)
+            if contested and (it % 10 == 9 or it == costs.iterations - 1):
+                # who is in conflict with whom: the partners of each contested net
+                for name in sorted(contested)[:12]:
+                    partners: Counter = Counter()
+                    for key in contested[name]:
+                        near = occ.near_sample(key[1], key[2], key[3]) if key[0] == "t" else occ.near_via(key[1])
+                        for other in near - {name}:
+                            partners[other] += 1
+                    short = ", ".join(f"{o.split('/')[-1]} x{c}" for o, c in partners.most_common(4))
+                    print(f"         {name.split('/')[-1]}: conflicts with {short}", flush=True)
             for name in names:
                 if name not in paths and name in diagnoses:
                     d = diagnoses[name]
