@@ -740,6 +740,16 @@ def _corridor(g: BusGraph, islands: list[dict], margin_mm: float) -> tuple[float
     return (min(xs) - margin_mm, min(ys) - margin_mm, max(xs) + margin_mm, max(ys) + margin_mm)
 
 
+def leg_budget(budget: int | None, spent: int, legs_left: int, per_leg: int) -> int:
+    """How many vias one leg of a net's tree may use: what the net's budget has left, less one via held back for
+    each leg still to route after this one, capped by the per-leg limit. Without the reserve an early leg spends
+    the whole budget and a later one is left with none, where the references give each leg its own layer change
+    (a via at each package). ``budget`` None means no per-net limit."""
+    if budget is None:
+        return per_leg
+    return min(per_leg, max(0, budget - spent - max(0, legs_left - 1)))
+
+
 def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context, obs: Obstacles,
                waypoint: int | None = None, vias_used: int = 0):
     """Grow a tree over the islands: connect the largest island to the nearest other, repeat; with ``waypoint``
@@ -750,12 +760,9 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
         return [], None
     budget = costs.max_vias_per_net - vias_used if costs.max_vias_per_net else None
 
-    def leg_costs(spent: int) -> Costs:
-        """The via budget left for one leg: the lesser of the per-leg limit and what the net has left."""
-        if budget is None:
-            return costs
-        left = max(0, budget - spent)
-        return costs if left >= costs.max_vias else replace(costs, max_vias=left)
+    def leg_costs(spent: int, legs_left: int = 1) -> Costs:
+        left = leg_budget(budget, spent, legs_left, costs.max_vias)
+        return costs if left == costs.max_vias else replace(costs, max_vias=left)
     corridor = _corridor(g, islands, costs.corridor_mm)
     order = sorted(range(len(islands)), key=lambda i: -len(islands[i]["covered"]))
     connected: set = set(islands[order[0]]["covered"])
@@ -783,7 +790,7 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             sources = set(islands[start]["covered"])
             # the legs stay inside the corridor: a waypoint it cannot reach is a poor one, and exhausting the whole
             # region (packed with the board's other copper) costs the full search budget each time
-            path, vias = _search(g, net, sources, targets, leg_costs(0), ctx, obs, corridor)
+            path, vias = _search(g, net, sources, targets, leg_costs(0, len(islands) - 1), ctx, obs, corridor)
             if path is None:
                 last = {"why": "no path to the detour point", "blockers": vias}
                 continue
@@ -793,8 +800,8 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - wx,
                                                               centre(islands[i]["covered"])[1] - wy))
             avoid = frozenset(path[:-1]) | frozenset(sources)
-            path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], leg_costs(len(vias)), ctx, obs,
-                                   corridor, avoid=avoid)
+            path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], leg_costs(len(vias), len(islands) - 2),
+                                   ctx, obs, corridor, avoid=avoid)
             if path2 is None:
                 last = {"why": "no path from the detour point onwards", "blockers": vias2}
                 continue
@@ -815,11 +822,11 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
         nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - cx,
                                                           centre(islands[i]["covered"])[1] - cy))
         targets = islands[nearest]["covered"]
-        path, second = _search(g, net, connected, targets, leg_costs(sum(len(v) for _, v in segments)), ctx, obs,
-                               corridor)
+        spent = sum(len(v) for _, v in segments)
+        legs_left = len(islands) - len(done)
+        path, second = _search(g, net, connected, targets, leg_costs(spent, legs_left), ctx, obs, corridor)
         if path is None:  # the corridor is a speed-up, not a rule: the whole region gets a try before failing
-            path, second = _search(g, net, connected, targets, leg_costs(sum(len(v) for _, v in segments)), ctx,
-                                   obs, None)
+            path, second = _search(g, net, connected, targets, leg_costs(spent, legs_left), ctx, obs, None)
         if path is None:
             pads = [pcbnew.Cast_to_FOOTPRINT(p.GetParent()).GetReference() + "." + p.GetNumber()
                     for p in islands[nearest]["pads"]]

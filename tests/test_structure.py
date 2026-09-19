@@ -153,3 +153,15 @@ def test_a_via_in_the_channel_between_two_balls_is_read_as_such(pair, tmp_path):
 
     style = bus_design.escape_style(kb.load_board(out), Ref())
     assert style["U1"]["places"] == {"in the channel": 1}
+
+
+def test_the_via_budget_keeps_one_for_each_leg_still_to_route():
+    """A net whose tree has several legs must not let the first leg spend the whole budget: the references give
+    each leg its own layer change, one via at each package (D32). The net's own copper has already spent one of
+    the three vias here (the fan-out's in-pad via), so two are left for two legs."""
+    budget, per_leg = 3 - 1, 2
+    assert busr.leg_budget(budget, 0, 2, per_leg) == 1  # two legs to go: one via held back for the second
+    assert busr.leg_budget(budget, 1, 1, per_leg) == 1  # the last leg may spend what is left
+    assert busr.leg_budget(budget, 0, 1, per_leg) == 2  # a single leg may use the per-leg limit
+    assert busr.leg_budget(budget, 2, 1, per_leg) == 0  # nothing left
+    assert busr.leg_budget(None, 9, 3, per_leg) == per_leg  # no per-net limit: the per-leg limit stands
