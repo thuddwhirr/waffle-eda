@@ -150,17 +150,41 @@ def lengthen(board, obs: Obstacles, net_name: str, min_mm: float, max_mm: float,
 
 
 def tune_lengths(board, nets, min_mm: float, max_mm: float, clearance_mm: float, hole_clearance_mm: float = 0.0,
-                 region_mm=None, skip_region=None) -> LengthResult:
+                 region_mm=None, skip_region=None, windows: dict | None = None) -> LengthResult:
+    """``windows`` gives a net its own (min_mm, max_mm) in place of the common one."""
     obs = Obstacles(board, region_mm)
     result = LengthResult()
     lengths = {n: net_length_mm(board, n) for n in nets}
+    windows = windows or {}
     for name in sorted(nets, key=lambda n: lengths[n]):  # the shortest first: it needs the most room
-        if lengths[name] >= min_mm - 1e-3:
+        lo, hi = windows.get(name, (min_mm, max_mm))
+        if lengths[name] >= lo - 1e-3:
             result.untouched.append(name)
             continue
-        ok, note = lengthen(board, obs, name, min_mm, max_mm, clearance_mm, hole_clearance_mm, skip_region=skip_region)
+        ok, note = lengthen(board, obs, name, lo, hi, clearance_mm, hole_clearance_mm, skip_region=skip_region)
         if ok:
             result.tuned[name] = note
         else:
             result.failed[name] = note
     return result
+
+
+def lane_windows(board, lanes: dict, pairs: dict, pair_mm: float = 0.2) -> dict:
+    """Per-net (min, max) windows that match each lane (name -> (nets, window width in mm)) on total length: the
+    longest member sets the floor, the width the ceiling; a differential pair (name -> two nets) is then held
+    within ``pair_mm`` of its longer member."""
+    out = {}
+    lengths = {}
+    for nets, width in lanes.values():
+        for n in nets:
+            lengths[n] = net_length_mm(board, n)
+        top = max(lengths[n] for n in nets)
+        for n in nets:
+            out[n] = (top, top + width)
+    for a, b in pairs.values():
+        la, lb = lengths.get(a, net_length_mm(board, a)), lengths.get(b, net_length_mm(board, b))
+        shorter = a if la < lb else b
+        top = max(la, lb)
+        lo, hi = out.get(shorter, (0.0, math.inf))
+        out[shorter] = (max(lo, top - pair_mm), min(hi, top))
+    return out

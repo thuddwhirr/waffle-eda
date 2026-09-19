@@ -168,7 +168,7 @@ class Score:
     drc_bus_errors: int
     drc_bus_errors_answer: int
     drc_bus_by_type: dict
-    length_within_spread: int
+    length_within_spread: int  # the earlier proxy (every net inside the answer's overall length window), kept for information
     length_spread_mm: tuple[float, float]
     vias_total: int
     vias_in_packages: int
@@ -181,6 +181,9 @@ class Score:
     passed: bool = False
     score: float = 0.0
     nets: dict = field(default_factory=dict)
+    matching_passed: bool = False  # D27: matched as the reference matches, per group
+    matching_lines: list = field(default_factory=list)
+    matching_failures: list = field(default_factory=list)
 
     def summary(self) -> str:
         share = f"{100 * self.vias_in_packages / self.vias_total:.0f}%" if self.vias_total else "n/a"
@@ -188,7 +191,7 @@ class Score:
             f"{self.reference:<12} score={self.score:.3f} {'PASS' if self.passed else 'fail'} | "
             f"connected {self.connected}/{self.bus_nets}, unconnected items {self.unconnected_items} | "
             f"bus DRC errors {self.drc_bus_errors} (answer {self.drc_bus_errors_answer}) | "
-            f"length within spread {self.length_within_spread}/{self.bus_nets} | "
+            f"matching {'ok' if self.matching_passed else 'FAIL ' + '; '.join(self.matching_failures)} | "
             f"vias {self.vias_total}, in packages {share} (answer {100 * self.vias_share_answer:.0f}%), "
             f"max/net {self.max_vias_per_net} (answer {self.max_vias_per_net_answer}) | "
             f"layers {self.layers} | {self.seconds:.1f}s"
@@ -250,8 +253,13 @@ def score(ref: refs.Reference, candidate_path: Path, work_dir: Path | None = Non
     layers_ok = layers <= set(ans_layers)
     vias_count_ok = max_vias <= ans_max_vias
     conn_frac = connected / n if n else 0.0
-    composite = conn_frac * (0.6 + 0.15 * drc_ok + 0.15 * length_frac + 0.05 * (vias_ok and vias_count_ok) + 0.05 * layers_ok)
-    passed = connected == n and cand_facts["unconnected_items"] == 0 and drc_ok
+    # D27: lengths matched as the reference matches them, per group
+    from waffle_eda.bench import bus_design
+    reference_design = bus_design.measure_bus_design(ref.key)
+    candidate_design = bus_design.measure_board(cand_board, ref)
+    verdict = bus_design.judge(candidate_design, reference_design)
+    composite = conn_frac * (0.6 + 0.15 * drc_ok + 0.15 * verdict["passed"] + 0.05 * (vias_ok and vias_count_ok) + 0.05 * layers_ok)
+    passed = connected == n and cand_facts["unconnected_items"] == 0 and drc_ok and verdict["passed"]
 
     return Score(
         reference=ref.key,
@@ -264,6 +272,9 @@ def score(ref: refs.Reference, candidate_path: Path, work_dir: Path | None = Non
         drc_bus_by_type=cand_facts["electrical_bus_by_type"],
         length_within_spread=within,
         length_spread_mm=(lo, hi),
+        matching_passed=verdict["passed"],
+        matching_lines=verdict["lines"],
+        matching_failures=verdict["failures"],
         vias_total=vias_total,
         vias_in_packages=vias_inside,
         vias_share_answer=round(ans_share, 3),

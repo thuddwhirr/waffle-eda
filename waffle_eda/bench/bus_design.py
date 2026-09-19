@@ -114,7 +114,13 @@ class NetDesign:
 
 def measure_bus_design(key: str) -> dict:
     ref = refs.REFERENCES[key]
-    board = kb.load_board(refs.board_path(ref))
+    return measure_board(kb.load_board(refs.board_path(ref)), ref)
+
+
+def measure_board(board, ref) -> dict:
+    """The bus design of any board that carries the reference's bus nets and packages (the reference itself, or a
+    candidate routed on its stripped problem board)."""
+    key = ref.key
     bus = sorted(kb.nets_matching(board, ref.bus_net_pattern))
     bus_set = set(bus)
     # packages: the bus parts (BGAs) and every other footprint carrying a bus pad (terminations)
@@ -412,3 +418,123 @@ def report(d: dict) -> str:
                    f"meander {n['meander_mm']} {n['meander_places']} | {paths}"
                    + (f" | UNREACHED {n['unreached']}" if n["unreached"] else ""))
     return "\n".join(out)
+
+
+# --- the reference's plan: its vias and its single-layer runs between terminals ------------------------------------
+def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
+    """For each net: its vias (x, y, diameter, drill) and its links, the maximal single-layer runs between terminals
+    (a pad or a via), as (x_a, y_a, x_b, y_b, layer, length_mm). This is what the reference decided: where the
+    layer changes are and which layer each run takes; the path between two terminals is what a router finds."""
+    bus_set = set(bus_nets)
+    pads = defaultdict(list)
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() in bus_set:
+                p = pad.GetPosition()
+                size = pad.GetSize()
+                pads[pad.GetNetname()].append((kb.mm(p.x), kb.mm(p.y), max(kb.mm(size.x), kb.mm(size.y)) / 2,
+                                              fp.GetReference() + "." + pad.GetNumber(),
+                                              frozenset(board.GetLayerName(L) for L in pad.GetLayerSet().CuStack())))
+    tracks = defaultdict(list)
+    vias = defaultdict(list)
+    for item in board.GetTracks():
+        name = item.GetNetname()
+        if name not in bus_set:
+            continue
+        if item.GetClass() == "PCB_VIA":
+            p = item.GetPosition()
+            vias[name].append((kb.mm(p.x), kb.mm(p.y), kb.via_diameter_mm(item), kb.via_drill_mm(item)))
+        else:
+            a, b = item.GetStart(), item.GetEnd()
+            tracks[name].append((kb.mm(a.x), kb.mm(a.y), kb.mm(b.x), kb.mm(b.y), kb.mm(item.GetLength()),
+                                 board.GetLayerName(item.GetLayer())))
+    out = {}
+    for name in bus_nets:
+        # terminals: pads (on their own layers) and vias (on every layer); a track end within a terminal's radius on
+        # a layer the terminal reaches belongs to it; a track passing under a pad on an inner layer does not stop
+        terminals = [(x, y, r, label, layers) for (x, y, r, label, layers) in pads[name]]
+        terminals += [(x, y, d / 2, f"via@{x:.3f},{y:.3f}", None) for (x, y, d, _) in vias[name]]
+
+        def terminal_of(x, y, layer):
+            for (tx, ty, tr, label, layers) in terminals:
+                if (layers is None or layer in layers) and math.hypot(x - tx, y - ty) <= tr + 1e-3:
+                    return label
+            return None
+
+        # per layer, the tracks form chains between terminals; walk each chain from a terminal end
+        by_layer = defaultdict(list)
+        for t in tracks[name]:
+            by_layer[t[5]].append(t)
+        links = []
+        for layer, ts in by_layer.items():
+            adj = defaultdict(list)
+            for idx, (ax, ay, bx, by, L, _) in enumerate(ts):
+                adj[_key(ax, ay)].append((idx, _key(bx, by)))
+                adj[_key(bx, by)].append((idx, _key(ax, ay)))
+            used = set()
+            # start from track ends that lie on a terminal
+            starts = [(k, terminal_of(k[0] / 1000, k[1] / 1000, layer)) for k in adj]
+            starts = [(k, lab) for k, lab in starts if lab]
+            for k0, lab0 in starts:
+                for idx, nxt in adj[k0]:
+                    if idx in used:
+                        continue
+                    used.add(idx)
+                    length = ts[idx][4]
+                    cur, prev_idx = nxt, idx
+                    lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
+                    while lab is None:
+                        cands = [(i2, n2) for i2, n2 in adj[cur] if i2 != prev_idx and i2 not in used]
+                        if not cands:
+                            break
+                        i2, n2 = cands[0]
+                        used.add(i2)
+                        length += ts[i2][4]
+                        prev_idx, cur = i2, n2
+                        lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
+                    if lab is None or lab == lab0:  # a stub inside a terminal, or copper that ends nowhere
+                        continue
+                    links.append((lab0, lab, layer, round(length, 3)))
+        out[name] = {"vias": vias[name], "links": links, "pads": [(lab, x, y) for (x, y, _, lab, _) in pads[name]]}
+    return out
+
+
+# --- the judgement of D27: matched as the reference matches -------------------------------------------------------
+def judge(candidate: dict, reference: dict, pair_mm: float = 0.2) -> dict:
+    """Each data lane within the reference's own lane spread on total length, each differential pair within
+    ``pair_mm``, the address/command group within the reference's spread at each memory's pins. Returns
+    {"passed": bool, "lines": [...], "failures": [...]}."""
+    lines, failures = [], []
+    for g, r in reference["groups"].items():
+        c = candidate["groups"].get(g)
+        if c is None:
+            failures.append(f"{g}: absent"); continue
+        if g.startswith("lane"):
+            ok = c["total_length_mm"]["spread"] <= r["total_length_mm"]["spread"] + 1e-3
+            lines.append(f"{g}: spread {c['total_length_mm']['spread']} mm (reference {r['total_length_mm']['spread']}) "
+                         f"{'ok' if ok else 'FAIL'}; nets {c['nets']} of {r['nets']}")
+            if not ok or c["nets"] != r["nets"]:
+                failures.append(f"{g}: spread {c['total_length_mm']['spread']} > {r['total_length_mm']['spread']} mm"
+                                if not ok else f"{g}: {c['nets']} nets, reference {r['nets']}")
+        elif g == "address/command":
+            for dest, rm in r["to_each_memory_mm"].items():
+                if not dest.startswith(tuple(reference["bus_parts"])):
+                    continue  # terminations are single nets
+                cm = c["to_each_memory_mm"].get(dest)
+                if cm is None:
+                    failures.append(f"{g} at {dest}: no paths"); continue
+                ok = cm["spread"] <= rm["spread"] + 1e-3 and cm["nets"] == rm["nets"]
+                lines.append(f"{g} at {dest}: spread {cm['spread']} mm over {cm['nets']} nets (reference "
+                             f"{rm['spread']} over {rm['nets']}) {'ok' if ok else 'FAIL'}")
+                if not ok:
+                    failures.append(f"{g} at {dest}: spread {cm['spread']} > {rm['spread']} mm or {cm['nets']} nets of {rm['nets']}")
+        for pair, mis in r["pair_mismatch_mm"].items():
+            cm = c["pair_mismatch_mm"].get(pair)
+            ok = cm is not None and cm <= pair_mm + 1e-3
+            lines.append(f"pair {pair}: mismatch {cm} mm (limit {pair_mm}) {'ok' if ok else 'FAIL'}")
+            if not ok:
+                failures.append(f"pair {pair}: mismatch {cm} > {pair_mm} mm")
+    unreached = [n for n, d in candidate["nets"].items() if d["unreached"]]
+    if unreached:
+        failures.append(f"{len(unreached)} nets with pads not reached: {unreached[:8]}")
+    return {"passed": not failures, "lines": lines, "failures": failures}

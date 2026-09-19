@@ -140,9 +140,12 @@ def run_reference(key: str, draw: bool = True) -> dict:
           f"nets with vias outside packages: {len(outside)}", flush=True)
     for n, L in sorted(short, key=lambda x: x[1])[:6]:
         print(f"      length {n}: {L} mm")
+    for line in score.matching_lines:
+        print(f"      {line}", flush=True)
     out["bus"] = {"routed": len(res.routed), "total": res.total, "failed": res.failed, "drc": drc,
                   "lengths_failed": tuned.failed,
                   "score": score.summary(), "passed": score.passed, "length_within": score.length_within_spread,
+                  "matching": score.matching_passed, "matching_failures": score.matching_failures,
                   "bus_nets": score.bus_nets, "vias_outside": outside}
     if draw:
         boxes = [kb.package_info(kb.footprint(board, r)).bbox_mm for r in ref.bus_parts]

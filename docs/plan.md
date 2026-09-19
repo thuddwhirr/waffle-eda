@@ -38,8 +38,10 @@ evidence. Runs in seconds to a minute. Pick and fetch the class A and B referenc
 **M2. Fan-out** (complete, session 3: `python3 scripts/gate.py m2` PASS, 9 of 9 cases, 461 of 461 bus balls, zero electrical violations under every reference's constraints; decisions D13 to D20). The fan-out passes both class C references: every ball escaped, DRC clean, in both
 via styles (dog-bone and via-in-pad). Synthetic tests in place.
 
-**M3. Bus router.** Passes ButterStick, then LogicBone: all bus nets, DRC clean, lengths within the measured spread,
-layer changes only at the packages. Fails with a diagnosis, never with a list.
+**M3. Bus router.** Passes ButterStick, then LogicBone: all bus nets, DRC clean, lengths matched as the reference
+matches them (each data lane within the reference's own lane spread on total length, differential pairs within
+0.2 mm, address and command within the reference's spread at each memory's pins; decisions D27), layer changes
+only at the packages. Fails with a diagnosis, never with a list.
 
 **M4. The rest of the copper.** A router for the miscellaneous nets with the bus and pairs fixed (own, or Freerouting
 if it can be made to respect fixed copper), planes and power rails on continuous copper with feeds and plane vias,
@@ -94,8 +96,10 @@ for a length-matched bus is only known once M3 routes the bus from them. M3 star
 
 ## State of M3
 
-FAIL, in progress (session 3, decisions D21 to D25). Criteria as written: all bus nets, DRC clean, lengths within
-the measured spread, layer changes only at the packages, on ButterStick then LogicBone. Best complete runs of
+FAIL, in progress (session 3, decisions D21 to D27). Criteria: all bus nets, DRC clean, lengths matched as the
+reference matches them (D27; the table below still shows the earlier "within the measured spread" proxy), layer
+changes only at the packages, on ButterStick then LogicBone. The course changed on the step-1 measurements
+(D26, `docs/bus-design.md`): the router is being re-planned from the references' own structure, ButterStick first. Best complete runs of
 `scripts/bus_bench.py` (the gate runs the same bench), each about an hour:
 
 | board | routed | electrical violations | lengths within spread | vias inside packages | run |

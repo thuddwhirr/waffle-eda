@@ -565,7 +565,8 @@ def _islands(board, net_name: str, g: BusGraph, layer_ids: set[int]) -> list[dic
 
 # --- the search ------------------------------------------------------------------------------------------------------
 def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Context, obs: Obstacles,
-            corridor: tuple[float, float, float, float] | None = None, avoid: frozenset = frozenset()):
+            corridor: tuple[float, float, float, float] | None = None, avoid: frozenset = frozenset(),
+            same_layer: bool = False):
     """Multi-source A* from any (layer, node) in ``sources`` to any in ``targets``, inside ``corridor`` (mm).
     ``avoid`` holds (layer, node) pairs the path may not enter (a detour's first leg, so the second cannot retrace
     it and count the same copper twice)."""
@@ -646,8 +647,8 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
                 prev[state] = cur
                 counter += 1
                 heapq.heappush(heap, (nd + h(nxt), counter, state))
-        if (nvias < costs.max_vias and g.via_site[node] and g.pad_net.get(node, net_name) == net_name
-                and g.via_clear(node, net, obs)):
+        if (not same_layer and nvias < costs.max_vias and g.via_site[node]
+                and g.pad_net.get(node, net_name) == net_name and g.via_clear(node, net, obs)):
             extra = ctx.via_cost(node)
             if extra is None:
                 continue
@@ -758,6 +759,35 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
         done.add(nearest)
         connected |= islands[nearest]["covered"]
         connected |= set(path)
+        segments.append((path, second))
+    return segments, None
+
+
+def _route_net_planned(g: BusGraph, net, islands: list[dict], plan: list, costs: Costs, ctx: Context,
+                       obs: Obstacles):
+    """Route the links of a plan: each is (x_a, y_a, x_b, y_b, layer_id), a run on one layer between two terminals
+    of the net (a pad or a via the board already carries), as a reference board decided it. The terminals' nodes
+    come from the net's islands (the copper it already has); the path between them is what is searched for."""
+    covered: set = set()
+    for isl in islands:
+        covered |= isl["covered"]
+    segments = []
+    for (ax, ay, bx, by, layer) in plan:
+        r = g.step * 1.5
+        sources = {(layer, n) for n in g.nodes_near(ax, ay, r) if (layer, n) in covered}
+        targets = {(layer, n) for n in g.nodes_near(bx, by, r) if (layer, n) in covered}
+        if not sources or not targets:
+            which = f"({ax:.2f}, {ay:.2f})" if not sources else f"({bx:.2f}, {by:.2f})"
+            return None, {"why": f"no node of the net's copper on {g.board.GetLayerName(layer)} at {which}",
+                          "blockers": Counter()}
+        m = costs.corridor_mm
+        corridor = (min(ax, bx) - m, min(ay, by) - m, max(ax, bx) + m, max(ay, by) + m)
+        path, second = _search(g, net, sources, targets, costs, ctx, obs, corridor, same_layer=True)
+        if path is None:
+            path, second = _search(g, net, sources, targets, costs, ctx, obs, None, same_layer=True)
+        if path is None:
+            return None, {"why": f"no path on {g.board.GetLayerName(layer)} from ({ax:.2f}, {ay:.2f}) to "
+                                 f"({bx:.2f}, {by:.2f})", "blockers": second}
         segments.append((path, second))
     return segments, None
 
@@ -882,7 +912,7 @@ def _detour(cands: list, deficit: float, lo: float, hi: float, cur: float, attem
 
 
 def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs: Costs | None = None,
-              length_windows: dict | None = None) -> BusResult:
+              length_windows: dict | None = None, plans: dict | None = None) -> BusResult:
     """``length_windows`` maps a net to (min_mm, max_mm): a routed net shorter than its window by more than
     ``costs.detour_min_mm`` is re-routed through a detour point in free board area that adds about the missing
     length (the serpentine tuner adds the rest afterwards)."""
@@ -910,6 +940,16 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                 break
     islands = {name: _islands(board, name, g, set(layers)) for name in nets}
     names = sorted(nets, key=lambda n: (-len(islands[n]), n))
+    # a plan (a reference's structure: vias the board already carries, single-layer runs between terminals) replaces
+    # the tree for the nets that have one
+    link_plans: dict = {}
+    for name, links in (plans or {}).items():
+        link_plans[name] = [(ax, ay, bx, by, layer_ids[L] if isinstance(L, str) else L) for (ax, ay, bx, by, L) in links]
+
+    def route_one(name, ctx_, waypoint=None):
+        if name in link_plans:
+            return _route_net_planned(g, net_objs[name], islands[name], link_plans[name], costs, ctx_, obs)
+        return _route_net(g, net_objs[name], islands[name], costs, ctx_, obs, waypoint=waypoint)
 
     # --- negotiation -----------------------------------------------------------------------------------------------
     occ = Occupancy(g)
@@ -937,9 +977,9 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             if name in paths:
                 for path, vias in paths.pop(name):
                     occ.add(path, vias, name, -1)
-            segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=waypoints.get(name))
+            segs, diag = route_one(name, ctx, waypoint=waypoints.get(name))
             if segs is None and name in waypoints:  # the detour is a wish, the connection a must
-                segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+                segs, diag = route_one(name, ctx)
             if segs is None:
                 diagnoses[name] = diag
                 continue
@@ -962,7 +1002,7 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
                     continue  # the tuner's serpentines and a detour in the final pass can add this much
 
                 def attempt(w, name=name):
-                    segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx0, obs, waypoint=w)
+                    segs, _ = route_one(name, ctx0, waypoint=w)
                     return None if segs is None else (base_mm[name] + _path_mm(g, segs), segs)
 
                 cands = _detour_candidates(g, board, rules, islands[name], lo - cur)
@@ -1086,9 +1126,9 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         committed[name] = (segs, items)
 
     def place(name):
-        segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=waypoints.get(name))
+        segs, diag = route_one(name, ctx, waypoint=waypoints.get(name))
         if segs is None and name in waypoints:
-            segs, diag = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+            segs, diag = route_one(name, ctx)
         if segs is None:
             return diag
         commit_segments(name, segs)
@@ -1154,9 +1194,9 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             for n in todo:
                 for path, vias in paths2.pop(n, []):
                     occ2.add(path, vias, n, -1)
-                segs, _ = _route_net(g, net_objs[n], islands[n], costs, ctx2, obs, waypoint=waypoints.get(n))
+                segs, _ = route_one(n, ctx2, waypoint=waypoints.get(n))
                 if segs is None and n in waypoints:
-                    segs, _ = _route_net(g, net_objs[n], islands[n], costs, ctx2, obs)
+                    segs, _ = route_one(n, ctx2)
                 if segs is None:
                     continue
                 paths2[n] = segs
@@ -1238,7 +1278,7 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             if cur > hi + 1e-3 and name in waypoints:  # the negotiation grew the detour past the window
                 saved_segs = committed[name][0]
                 unplace(name)
-                segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx, obs)
+                segs, _ = route_one(name, ctx)
                 if segs is not None:
                     commit_segments(name, segs)
                     cur = net_length_mm(board, name)
@@ -1254,7 +1294,7 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             unplace(name)
 
             def attempt(w, name=name):
-                segs, _ = _route_net(g, net_objs[name], islands[name], costs, ctx, obs, waypoint=w)
+                segs, _ = route_one(name, ctx, waypoint=w)
                 if segs is None:
                     return None
                 commit_segments(name, segs)

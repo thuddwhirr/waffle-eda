@@ -347,3 +347,13 @@ both boards match their data lanes on total net length to under a millimetre and
 loosely (6 to 12 mm at the pins); every run between vias stays on one layer; ButterStick escapes the memory balls
 on the top layer into the hollow and makes its length inside and around the memories, LogicBone dog-bones in the
 array and makes its length between the packages.
+
+**D27. M3's length criterion is the matching the references achieve, per group.** Owner's decision, 2026-09-19,
+on the step-1 measurements (`docs/bus-design.md`). A bus passes on length when each data lane (its bits, strobe
+pair and mask) lies within a window as narrow as the reference's own lane spread on total net length, each
+differential pair is matched within 0.2 mm, and the address, command and clock group lies within the reference's
+spread at each memory's pins. Measured windows: ButterStick lane 0 0.73 mm, lane 1 0.84 mm, address and command
+11.9 mm at U11 and 7.5 mm at U12; LogicBone lane 0 4.15 mm and lane 1 7.1 mm on total length (the bits alone 0.11
+and 0.38 mm; the strobes are routed shorter), address and command 6.6 mm at IC3 and 6.1 mm at IC2. The absolute
+length is free. This replaces "lengths within the measured spread" (plan, M3), a proxy the references themselves
+do not meet uniformly. Replay (D26, step 3) starts with ButterStick.

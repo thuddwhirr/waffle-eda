@@ -6,7 +6,7 @@
                                    # violations under the reference's constraints; every synthetic case complete
                                    # and DRC clean
     python3 scripts/gate.py m3     # bus: ButterStick and LogicBone, every bus net connected, zero violations under
-                                   # the constraints, every net's length within the original's spread, vias only
+                                   # the constraints, lengths matched as the reference matches them (D27), vias only
                                    # inside the packages
 
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
@@ -81,9 +81,9 @@ def gate_m3() -> list[tuple[str, bool, str]]:
         b = result["bus"]
         drc = b["drc"]
         ok = (b["routed"] == b["total"] and drc["electrical_bus"] == 0 and not drc["unconnected_bus_nets"]
-              and b["passed"] and b["length_within"] == b["bus_nets"] and not b["vias_outside"])
+              and b["passed"] and b["matching"] and not b["vias_outside"])
         detail = (f"routed {b['routed']}/{b['total']}; DRC {drc['electrical_bus_by_type'] or 0}; unconnected "
-                  f"{len(drc['unconnected_bus_nets'])}; lengths in spread {b['length_within']}/{b['bus_nets']}; "
+                  f"{len(drc['unconnected_bus_nets'])}; matching {'ok' if b['matching'] else 'FAIL'}; "
                   f"nets with vias outside packages {len(b['vias_outside'])}")
         rows.append((key, ok, detail))
     return rows
