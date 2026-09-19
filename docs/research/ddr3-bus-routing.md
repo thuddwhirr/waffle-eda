@@ -229,6 +229,45 @@ layer, interior rings by via; vias placed where pads are absent create lanes ([J
   routing is the pattern to copy, not the code ([TritonRoute](https://github.com/The-OpenROAD-Project/TritonRoute)).
 - No open length-matching bus router was found; the academic routers above are not published as code.
 
+## Reconciliation with the owner's foundational reference (`foundational-reference.md`)
+
+The owner's report (Claude app research, 2026-09-19) covers the whole flow from schematic to verification; this
+report is the bus-routing slice. Where they overlap:
+
+**Agreements.** Length rules are timing budgets translated through the layer's propagation delay and should be
+derived and judged in picoseconds (its Stage 0 and Table C; this report's summary and D27 restated in delay).
+Escape routing is a network-flow, SAT or ILP problem (Ozdal, Yan, Wong, Luo; B-escape beat Allegro on every case
+it tried). Negotiated congestion belongs in global routing, push-and-shove and rip-up in detailed routing.
+Byte lanes need not match each other because write leveling absorbs the difference; address and command are
+matched to the clock, data to its own strobe. Dog-bones are the practice at 0.8 mm and via-in-pad below 0.5 mm.
+
+**Numbers that differ, and why.** Its Table A gives the tighter, mil-based memory-vendor rules (DQ to DQS ±10 mil,
+address to CK ±20 to ±25 mil, NXP and TI), this report the picosecond rules of the FPGA vendor the references use
+(Lattice: ±10 ps, no more than 50 mil apart) and ISSI. Both are real vendor practice; the benchmark should carry
+the Lattice numbers as the pass line (the parts on the boards) and the TI and NXP numbers as the target the tool
+aims for. Its delay constant for stripline (180 ps/in from εr 4.5) is above this report's 170 ps/in and Micron's
+165 ps/in; the conversions agree within ten percent and the anchor (10 ps ≈ 1.5 mm inner layer) is common.
+
+**One disagreement that matters for the router.** The foundational reference keeps length tuning as a stage
+after detailed routing ("deterministic once topology is fixed"). For the boards in this project that is exactly
+what failed: ButterStick's packages are 0.5 mm apart, the whole bus lives inside the memory footprints, and once
+the nets were routed there was no room for the tuner. The length-matching literature (Ozdal and Wong 2006,
+BSG-Route 2008, the 2025 LP area-assignment router) reserves the length as an area budget during global routing
+and only shapes the meanders afterwards. This report keeps that order: room first, meanders last. Post-route
+tuning is sufficient only where a channel with slack exists, which is LogicBone's case, not ButterStick's.
+
+**A claim to correct against our measurements.** Its Table E says 0.8 mm pitch at 4-mil rules leaves "about zero
+channels" between balls so HDI is often needed. ButterStick routes its 0.8 mm memories with one 0.089 mm track per
+channel at 0.0886 mm clearance on a standard through-hole board: floor((0.8 − 0.4 − 2×0.0886)/(0.089 + 0.0886)) = 1
+by the same formula. Zero channels follows only from 5-mil rules; at 3.5 mil (the JLCPCB floor in its Table D) the
+channel exists, and the M2 fan-out used it on every reference.
+
+**Levers it raises that this report had not.** Data bits within a byte lane may be swapped (except DQ0 for some
+controllers) and byte lanes may be swapped whole; FPGA pins are reassignable. A router that may choose the ball
+for each bit has far fewer crossings to resolve than one that takes the netlist as fixed, which is what ours does.
+The references' designers had this freedom; whether they used it is measurable from their pinouts. KiCad 9 and 10
+expose delay-based tuning profiles per net class, which is the form the tuner's targets should take.
+
 ## What this means for waffle-eda
 
 - Restate the benchmark in delay (ps) per group from the vendor tables above, with per-layer velocity from the
@@ -238,3 +277,5 @@ layer, interior rings by via; vias placed where pads are absent create lanes ([J
   for local residue.
 - Keep both escape styles and both meander placements as options chosen by the geometry: the ButterStick structure
   when the packages touch, the channel between packages when there is one.
+- Treat bit swapping within lanes and FPGA pin assignment as part of the planning problem, once the references
+  show whether their designers used them.
