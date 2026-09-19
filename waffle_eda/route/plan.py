@@ -319,7 +319,7 @@ class Run:
     tag: object = None  # the caller's handle (which link of which net)
     group: object = None  # runs of one bundle (a lane between two packages) prefer to share a layer
     local: dict = field(default_factory=dict)  # (layer, key) -> capacity around the run's terminals without its own copper
-    crossed: set = field(default_factory=set)  # cells of the runs this one crossed last round, on its layer
+    crossed: list = field(default_factory=list)  # the runs this one crossed last round (their current routes count)
 
     def guide(self, cells: Cells, half_mm: float | None = None) -> tuple[list, float]:
         """The route as a polyline of cell centres with a half-width: the band the detailed search stays in."""
@@ -339,6 +339,8 @@ class PlanCosts:
     affinity_mm: float = 8.0  # a run pays this much (times the share of its bundle elsewhere) for leaving its bundle's layer
     cramped_mm: float = 0.2  # a run pays this much per boundary and per extra track it wanted there but cannot have
     crossing: float = 1.0  # a crossing counts as this much overflow on every boundary of the shared cells
+    corridor_mm: float = 6.0  # a run stays within its terminals' bounding box grown by this much: no long detours
+    turn_mm: float = 0.4  # a turn costs this much: runs side by side in a channel stay side by side instead of braiding
     seed: int = 1
 
 
@@ -363,49 +365,63 @@ class Planner:
         cells = self.cells
         ca, cb = cells.cell_of(*run.a), cells.cell_of(*run.b)
         tx, ty = cells.centre(*cb)
+        span = int(math.ceil(self.costs.corridor_mm / cells.c))
+        i0, i1 = min(ca[0], cb[0]) - span, max(ca[0], cb[0]) + span
+        j0, j1 = min(ca[1], cb[1]) - span, max(ca[1], cb[1]) + span
         best = None
         mates = [r for r in self.bundles.get(run.group, ()) if r is not run and r.layer is not None] if run.group is not None else []
+        turn = self.costs.turn_mm
         for L in run.layers:
             bias = self.costs.layer_bias.get(L, 0.0)
             apart = self.costs.affinity_mm * (1 - sum(1 for r in mates if r.layer == L) / len(mates)) if mates else 0.0
-            dist = {ca: 0.0}
+            # the cells of the runs this one crossed, where they are now: entering one costs like an overflow
+            crossed = {c for r in run.crossed if r.layer == L for c in r.cells}
+            start = (ca, None)  # (cell, direction of the step that reached it)
+            dist = {start: 0.0}
             prev = {}
-            heap = [(0.0, 0, ca)]
+            heap = [(0.0, 0, start)]
             counter = 0
             found = None
             while heap:
                 f, _, cur = heapq.heappop(heap)
                 d = dist[cur]
-                if cur == cb:
-                    found = d
+                (i, j), came = cur
+                if (i, j) == cb:
+                    found = (d, cur)
                     break
-                i, j = cur
-                for nxt in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+                if d > dist.get(cur, math.inf):
+                    continue
+                for step in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nxt = (i + step[0], j + step[1])
                     if not (0 <= nxt[0] < cells.nx and 0 <= nxt[1] < cells.ny):
                         continue
-                    key = cells.boundary(cur, nxt)
+                    if not (i0 <= nxt[0] <= i1 and j0 <= nxt[1] <= j1):
+                        continue
+                    key = cells.boundary((i, j), nxt)
                     cap = run.local.get((L, key), self.cells.capacity(L, key))
                     if cap <= 0:
                         continue
                     use = self.usage.get((L, key), 0) + self.extra.get((L, key), 0)
                     over = max(0, use + 1 - cap)
-                    if (L, nxt) in run.crossed:
+                    if nxt in crossed:
                         over += self.costs.crossing
                     unmet = max(0, run.units - 1 - max(0, cap - use - 1))
                     cost = cells.c + bias + present * over + self.history.get((L, key), 0.0) + self.costs.cramped_mm * unmet
+                    if came is not None and step != came:
+                        cost += turn
+                    state = (nxt, step)
                     nd = d + cost
-                    if nd < dist.get(nxt, math.inf):
-                        dist[nxt] = nd
-                        prev[nxt] = cur
+                    if nd < dist.get(state, math.inf):
+                        dist[state] = nd
+                        prev[state] = cur
                         counter += 1
                         cx, cy = cells.centre(*nxt)
-                        heapq.heappush(heap, (nd + abs(cx - tx) + abs(cy - ty), counter, nxt))
-            if found is not None and (best is None or found + apart < best[0]):
-                path = [cb]
-                while path[-1] != ca:
+                        heapq.heappush(heap, (nd + abs(cx - tx) + abs(cy - ty), counter, state))
+            if found is not None and (best is None or found[0] + apart < best[0]):
+                path = [found[1]]
+                while path[-1] != start:
                     path.append(prev[path[-1]])
-                path.reverse()
-                best = (found + apart, L, path)
+                best = (found[0] + apart, L, [c for c, _ in reversed(path)])
         return best
 
     def _apply(self, run: Run, sign: int):
@@ -510,11 +526,13 @@ class Planner:
             # gain history so that one of them leaves (to another route or another layer)
             crossed = self.crossings(runs)
             for run in runs:
-                run.crossed = set()
+                run.crossed = []
             for a, b, L, stretch in crossed:
                 contested.update((a, b))
-                runs[a].crossed.update((L, c) for c in runs[b].cells)
-                runs[b].crossed.update((L, c) for c in runs[a].cells)
+                if runs[b] not in runs[a].crossed:
+                    runs[a].crossed.append(runs[b])
+                if runs[a] not in runs[b].crossed:
+                    runs[b].crossed.append(runs[a])
                 for c in stretch:
                     for key in self.cells.boundaries_of(c):
                         self.history[(L, key)] += self.costs.history * self.costs.crossing

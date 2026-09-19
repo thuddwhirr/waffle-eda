@@ -59,6 +59,7 @@ def replay(key: str) -> dict:
     use_planner = os.environ.get("REPLAY_PLANNER", "") == "1"
     band_mm = float(os.environ.get("REPLAY_BAND_MM", "0.35" if use_planner else "0"))  # > 0: each link's search stays this close to the reference's route
     escape_mm = float(os.environ.get("REPLAY_ESCAPE_MM", "8"))  # a top-layer run from a pad shorter than this is an escape
+    ref_layers = os.environ.get("REPLAY_PLAN_LAYERS", "") == "reference"  # the planner keeps the reference's layer per run
     parts = {r: Lattice(kb.footprint(board, r)) for r in ref.bus_parts}
     in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
     rules_bus = busr.BusRules(**{**bus_bench.bus_rules(c, 0.0).__dict__, "in_pad_packages": in_pad})
@@ -106,7 +107,7 @@ def replay(key: str) -> dict:
             is_pad = [lab in pos for lab in (a, b)]
             escape = layer == "F.Cu" and any(is_pad) and L < escape_mm
             if use_planner and not escape:
-                allowed = set(bus_layers)
+                allowed = {layer_ids[layer]} if ref_layers else set(bus_layers)
                 for lab, p in zip((a, b), is_pad):
                     if p:
                         allowed &= pad_layers(lab, name)
@@ -145,7 +146,8 @@ def replay(key: str) -> dict:
             setattr(pcosts, key.strip(), type(current)(float(value)) if isinstance(current, int) else float(value))
         print(f"   planner: {len(runs)} runs over {len(set(r.net for r in runs))} nets, "
               f"{sum(len(v) for v in plans.values()) - len(runs)} escapes kept from the reference, "
-              f"{len(groups)} length groups, region {tuple(round(v, 1) for v in region)}", flush=True)
+              f"{len(groups)} length groups, region {tuple(round(v, 1) for v in region)}"
+              + (", layers as the reference's" if ref_layers else ""), flush=True)
         t0 = time.time()
         stats = planr.plan_runs(board, region, list(bus_layers), rules_bus.track_mm, rules_bus.clearance_mm, runs,
                                 groups=groups, fixed_mm=fixed_mm, costs=pcosts, trace=lambda s: print(s, flush=True),
@@ -156,7 +158,10 @@ def replay(key: str) -> dict:
         confusion = Counter((board.GetLayerName(r.tag[2]), board.GetLayerName(r.layer) if r.layer is not None else "-") for r in runs)
         print(f"   planner: {last['rounds']} rounds, {last['unrouted']} runs unrouted, {last['contested']} runs contested: "
               f"{last['overflow']} boundaries over capacity, {len(last['crossings'])} crossings | {time.time() - t0:.1f}s", flush=True)
-        for a, b, L, (x, y) in last["crossings"]:
+        per_layer = Counter(board.GetLayerName(L) for _, _, L, _ in last["crossings"])
+        if per_layer:
+            print(f"      crossings per layer: {dict(per_layer)}")
+        for a, b, L, (x, y) in last["crossings"][:12]:
             print(f"      CROSSING {runs[a].net.split('/')[-1]}/{runs[a].tag[1]} x {runs[b].net.split('/')[-1]}/{runs[b].tag[1]} "
                   f"on {board.GetLayerName(L)} at ({x:.1f}, {y:.1f})")
         print(f"   planner: layer as the reference's on {agree}/{len(runs)} runs; reference -> planner: "
