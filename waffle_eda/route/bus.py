@@ -622,6 +622,12 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
             break
         on_top = layer == g.top
         edges = g.adj_top.get(node, g.adj[node]) if on_top else g.adj[node]
+        if on_top and node in g.adj_top:
+            # a half-pitch node inside an array may also step straight onto a target on a quarter-pitch node next to
+            # it: a via sitting off the half-pitch lattice (the references' hollow vias do) is reached that way
+            extra = [(nxt, ln) for nxt, ln in g.adj[node] if layer in target_nodes.get(nxt, ())]
+            if extra:
+                edges = list(edges) + extra
         for nxt, length in edges:
             nx, ny = xy[nxt]
             if nx < cx0 or nx > cx1 or ny < cy0 or ny > cy1:
