@@ -683,3 +683,37 @@ then ButterStick, so the ladder rises in difficulty: it is structurally nearest 
 extending `bus_design.classify` to its net names (its 50 bus nets all fall into "other" today, so the D27 group
 criteria do not apply to it yet) and of its 0.065 mm rings, which are the most aggressive of any reference. (c)
 Hold ButterStick out of M3 as a later stretch case. (d) Leave the criteria as they are.
+
+**D36. What M2 proved, and the workflow error underneath it.** Review, 2026-09-19, prompted by the owner's
+observation that a chip that exists can be escaped, so proving escape and then discarding the escapes says little.
+
+The observation is right, and the proportion is larger than it looked. M3 asks the escape router only for the
+controller's balls and routes every memory from its bare pads (D22):
+
+| board | bus balls | asked for by M3 | certified by M2 and never requested |
+| --- | --- | --- | --- |
+| ButterStick | 155 | 55 | 100 (65 %) |
+| LogicBone | 128 | 50 | 78 (61 %) |
+| OrangeCrab | 100 | 50 | 50 (50 %) |
+
+What M2 did buy, so the ledger is honest. It is not a feasibility proof, since the references escape these parts
+already; it is a test of our machinery against boards whose answer is known, and it failed twice before it passed:
+nine balls at OrangeCrab's 0.5 mm pitch and ULX3S's N18 were beyond the old half-pitch lattice, and D19 and D20
+rebuilt the escape router on a quarter-pitch grid with per-ball negotiation to reach them. That machinery, its
+geometry and its rules are the same ones the bus router uses (D22), so the code earned its keep even where the
+artifact did not. M2 also remains a proper standalone stage for a package with no bus behind it, where escaping is
+the whole job.
+
+The error is in the stage boundary, not in the milestone. M2's criterion is "every ball escapes, DRC clean", which
+says nothing about whether the escape leaves the bus a way through; D34 measured that ours does not, putting 24
+vias in the channels between ButterStick's memory balls where the reference puts one, and using 3 hollow sites
+where the reference uses 72. The references show why no criterion on the escape alone could have caught it: on
+ButterStick the escape **is** the bus plan, because which hollow cell each ball's via lands in fixes the order that
+lane leaves the package, and D28 measured that order as nearly reversed between the two memories. The research says
+the same (D30): escapes are planned jointly with the bus, not before it. So the escape is an output of the bus
+plan, not an input to it, and a pipeline that computes it first can only be lucky.
+
+For the owner, and not decided here: this is a larger change than the structural criterion D34 floated. It says the
+escape router should become a subroutine the bus planner calls once it knows the order and the layer each net
+needs, with M2's gate retained for packages with no bus, and M3's own criteria covering the escapes of the bus
+packages. It does not invalidate M2's result or its code.
