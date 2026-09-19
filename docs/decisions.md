@@ -407,7 +407,9 @@ reference's own runs, rasterised to the same cells, cross nowhere on any layer (
 7 F.Cu runs); the planner's shortest runs on the reference's own layers start with 234 crossings and 40 rounds of
 negotiation with crossings as conflicts (the runs a run crossed cost it like an overflow, the shared cells gain
 history) leave 186 to 241, spread over every layer (In5.Cu 162 of them at the end); with free layers 590 fall to
-186 to 231. The routes' order within a layer is set by the side each run passes each via and each package on (its
+186 to 231; with the corridor widened to 12 mm, so that a run may come around the memory as the reference's do,
+and 80 rounds, 259 remain (`build/plan-wide.log`) and the runs pushed off their partners detour to 44 and 53 mm
+instead. The routes' order within a layer is set by the side each run passes each via and each package on (its
 homotopy), and a congestion negotiation swaps two runs that cross back and forth: the plateau of D28 again, at
 0.4 mm instead of 0.2. The reference's answer is structural: its runs come around the memory (U11 is entered from
 the north 58 times, the south 31, the west 28, the east 18) and the hollow via field is where the order changes
