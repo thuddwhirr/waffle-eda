@@ -420,7 +420,10 @@ is set by the side each run passes each via and each package on (its homotopy), 
 two runs that cross back and forth: the plateau of D28 again, at 0.4 mm instead of 0.2. The reference's answer is
 structural: its runs come around the memory (U11 is entered from the north 58 times, the south 31, the west 28,
 the east 18) and the hollow via field is where the order changes (a run leaves the hollow on the row its via's
-position allows). Decision: the planner keeps the capacity model as
+position allows). (4) The detailed router under the planner's guides (free layers, 265 crossings planned): 55 of
+55 nets contested in every one of 60 rounds, and the final pass's repair, working through 46 stranded nets, had
+not finished when the run hit its 50-minute limit (`build/replay-butterstick-planner.log`); the band replay of D28
+with the reference's own routes ended at 44 of 55 in 14 minutes. Decision: the planner keeps the capacity model as
 its check and gets a structural front end, to be built next unless the owner objects: (a) at each package, an
 ordered escape of every run from its via to the package boundary on the run's layer, which is the M2 escape
 router's problem on the inner layers with the reference's vias as input and the order along the boundary as its
