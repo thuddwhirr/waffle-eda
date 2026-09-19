@@ -123,9 +123,9 @@ def replay(key: str) -> dict:
     print(f"   plan: {added} vias placed, {sum(len(v) for v in plans.values())} links over {len(plans)} nets, "
           f"{skipped} links without a terminal" + (f", searches within {band_mm} mm of the reference's routes" if band_mm else ""), flush=True)
     if use_planner:
-        boxes = [kb.package_info(kb.footprint(board, r)).bbox_mm for r in ref.bus_parts]
         m = rules_bus.margin_mm
-        region = (min(b[0] for b in boxes) - m, min(b[1] for b in boxes) - m, max(b[2] for b in boxes) + m, max(b[3] for b in boxes) + m)
+        region = (min(b[0] for b in boxes.values()) - m, min(b[1] for b in boxes.values()) - m,
+                  max(b[2] for b in boxes.values()) + m, max(b[3] for b in boxes.values()) + m)
         groups = []
         lanes_of, pairs_of = {}, {}
         for n in bus:
