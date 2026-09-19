@@ -378,4 +378,6 @@ U4 and U11 by 34 inversions of a possible 55, lane 1 by 23; LogicBone's lanes by
 sets the order in which the run leaves it) and with one layer per lane per leg, not with pin choice. What this
 settles: the detailed search is sound; ordering, layer and via placement (the bus plan) must be decided before it,
 as D26 step 4 and the research report say, and the bundle's detailed routing wants track-based river routing with
-explicit spacing rather than a square grid with negotiation.
+explicit spacing rather than a square grid with negotiation. Final pass of the band variant, for the record: 44 of
+55 nets connected, zero electrical violations, 13 bus nets left unconnected, the D27 judgement failing on every
+group because of them (14 minutes in all, most of it the repair).
