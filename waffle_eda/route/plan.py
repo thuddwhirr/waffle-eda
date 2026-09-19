@@ -10,8 +10,9 @@ length deficit asks for (a serpentine of pitch p adding d mm of length needs abo
 Routing is negotiated congestion on the cell graph, with the layer chosen by the search: a run is searched on every
 layer it may take and the cheapest wins, so a run comes out on one layer.
 
-A terminal's own via fills its cell and blocks the cell's boundaries; the run has to leave the cell anyway, so the
-boundaries of a run's terminal cells are reserved for it and other runs pay for crossing them.
+A terminal's own pad or via fills its cell and blocks the cell's boundaries; a net's own copper is no obstacle to
+it, so around a run's terminals the capacities are recomputed for that run with its net's copper left out (the
+termination resistors' pads on ButterStick sit against the memory's balls, and only their own net gets through).
 
 The length room is optional capacity: a run whose net is short of its group asks for extra tracks beside it, takes
 them on every boundary that has them to spare, and pays a little for every boundary that has not (so that it prefers
@@ -40,8 +41,9 @@ class Fixed:
         """``extra``: (layer id, polyline, half-width) items the board does not carry yet but the plan keeps, such as
         the escapes a reference decided."""
         self.cell = cell
-        self.circles: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, r)]
-        self.segments: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(ax, ay, bx, by, hw)]
+        self.circles: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, r, net)]
+        self.rects: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, hx, hy, net)]
+        self.segments: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(ax, ay, bx, by, hw, net)]
         self.count = 0
         x0, y0, x1, y1 = region
         layers = set(layer_ids)
@@ -54,13 +56,22 @@ class Fixed:
                     continue
                 size = pad.GetSize()
                 sx, sy = kb.mm(size.x), kb.mm(size.y)
-                # a round pad by its radius, anything else by its bounding circle (conservative for rectangles)
-                r = max(sx, sy) / 2 if pad.GetShape() in round_shapes else math.hypot(sx, sy) / 2
+                net = pad.GetNetname()
+                shape = pad.GetShape()
+                angle = pad.GetOrientation().AsDegrees() % 180
                 for L in pad.GetLayerSet().CuStack():
-                    if L in layers:
-                        self._add_circle(L, x, y, r)
+                    if L not in layers:
+                        continue
+                    if shape in round_shapes:  # a round pad by its radius
+                        self._add_circle(L, x, y, max(sx, sy) / 2, net)
+                    elif abs(angle) < 1e-6 or abs(angle - 90) < 1e-6:  # a rectangle along the axes as it is
+                        hx, hy = (sx / 2, sy / 2) if abs(angle) < 1e-6 else (sy / 2, sx / 2)
+                        self._add_rect(L, x, y, hx, hy, net)
+                    else:  # anything else by its bounding circle
+                        self._add_circle(L, x, y, math.hypot(sx, sy) / 2, net)
         for item in board.GetTracks():
-            if item.GetNetname() in skip_nets:
+            net = item.GetNetname()
+            if net in skip_nets:
                 continue
             if item.GetClass() == "PCB_VIA":
                 p = item.GetPosition()
@@ -68,7 +79,7 @@ class Fixed:
                 if x0 - 1 <= x <= x1 + 1 and y0 - 1 <= y <= y1 + 1:
                     r = kb.via_diameter_mm(item) / 2
                     for L in layer_ids:
-                        self._add_circle(L, x, y, r)
+                        self._add_circle(L, x, y, r, net)
             else:
                 L = item.GetLayer()
                 if L not in layers:
@@ -77,37 +88,51 @@ class Fixed:
                 ax, ay, bx, by = kb.mm(a.x), kb.mm(a.y), kb.mm(b.x), kb.mm(b.y)
                 if max(ax, bx) < x0 - 1 or min(ax, bx) > x1 + 1 or max(ay, by) < y0 - 1 or min(ay, by) > y1 + 1:
                     continue
-                self._add_segment(L, ax, ay, bx, by, kb.mm(item.GetWidth()) / 2)
-        for (L, points, hw) in extra or []:
+                self._add_segment(L, ax, ay, bx, by, kb.mm(item.GetWidth()) / 2, net)
+        for (L, points, hw, net) in extra or []:
             if L in layers:
                 for (ax, ay), (bx, by) in zip(points, points[1:]):
-                    self._add_segment(L, ax, ay, bx, by, hw)
+                    self._add_segment(L, ax, ay, bx, by, hw, net)
 
     def _key(self, x, y):
         return (int(math.floor(x / self.cell)), int(math.floor(y / self.cell)))
 
-    def _add_circle(self, L, x, y, r):
+    def _add_circle(self, L, x, y, r, net):
         self.count += 1
         k = self._key(x, y)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
-                self.circles[L][(k[0] + dx, k[1] + dy)].append((x, y, r))
+                self.circles[L][(k[0] + dx, k[1] + dy)].append((x, y, r, net))
 
-    def _add_segment(self, L, ax, ay, bx, by, hw):
+    def _add_rect(self, L, x, y, hx, hy, net):
+        self.count += 1
+        kx0, ky0 = self._key(x - hx, y - hy)
+        kx1, ky1 = self._key(x + hx, y + hy)
+        for i in range(kx0 - 1, kx1 + 2):
+            for j in range(ky0 - 1, ky1 + 2):
+                self.rects[L][(i, j)].append((x, y, hx, hy, net))
+
+    def _add_segment(self, L, ax, ay, bx, by, hw, net):
         self.count += 1
         kx0, ky0 = self._key(min(ax, bx) - hw, min(ay, by) - hw)
         kx1, ky1 = self._key(max(ax, bx) + hw, max(ay, by) + hw)
         for i in range(kx0 - 1, kx1 + 2):
             for j in range(ky0 - 1, ky1 + 2):
-                self.segments[L][(i, j)].append((ax, ay, bx, by, hw))
+                self.segments[L][(i, j)].append((ax, ay, bx, by, hw, net))
 
-    def blocked(self, L, x, y, r) -> bool:
-        """Is a track centre at (x, y) with half-width-plus-clearance r too close to fixed copper on layer L?"""
+    def blocked(self, L, x, y, r, skip: str | None = None) -> bool:
+        """Is a track centre at (x, y) with half-width-plus-clearance r too close to fixed copper on layer L? The
+        copper of net ``skip`` does not count (a net's own terminals)."""
         k = self._key(x, y)
-        for (cx, cy, cr) in self.circles[L].get(k, ()):
-            if math.hypot(x - cx, y - cy) < cr + r:
+        for (cx, cy, cr, net) in self.circles[L].get(k, ()):
+            if net != skip and math.hypot(x - cx, y - cy) < cr + r:
                 return True
-        for (ax, ay, bx, by, hw) in self.segments[L].get(k, ()):
+        for (cx, cy, hx, hy, net) in self.rects[L].get(k, ()):
+            if net != skip and math.hypot(max(abs(x - cx) - hx, 0.0), max(abs(y - cy) - hy, 0.0)) < r:
+                return True
+        for (ax, ay, bx, by, hw, net) in self.segments[L].get(k, ()):
+            if net == skip:
+                continue
             dx, dy = bx - ax, by - ay
             l2 = dx * dx + dy * dy
             t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / l2))
@@ -126,9 +151,11 @@ class Cells:
         self.ny = int(math.ceil((y1 - self.y0) / cell_mm))
         self.layers = layer_ids
         self.pitch = track_mm + clearance_mm
-        r = track_mm / 2 + clearance_mm
-        n = max(2, int(round(cell_mm / sample_mm)))
-        offsets = (-cell_mm / 4, 0.0, cell_mm / 4)
+        self.fixed = fixed
+        self.r = track_mm / 2 + clearance_mm
+        self.sample = sample_mm
+        self.n = max(2, int(round(cell_mm / sample_mm)))
+        self.offsets = (-cell_mm / 4, 0.0, cell_mm / 4)
         # cap_h[L][(i, j)]: boundary between (i, j) and (i + 1, j); cap_v[L][(i, j)]: between (i, j) and (i, j + 1)
         self.cap_h: dict = {}
         self.cap_v: dict = {}
@@ -136,27 +163,52 @@ class Cells:
             ch, cv = {}, {}
             for i in range(self.nx):
                 for j in range(self.ny):
-                    bx = self.x0 + (i + 1) * cell_mm
-                    by = self.y0 + j * cell_mm
-                    if i + 1 < self.nx:  # the narrowest of three cuts: on the boundary and a quarter cell either side
-                        ch[(i, j)] = min(self._tracks([not fixed.blocked(L, bx + o, by + (k + 0.5) * sample_mm, r)
-                                                       for k in range(n)], sample_mm) for o in offsets)
-                    bx = self.x0 + i * cell_mm
-                    by = self.y0 + (j + 1) * cell_mm
+                    if i + 1 < self.nx:
+                        ch[(i, j)] = self._cut(L, "h", i, j)
                     if j + 1 < self.ny:
-                        cv[(i, j)] = min(self._tracks([not fixed.blocked(L, bx + (k + 0.5) * sample_mm, by + o, r)
-                                                       for k in range(n)], sample_mm) for o in offsets)
+                        cv[(i, j)] = self._cut(L, "v", i, j)
             self.cap_h[L], self.cap_v[L] = ch, cv
 
-    def _tracks(self, free, sample_mm) -> int:
+    def _cut(self, L, kind, i, j, skip=None) -> int:
+        """The tracks that cross a boundary: the narrowest of three cuts, on the boundary and a quarter cell either
+        side, each sampled along its length and its free runs added up."""
+        n, sm, r = self.n, self.sample, self.r
+        if kind == "h":
+            bx, by = self.x0 + (i + 1) * self.c, self.y0 + j * self.c
+            return min(self._tracks([not self.fixed.blocked(L, bx + o, by + (k + 0.5) * sm, r, skip) for k in range(n)])
+                       for o in self.offsets)
+        bx, by = self.x0 + i * self.c, self.y0 + (j + 1) * self.c
+        return min(self._tracks([not self.fixed.blocked(L, bx + (k + 0.5) * sm, by + o, r, skip) for k in range(n)])
+                   for o in self.offsets)
+
+    def _tracks(self, free) -> int:
         total, run = 0, 0
         for f in free + [False]:
             if f:
                 run += 1
             elif run:
-                total += int(math.floor(run * sample_mm / self.pitch)) + 1
+                total += int(math.floor(run * self.sample / self.pitch)) + 1
                 run = 0
         return total
+
+    def capacity_near(self, L, x, y, radius_mm: float, skip: str) -> dict:
+        """The capacities of the boundaries within ``radius_mm`` of (x, y) with the copper of net ``skip`` left out:
+        what a run of that net sees around its own terminal."""
+        i0, j0 = self.cell_of(x, y)
+        span = int(math.ceil(radius_mm / self.c))
+        out = {}
+        for i in range(i0 - span, i0 + span + 1):
+            for j in range(j0 - span, j0 + span + 1):
+                if not (0 <= i < self.nx and 0 <= j < self.ny):
+                    continue
+                cx, cy = self.centre(i, j)
+                if math.hypot(cx - x, cy - y) > radius_mm:
+                    continue
+                if i + 1 < self.nx:
+                    out[("h", i, j)] = self._cut(L, "h", i, j, skip)
+                if j + 1 < self.ny:
+                    out[("v", i, j)] = self._cut(L, "v", i, j, skip)
+        return out
 
     def cell_of(self, x, y) -> tuple[int, int]:
         return (min(self.nx - 1, max(0, int((x - self.x0) / self.c))), min(self.ny - 1, max(0, int((y - self.y0) / self.c))))
@@ -215,6 +267,7 @@ class Run:
     deficit_mm: float = 0.0  # the length the net is short of its group
     tag: object = None  # the caller's handle (which link of which net)
     group: object = None  # runs of one bundle (a lane between two packages) prefer to share a layer
+    local: dict = field(default_factory=dict)  # (layer, key) -> capacity around the run's terminals without its own copper
 
     def guide(self, cells: Cells, half_mm: float | None = None) -> tuple[list, float]:
         """The route as a polyline of cell centres with a half-width: the band the detailed search stays in."""
@@ -243,11 +296,15 @@ class Planner:
         self.usage: dict = defaultdict(int)  # (layer, key) -> tracks in use (the runs themselves)
         self.extra: dict = defaultdict(int)  # (layer, key) -> tracks reserved as length room
         self.history: dict = defaultdict(float)
-        self.reserved: dict = {}  # (layer, key) -> units the runs whose terminals sit beside the boundary need
+        self.local_max: dict = {}  # (layer, key) -> the widest any run's own view of the boundary is
         self.bundles: dict = defaultdict(list)  # group -> runs
 
-    def cap(self, L, key) -> int:
-        return max(self.cells.capacity(L, key), self.reserved.get((L, key), 0))
+    def cap(self, L, key, run: Run | None = None) -> int:
+        """The boundary's capacity as ``run`` sees it (its own copper left out around its terminals); without a run,
+        the widest view any run has of it, for the shared accounting."""
+        if run is not None:
+            return run.local.get((L, key), self.cells.capacity(L, key))
+        return max(self.cells.capacity(L, key), self.local_max.get((L, key), 0))
 
     def _search(self, run: Run, present: float):
         cells = self.cells
@@ -274,7 +331,7 @@ class Planner:
                     if not (0 <= nxt[0] < cells.nx and 0 <= nxt[1] < cells.ny):
                         continue
                     key = cells.boundary(cur, nxt)
-                    cap = self.cap(L, key)
+                    cap = run.local.get((L, key), self.cells.capacity(L, key))
                     if cap <= 0:
                         continue
                     use = self.usage.get((L, key), 0) + self.extra.get((L, key), 0)
@@ -318,13 +375,16 @@ class Planner:
                     self.extra[(run.layer, key)] += take
             run.reserved_mm = sum(run.taken.values()) * self.cells.c / self.costs.meander_factor
 
-    def _reserve_terminals(self, runs: list[Run]):
-        self.reserved = defaultdict(int)
+    def _local_capacities(self, runs: list[Run], radius_mm: float = 1.0):
+        self.local_max = defaultdict(int)
         for run in runs:
-            for cell in {self.cells.cell_of(*run.a), self.cells.cell_of(*run.b)}:
-                for key in self.cells.boundaries_of(cell):
-                    for L in run.layers:
-                        self.reserved[(L, key)] += 1
+            if not run.local:
+                for L in run.layers:
+                    for (x, y) in (run.a, run.b):
+                        for key, cap in self.cells.capacity_near(L, x, y, radius_mm, run.net).items():
+                            run.local[(L, key)] = max(run.local.get((L, key), 0), cap)
+            for k2, cap in run.local.items():
+                self.local_max[k2] = max(self.local_max[k2], cap)
 
     def overflow(self) -> dict:
         return {k2: u - self.cap(k2[0], k2[1]) for k2, u in self.usage.items() if u > self.cap(k2[0], k2[1])}
@@ -338,7 +398,7 @@ class Planner:
         self.history = defaultdict(float)
         for run in runs:
             run.cells, run.layer, run.length_mm, run.taken, run.reserved_mm = [], None, 0.0, {}, 0.0
-        self._reserve_terminals(runs)
+        self._local_capacities(runs)
         self.bundles = defaultdict(list)
         for run in runs:
             if run.group is not None:

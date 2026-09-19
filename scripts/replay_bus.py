@@ -116,7 +116,7 @@ def replay(key: str) -> dict:
                 links.append(link)  # layer and band filled in by the planner below
             else:
                 fixed_mm[name] += L
-                kept_escapes.append((layer_ids[layer], points, rules_bus.track_mm / 2))
+                kept_escapes.append((layer_ids[layer], points, rules_bus.track_mm / 2, name))
                 links.append(link + ((points, band_mm),) if band_mm > 0 else link)
         plans[name] = links
     print(f"   plan: {added} vias placed, {sum(len(v) for v in plans.values())} links over {len(plans)} nets, "
