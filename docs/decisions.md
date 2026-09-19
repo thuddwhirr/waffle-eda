@@ -409,11 +409,18 @@ negotiation with crossings as conflicts (the runs a run crossed cost it like an 
 history) leave 186 to 241, spread over every layer (In5.Cu 162 of them at the end); with free layers 590 fall to
 186 to 231; with the corridor widened to 12 mm, so that a run may come around the memory as the reference's do,
 and 80 rounds, 259 remain (`build/plan-wide.log`) and the runs pushed off their partners detour to 44 and 53 mm
-instead. The routes' order within a layer is set by the side each run passes each via and each package on (its
-homotopy), and a congestion negotiation swaps two runs that cross back and forth: the plateau of D28 again, at
-0.4 mm instead of 0.2. The reference's answer is structural: its runs come around the memory (U11 is entered from
-the north 58 times, the south 31, the west 28, the east 18) and the hollow via field is where the order changes
-(a run leaves the hollow on the row its via's position allows). Decision: the planner keeps the capacity model as
+instead. Of the 241 crossings with the reference's layers, 184 are between runs of one bundle (address between
+U11 and U4 48, address between U11 and U12 41, lane 0 between U11 and U12 33, lane 1 between U11 and U12 33, lane 1
+between U12 and U4 23), 8 between bundles of one group and 49 between groups (`scripts/draw_plan.py` on the dump
+`build/plan-ref-layers.json`, drawings in `build/plan-draw/`): the twist of D28, an order at one end that is not
+the order at the other. The drawing shows the difference plainly: the reference's runs of a bundle go as ordered
+rivers, around the memory where the order asks for it, and enter the hollows in the order of their vias; the
+planner's go straight through the memory area and cross each other on the way. The routes' order within a layer
+is set by the side each run passes each via and each package on (its homotopy), and a congestion negotiation swaps
+two runs that cross back and forth: the plateau of D28 again, at 0.4 mm instead of 0.2. The reference's answer is
+structural: its runs come around the memory (U11 is entered from the north 58 times, the south 31, the west 28,
+the east 18) and the hollow via field is where the order changes (a run leaves the hollow on the row its via's
+position allows). Decision: the planner keeps the capacity model as
 its check and gets a structural front end, to be built next unless the owner objects: (a) at each package, an
 ordered escape of every run from its via to the package boundary on the run's layer, which is the M2 escape
 router's problem on the inner layers with the reference's vias as input and the order along the boundary as its
