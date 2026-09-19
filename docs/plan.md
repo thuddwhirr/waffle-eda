@@ -105,6 +105,7 @@ changes only at the packages, on ButterStick then LogicBone. The course changed 
 | board | routed | electrical violations | lengths within spread | vias inside packages | run |
 | --- | --- | --- | --- | --- | --- |
 | ButterStick | 53 of 55 | 0 | 36 of 55 (29.5 to 43.6 mm) | 100 % | pads, tuner in the DRAM hollows |
+| ButterStick | 54 of 55 | 0 | 27 of 55 | 100 % | the artifact on disk, DQ5 failed (D31) |
 | LogicBone | 45 of 50 | 0 | 40 of 50 (12.4 to 43.5 mm) | 100 % | FPGA fan-out kept, DRAMs from pads |
 
 Failing cases and their blockers. ButterStick: CKE0 (to U4.F18) and DQ5 (to U12.H8) end the negotiation

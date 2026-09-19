@@ -41,9 +41,9 @@ class Fixed:
         """``extra``: (layer id, polyline, half-width) items the board does not carry yet but the plan keeps, such as
         the escapes a reference decided."""
         self.cell = cell
-        self.circles: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, r, net)]
-        self.rects: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, hx, hy, net)]
-        self.segments: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(ax, ay, bx, by, hw, net)]
+        self.circles: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, r, net, kind)]
+        self.rects: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(x, y, hx, hy, net, kind)]
+        self.segments: dict[int, dict] = {L: defaultdict(list) for L in layer_ids}  # layer -> cell -> [(ax, ay, bx, by, hw, net, kind)]
         self.count = 0
         x0, y0, x1, y1 = region
         layers = set(layer_ids)
@@ -63,12 +63,12 @@ class Fixed:
                     if L not in layers:
                         continue
                     if shape in round_shapes:  # a round pad by its radius
-                        self._add_circle(L, x, y, max(sx, sy) / 2, net)
+                        self._add_circle(L, x, y, max(sx, sy) / 2, net, "pad")
                     elif abs(angle) < 1e-6 or abs(angle - 90) < 1e-6:  # a rectangle along the axes as it is
                         hx, hy = (sx / 2, sy / 2) if abs(angle) < 1e-6 else (sy / 2, sx / 2)
-                        self._add_rect(L, x, y, hx, hy, net)
+                        self._add_rect(L, x, y, hx, hy, net, "pad")
                     else:  # anything else by its bounding circle
-                        self._add_circle(L, x, y, math.hypot(sx, sy) / 2, net)
+                        self._add_circle(L, x, y, math.hypot(sx, sy) / 2, net, "pad")
         for item in board.GetTracks():
             net = item.GetNetname()
             if net in skip_nets:
@@ -79,7 +79,7 @@ class Fixed:
                 if x0 - 1 <= x <= x1 + 1 and y0 - 1 <= y <= y1 + 1:
                     r = kb.via_diameter_mm(item) / 2
                     for L in layer_ids:
-                        self._add_circle(L, x, y, r, net)
+                        self._add_circle(L, x, y, r, net, "via")
             else:
                 L = item.GetLayer()
                 if L not in layers:
@@ -88,57 +88,69 @@ class Fixed:
                 ax, ay, bx, by = kb.mm(a.x), kb.mm(a.y), kb.mm(b.x), kb.mm(b.y)
                 if max(ax, bx) < x0 - 1 or min(ax, bx) > x1 + 1 or max(ay, by) < y0 - 1 or min(ay, by) > y1 + 1:
                     continue
-                self._add_segment(L, ax, ay, bx, by, kb.mm(item.GetWidth()) / 2, net)
+                self._add_segment(L, ax, ay, bx, by, kb.mm(item.GetWidth()) / 2, net, "track")
         for (L, points, hw, net) in extra or []:
             if L in layers:
                 for (ax, ay), (bx, by) in zip(points, points[1:]):
-                    self._add_segment(L, ax, ay, bx, by, hw, net)
+                    self._add_segment(L, ax, ay, bx, by, hw, net, "escape")
 
     def _key(self, x, y):
         return (int(math.floor(x / self.cell)), int(math.floor(y / self.cell)))
 
-    def _add_circle(self, L, x, y, r, net):
+    def _add_circle(self, L, x, y, r, net, kind="pad"):
         self.count += 1
         k = self._key(x, y)
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
-                self.circles[L][(k[0] + dx, k[1] + dy)].append((x, y, r, net))
+                self.circles[L][(k[0] + dx, k[1] + dy)].append((x, y, r, net, kind))
 
-    def _add_rect(self, L, x, y, hx, hy, net):
+    def _add_rect(self, L, x, y, hx, hy, net, kind="pad"):
         self.count += 1
         kx0, ky0 = self._key(x - hx, y - hy)
         kx1, ky1 = self._key(x + hx, y + hy)
         for i in range(kx0 - 1, kx1 + 2):
             for j in range(ky0 - 1, ky1 + 2):
-                self.rects[L][(i, j)].append((x, y, hx, hy, net))
+                self.rects[L][(i, j)].append((x, y, hx, hy, net, kind))
 
-    def _add_segment(self, L, ax, ay, bx, by, hw, net):
+    def _add_segment(self, L, ax, ay, bx, by, hw, net, kind="track"):
         self.count += 1
         kx0, ky0 = self._key(min(ax, bx) - hw, min(ay, by) - hw)
         kx1, ky1 = self._key(max(ax, bx) + hw, max(ay, by) + hw)
         for i in range(kx0 - 1, kx1 + 2):
             for j in range(ky0 - 1, ky1 + 2):
-                self.segments[L][(i, j)].append((ax, ay, bx, by, hw, net))
+                self.segments[L][(i, j)].append((ax, ay, bx, by, hw, net, kind))
 
     def blocked(self, L, x, y, r, skip: str | None = None) -> bool:
         """Is a track centre at (x, y) with half-width-plus-clearance r too close to fixed copper on layer L? The
         copper of net ``skip`` does not count (a net's own terminals)."""
+        return bool(self.hits(L, x, y, r, skip, first=True))
+
+    def hits(self, L, x, y, r, skip: str | None = None, first: bool = False) -> list:
+        """Every fixed item on layer L within r of (x, y), as (net, kind); the copper of net ``skip`` is left out.
+        ``first`` stops at the first hit, which is what ``blocked`` asks for."""
+        out = []
         k = self._key(x, y)
-        for (cx, cy, cr, net) in self.circles[L].get(k, ()):
+        for (cx, cy, cr, net, kind) in self.circles[L].get(k, ()):
             if net != skip and math.hypot(x - cx, y - cy) < cr + r:
-                return True
-        for (cx, cy, hx, hy, net) in self.rects[L].get(k, ()):
+                out.append((net, kind))
+                if first:
+                    return out
+        for (cx, cy, hx, hy, net, kind) in self.rects[L].get(k, ()):
             if net != skip and math.hypot(max(abs(x - cx) - hx, 0.0), max(abs(y - cy) - hy, 0.0)) < r:
-                return True
-        for (ax, ay, bx, by, hw, net) in self.segments[L].get(k, ()):
+                out.append((net, kind))
+                if first:
+                    return out
+        for (ax, ay, bx, by, hw, net, kind) in self.segments[L].get(k, ()):
             if net == skip:
                 continue
             dx, dy = bx - ax, by - ay
             l2 = dx * dx + dy * dy
             t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / l2))
             if math.hypot(x - (ax + t * dx), y - (ay + t * dy)) < hw + r:
-                return True
-        return False
+                out.append((net, kind))
+                if first:
+                    return out
+        return out
 
 
 # --- the cell grid and its capacities ---------------------------------------------------------------------------------

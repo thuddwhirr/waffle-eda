@@ -472,3 +472,47 @@ question (Lattice's ECP5 numbers for these boards), which the reference may itse
 first asks the router to match a designer's practice; the second asks it to meet the part's specification, and would
 make a failing reference possible. No scope change is made here either way. A third option, if the owner wants the
 evidence first: measure both references per segment against CK, as the vendors define the quantity, and decide after.
+
+**D31. Why the reference is not blocked where we are: it never drops a via between the balls, it keeps the top
+layer for escapes, and it collects the layer changes in the hollows.** Measurement, 2026-09-19, with the new
+`scripts/compare_net.py` (the reference's own route for a net laid over our routed board, point by point, naming
+our copper that sits in it) against `build/bench/butterstick-bus.kicad_pcb`, the run that scored 54 of 55 nets
+connected, 0 electrical violations, 27 of 55 in their length window, DQ5 failed.
+
+Vias by place, the whole bus (reference 149, ours 172):
+
+| where | reference | ours |
+| --- | --- | --- |
+| in a pad | 64 | 56 |
+| hollow of U11 | 35 | 18 |
+| hollow of U12 | 37 | 17 |
+| between the balls of U4 | 0 | 13 |
+| between the balls of U11 | 0 | 13 |
+| between the balls of U12 | 1 | 22 |
+| margins of U4, U11, U12 | 11 | 33 |
+
+The reference puts one via between two balls in the entire bus; we put 48. A via between balls closes the only
+channel its neighbours have out of the array, on every layer at once. Top layer: the reference gives a data net
+2 to 4 mm of F.Cu (an escape) and nothing else, its only long top runs being the seven nets it routes entirely on
+top (CKE0 and CKE1 at 33.7 mm, A8, A7, RST, CS1, ODT1); ours has 22 nets over 5 mm on F.Cu, eight of them data
+nets (DQ7 22.6 mm, DQ6 19.6, DQ3 17.7, DQ14 16.2), and 84 mm of top copper inside U4's footprint against the
+reference's 35 mm, which is copper lying across the escape channels of balls that have not escaped yet.
+
+DQ5, the net that failed: the reference routes it U4.P19 in-pad via, B.Cu 14.9 mm to a via in U12's hollow at
+(151.26, 110.70), F.Cu 1.9 mm from there to the ball, In5.Cu 13.5 mm up to a via in U11's hollow at
+(151.50, 99.30), F.Cu 2.0 mm to U11.H8. On our board that U12 hollow site is held by DQ4's via, the U11 site is
+crossed by five address tracks, and 54 % of the reference's 32.2 mm route is under our copper (RAS, the CK1 pair,
+UDQS_N, ODT1, DQ11). Our router's own diagnosis agrees: it could not reach U12.H8 because our A14 and DQ14 tracks
+run across that escape on F.Cu. The nets in the way are on different layers in the reference: RAS is In2.Cu 36.2
+mm there and F.Cu 1.1 mm, ours is In5.Cu 15.3 and F.Cu 14.2.
+
+Hollow sites: 11 of the reference's 37 sites in U12's hollow carry one of our vias, and 8 of those 11 carry a
+different net's (the reference's A1 site holds our A0, its A15 site our WE, its DQ12 site our DQ14). The hollow is
+a permutation network with a fixed number of cells and the reference assigns each net the cell that untwists its
+lane; our negotiation hands out cells first come, so the late nets find none.
+
+What this settles: the three structural rules to give the planner, in this order. No via between balls, ever (the
+via goes in the hollow or the margin). The top layer carries escapes only, unless a net is routed on it end to end.
+Each memory's hollow cells are allocated as a permutation, by the order the lane needs, before any detailed search.
+The capacity model of D29 already measures the channels these rules protect; it cannot invent the rules, because a
+congestion cost cannot tell the difference between a via that blocks a channel and one that does not.
