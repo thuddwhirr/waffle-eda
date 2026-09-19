@@ -144,13 +144,15 @@ class Fixed:
 # --- the cell grid and its capacities ---------------------------------------------------------------------------------
 class Cells:
     def __init__(self, region, layer_ids: list[int], fixed: Fixed, track_mm: float, clearance_mm: float,
-                 cell_mm: float = 0.4, sample_mm: float = 0.05):
+                 cell_mm: float = 0.4, sample_mm: float = 0.05, grid_mm: float = 0.0):
+        """``grid_mm``: the detailed router's node spacing; tracks are counted at that pitch when it is coarser than
+        the rules' pitch, so that the plan promises no more than the detailed grid can hold."""
         self.x0, self.y0, x1, y1 = region
         self.c = cell_mm
         self.nx = int(math.ceil((x1 - self.x0) / cell_mm))
         self.ny = int(math.ceil((y1 - self.y0) / cell_mm))
         self.layers = layer_ids
-        self.pitch = track_mm + clearance_mm
+        self.pitch = max(track_mm + clearance_mm, grid_mm)
         self.fixed = fixed
         self.r = track_mm / 2 + clearance_mm
         self.sample = sample_mm
@@ -251,6 +253,55 @@ class Cells:
         return sum(self.cap_h[L].values()) + sum(self.cap_v[L].values())
 
 
+# --- crossings ---------------------------------------------------------------------------------------------------------
+def _cyclic_position(stretch: list, t: int, cell, d0, d_last) -> float:
+    """Where a cell attached to the ``t``-th cell of a shared stretch sits on the walk around the stretch: behind its
+    start 0, along its left side 1 to 2, ahead of its end 3, back along its right side 4 to 5."""
+    n = len(stretch) - 1
+    sx, sy = stretch[t]
+    if t == 0 and cell == (sx - d0[0], sy - d0[1]):
+        return 0.0
+    if t == n and cell == (sx + d_last[0], sy + d_last[1]):
+        return 3.0
+    d = (stretch[t + 1][0] - sx, stretch[t + 1][1] - sy) if t < n else d_last
+    cross = d[0] * (cell[1] - sy) - d[1] * (cell[0] - sx)
+    frac = t / n if n else 0.0
+    return 1.0 + frac if cross > 0 else 5.0 - frac
+
+
+def path_crossings(P: list, Q: list) -> list:
+    """The stretches of cells two 4-connected paths share on which they cross: each is a list of cells. Two paths
+    on one layer can only cross through a shared cell; sharing cells side by side is no crossing. A stretch that
+    holds an end of either path is not a crossing (a terminal on the other's route is a matter of capacity)."""
+    where = {c: idx for idx, c in enumerate(Q)}
+    out = []
+    k = 0
+    while k < len(P):
+        if P[k] not in where:
+            k += 1
+            continue
+        m = k
+        while m + 1 < len(P) and P[m + 1] in where and abs(where[P[m + 1]] - where[P[m]]) == 1:
+            m += 1
+        stretch = P[k:m + 1]
+        qi, qj = where[P[k]], where[P[m]]
+        if k > 0 and m < len(P) - 1 and min(qi, qj) > 0 and max(qi, qj) < len(Q) - 1:
+            p_in, p_out = P[k - 1], P[m + 1]
+            q_in = Q[qi - 1] if qj >= qi else Q[qi + 1]  # Q oriented along P
+            q_out = Q[qj + 1] if qj >= qi else Q[qj - 1]
+            d_last = (p_out[0] - stretch[-1][0], p_out[1] - stretch[-1][1]) if len(stretch) == 1 else \
+                (stretch[-1][0] - stretch[-2][0], stretch[-1][1] - stretch[-2][1])
+            d0 = (stretch[1][0] - stretch[0][0], stretch[1][1] - stretch[0][1]) if len(stretch) > 1 else d_last
+            marks = sorted([(_cyclic_position(stretch, 0, p_in, d0, d_last), "P"),
+                            (_cyclic_position(stretch, len(stretch) - 1, p_out, d0, d_last), "P"),
+                            (_cyclic_position(stretch, 0, q_in, d0, d_last), "Q"),
+                            (_cyclic_position(stretch, len(stretch) - 1, q_out, d0, d_last), "Q")])
+            if marks[0][1] != marks[1][1] and marks[1][1] != marks[2][1]:  # P, Q, P, Q around the stretch
+                out.append(stretch)
+        k = m + 1
+    return out
+
+
 # --- runs and the negotiated global routing --------------------------------------------------------------------------
 @dataclass
 class Run:
@@ -268,6 +319,7 @@ class Run:
     tag: object = None  # the caller's handle (which link of which net)
     group: object = None  # runs of one bundle (a lane between two packages) prefer to share a layer
     local: dict = field(default_factory=dict)  # (layer, key) -> capacity around the run's terminals without its own copper
+    crossed: set = field(default_factory=set)  # cells of the runs this one crossed last round, on its layer
 
     def guide(self, cells: Cells, half_mm: float | None = None) -> tuple[list, float]:
         """The route as a polyline of cell centres with a half-width: the band the detailed search stays in."""
@@ -286,6 +338,7 @@ class PlanCosts:
     meander_factor: float = 2.0  # room reserved for a length deficit d along a run of length l: d * factor / l tracks
     affinity_mm: float = 8.0  # a run pays this much (times the share of its bundle elsewhere) for leaving its bundle's layer
     cramped_mm: float = 0.2  # a run pays this much per boundary and per extra track it wanted there but cannot have
+    crossing: float = 1.0  # a crossing counts as this much overflow on every boundary of the shared cells
     seed: int = 1
 
 
@@ -336,6 +389,8 @@ class Planner:
                         continue
                     use = self.usage.get((L, key), 0) + self.extra.get((L, key), 0)
                     over = max(0, use + 1 - cap)
+                    if (L, nxt) in run.crossed:
+                        over += self.costs.crossing
                     unmet = max(0, run.units - 1 - max(0, cap - use - 1))
                     cost = cells.c + bias + present * over + self.history.get((L, key), 0.0) + self.costs.cramped_mm * unmet
                     nd = d + cost
@@ -389,6 +444,25 @@ class Planner:
     def overflow(self) -> dict:
         return {k2: u - self.cap(k2[0], k2[1]) for k2, u in self.usage.items() if u > self.cap(k2[0], k2[1])}
 
+    def crossings(self, runs: list[Run]) -> list:
+        """(run index, run index, layer, shared stretch) for every crossing between two routed runs on one layer."""
+        by_cell: dict = defaultdict(set)
+        for k, run in enumerate(runs):
+            for c in run.cells:
+                by_cell[(run.layer, c)].add(k)
+        pairs = set()
+        for members in by_cell.values():
+            if len(members) > 1:
+                members = sorted(members)
+                for i, a in enumerate(members):
+                    for b in members[i + 1:]:
+                        pairs.add((a, b))
+        out = []
+        for a, b in sorted(pairs):
+            for stretch in path_crossings(runs[a].cells, runs[b].cells):
+                out.append((a, b, runs[a].layer, stretch))
+        return out
+
     def route(self, runs: list[Run], trace=None) -> dict:
         """Negotiate all runs; returns {"overflow": boundaries still over capacity, "contested": runs on them,
         "unrouted": runs without a path, "rounds": n}."""
@@ -432,12 +506,26 @@ class Planner:
                     contested.add(k)
             for k2, over in over_keys.items():
                 self.history[k2] += self.costs.history * over
+            # crossings: both runs are contested, each remembers the other's cells, the shared cells' boundaries
+            # gain history so that one of them leaves (to another route or another layer)
+            crossed = self.crossings(runs)
+            for run in runs:
+                run.crossed = set()
+            for a, b, L, stretch in crossed:
+                contested.update((a, b))
+                runs[a].crossed.update((L, c) for c in runs[b].cells)
+                runs[b].crossed.update((L, c) for c in runs[a].cells)
+                for c in stretch:
+                    for key in self.cells.boundaries_of(c):
+                        self.history[(L, key)] += self.costs.history * self.costs.crossing
             if trace and (it % 5 == 0 or not contested or it == self.costs.iterations - 1):
                 trace(f"      plan it {it}: {sum(1 for r in runs if r.cells)}/{len(runs)} routed, "
-                      f"{len(contested)} runs over capacity on {len(over_keys)} boundaries, {time.time() - t0:.1f}s")
+                      f"{len(contested)} runs contested: {len(over_keys)} boundaries over capacity, {len(crossed)} crossings, "
+                      f"{time.time() - t0:.1f}s")
             if not contested:
                 break
         over_keys = self.overflow()
+        crossed = self.crossings(runs)
         spots = []
         for (L, key), over in sorted(over_keys.items(), key=lambda kv: -kv[1])[:8]:
             kind, i, j = key
@@ -445,7 +533,8 @@ class Planner:
             spots.append((L, round(x + (self.cells.c / 2 if kind == "h" else 0), 1),
                           round(y + (self.cells.c / 2 if kind == "v" else 0), 1), over, self.cap(L, key)))
         return {"overflow": len(over_keys), "contested": len(contested), "contested_runs": sorted(contested),
-                "unrouted": sum(1 for r in runs if not r.cells), "rounds": rounds, "spots": spots}
+                "unrouted": sum(1 for r in runs if not r.cells), "rounds": rounds, "spots": spots,
+                "crossings": [(a, b, L, self.cells.centre(*stretch[0])) for a, b, L, stretch in crossed]}
 
 
 def reserve_lengths(runs: list[Run], fixed_mm: dict, groups: list, factor: float) -> dict:
@@ -474,18 +563,18 @@ def reserve_lengths(runs: list[Run], fixed_mm: dict, groups: list, factor: float
 
 def plan_runs(board, region, layer_ids: list[int], track_mm: float, clearance_mm: float, runs: list[Run],
               groups: list | None = None, fixed_mm: dict | None = None, costs: PlanCosts | None = None,
-              trace=None, cell_mm: float = 0.4, extra: list | None = None) -> dict:
+              trace=None, cell_mm: float = 0.4, extra: list | None = None, grid_mm: float = 0.0) -> dict:
     """Plan ``runs`` on the board's fixed copper: a first pass at one unit each, then, when ``groups`` ask for
     matched lengths, a second pass with the length deficits reserved as extra units. Returns the statistics."""
     costs = costs or PlanCosts()
     t0 = time.time()
     fixed = Fixed(board, region, layer_ids, extra=extra)
-    cells = Cells(region, layer_ids, fixed, track_mm, clearance_mm, cell_mm=cell_mm)
+    cells = Cells(region, layer_ids, fixed, track_mm, clearance_mm, cell_mm=cell_mm, grid_mm=grid_mm)
     stats = {"cells": (cells.nx, cells.ny), "fixed": fixed.count, "build_s": round(time.time() - t0, 1),
              "capacity": {L: cells.total_capacity(L) for L in layer_ids}, "cells_obj": cells}
     if trace:
         trace(f"      plan: {cells.nx}x{cells.ny} cells of {cell_mm} mm on {len(layer_ids)} layers, {fixed.count} fixed items, "
-              f"capacity per layer {[cells.total_capacity(L) for L in layer_ids]}, {stats['build_s']}s")
+              f"tracks at {cells.pitch:.3f} mm, capacity per layer {[cells.total_capacity(L) for L in layer_ids]}, {stats['build_s']}s")
     planner = Planner(cells, costs)
     stats["pass1"] = planner.route(runs, trace)
     stats["pass1"]["lengths"] = [r.length_mm for r in runs]

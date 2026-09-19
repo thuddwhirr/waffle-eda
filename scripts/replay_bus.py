@@ -149,13 +149,16 @@ def replay(key: str) -> dict:
         t0 = time.time()
         stats = planr.plan_runs(board, region, list(bus_layers), rules_bus.track_mm, rules_bus.clearance_mm, runs,
                                 groups=groups, fixed_mm=fixed_mm, costs=pcosts, trace=lambda s: print(s, flush=True),
-                                extra=kept_escapes)
+                                extra=kept_escapes, grid_mm=min(l.pitch for l in parts.values()) / 4)
         cells = stats["cells_obj"]
         last = stats.get("pass2", stats["pass1"])
         agree = sum(1 for r in runs if r.layer == r.tag[2])
         confusion = Counter((board.GetLayerName(r.tag[2]), board.GetLayerName(r.layer) if r.layer is not None else "-") for r in runs)
-        print(f"   planner: {last['rounds']} rounds, {last['unrouted']} runs unrouted, {last['contested']} runs over "
-              f"capacity on {last['overflow']} boundaries | {time.time() - t0:.1f}s", flush=True)
+        print(f"   planner: {last['rounds']} rounds, {last['unrouted']} runs unrouted, {last['contested']} runs contested: "
+              f"{last['overflow']} boundaries over capacity, {len(last['crossings'])} crossings | {time.time() - t0:.1f}s", flush=True)
+        for a, b, L, (x, y) in last["crossings"]:
+            print(f"      CROSSING {runs[a].net.split('/')[-1]}/{runs[a].tag[1]} x {runs[b].net.split('/')[-1]}/{runs[b].tag[1]} "
+                  f"on {board.GetLayerName(L)} at ({x:.1f}, {y:.1f})")
         print(f"   planner: layer as the reference's on {agree}/{len(runs)} runs; reference -> planner: "
               + ", ".join(f"{a}->{b} {n}" for (a, b), n in sorted(confusion.items(), key=lambda kv: -kv[1])), flush=True)
         for r in runs:
