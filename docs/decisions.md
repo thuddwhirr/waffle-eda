@@ -558,3 +558,42 @@ legs of a net's tree, counting the vias its copper already carries. `scripts/bus
 escape style and via budget and hands both to the router (`BUS_STYLE=diagonal` gives the cross-board rule instead,
 which is what a board with no reference of its own gets; `BUS_STYLE=off` restores the old freedom), and every run
 now prints its structure against the reference's, so the distance is measured rather than guessed.
+
+**D33. The bench's 0.8 mm spacing between bus nets is what stalls the negotiation, and every measurement since
+18 September was taken inside that stall.** Measurement, 2026-09-19 (`scripts/bus_bench.py` with `BUS_SPACING`,
+probe logs `build/probe-spacing0.log`, `build/probe-margin4.log`, `build/probe-a07c503.log`,
+`build/probe-10d645b.log`).
+
+Applying D32's rules to the pipeline made ButterStick far worse, and the attribution runs said the cause was
+neither rule:
+
+| ButterStick, one run each | nets connected |
+| --- | --- |
+| the 18 September run recorded in the plan | 54 of 55 |
+| the reference's escape style, via budget 3 | 15 of 55 |
+| the cross-board style (ball or corner), via budget 3 | 19 of 55 |
+| no style, via budget 3 | 20 of 55 |
+| the reference's style, no via budget | 18 of 55 |
+| the cross-board style, no via budget | 19 of 55 |
+
+Every one of those stalls at 55 of 55 nets contested from round 0 and never improves, where the 18 September run
+fell 55, 53, 48, 35 over four rounds. Neither rule explains it, since turning both off changes nothing. What does:
+the bench keeps `BUS_SPACING` mm of extra room between bus nets outside the pad arrays, so that the length tuner
+has somewhere to meander, and its default is 0.8 mm. At 0.8 mm two bus nets cannot run in neighbouring channels of
+an 0.8 mm lattice at all, so every net is in conflict by construction. The same probe with the spacing at zero
+falls to 52 contested in round 1 and runs twice as fast per round; a sibling run of 18 September at 0.4 mm
+(`build/bus-butterstick-sp04.log`) stalls at 55 exactly as today's do.
+
+Ruled out on the way, each by its own probe: the region margin (4 mm, as the good run used, stalls the same way at
+today's code), the board outline becoming an obstacle (the first commit after the good run, stalls), the islands
+and repair changes of 10d645b (stalls), and the escape router (unchanged since before the good run, and the
+fan-out is identical at 55 of 55).
+
+What this costs us: the plateau of D28 and D29, read as evidence that ordering and crossings are what the
+negotiation cannot resolve, was measured inside this stall and cannot carry that weight. The crossing counts of
+D29 come from the planner, which has no spacing, and stand. D31's and D32's structural measurements are of the
+boards themselves and stand. The **rules** of D32 are unmeasured: they were only ever run inside the stall.
+
+What changed: nothing in the router. The spacing is a bench setting and the right value is to be measured, not
+assumed; it trades the tuner's room against the negotiation's. Until that measurement exists, no run at 0.8 mm
+should be read as a statement about the router.
