@@ -642,3 +642,36 @@ can use from one it cannot.
 Not a scope change, and not made here: adding a structural criterion to M2 (the escape style of each package, and
 whether the hollow is used where the reference uses it) would turn our present ButterStick fan-out into a failing
 case. That is the owner's call. Reopening M1 is not recommended on this evidence.
+
+**D35. Is ButterStick the right first class C reference? Measured against the target and the other two.** Review,
+2026-09-19, prompted by the owner's doubt.
+
+The target of M6 is an ECP5 caBGA381 with **one** DDR3L x16 in FBGA-96 on eight layers, whose fan-out D16 planned
+as dog-bones at PCBWay's standard tier with 0.45/0.15 vias. Against that, the three class C references:
+
+| | memories | escape style | bus layers | track | via, ring | outside PCBWay's standard tier on |
+| --- | --- | --- | --- | --- | --- | --- |
+| target (M6) | one x16 | dog-bone (planned) | eight board layers | 0.1 mm | 0.45/0.15 | nothing, by intent |
+| OrangeCrab | one x16 | dog-bone at both | 3 | 0.089 | 0.28/0.15, ring 0.065 | spacing, tracks, ring |
+| LogicBone | two x8, fly-by | dog-bone at all three | 5 | 0.1 | 0.5/0.2, ring 0.15 | spacing only |
+| ButterStick | two x16, dual rank | in-pad at two, hollow dog-bone at the third | 4 | 0.0889 | 0.4/0.2, ring 0.1 | spacing, tracks, ring, and via-in-pad is advanced |
+
+On the three things that decide how much a reference teaches us about the target, ButterStick is the outlier of
+the three. It has two memories in a dual-rank arrangement the target does not have. Its escape technique, a via in
+the ball's pad at the controller and the first memory with the second memory's dog-bones driven into the package's
+hollow, needs via-in-pad, which is an advanced-tier process the target is not planned to use. And it is the finest
+of the four references on every rule at once. The registry's own note on OrangeCrab already says it is "the closest
+reference to the simplified target"; M3's criteria nonetheless name ButterStick first and OrangeCrab not at all.
+
+What this is not: evidence that ButterStick is a bad board or an invalid answer key. It is a manufactured, working,
+open board and its techniques are real practice at the tier it was built for. Nor is our difficulty with it
+evidence, since D33 showed the runs that produced that impression were measured inside a stall.
+
+Options, for the owner; no scope changed here. (a) Reorder M3 to LogicBone first, then ButterStick: LogicBone is
+the closest of the three to the target's planned rules, its escape style is the one the target will use, and our
+own fan-out already matches its reference's style, so a pass there says something about the tool rather than about
+advanced-tier tricks. Nothing is dropped and it costs nothing. (b) Make OrangeCrab the entry case, then LogicBone,
+then ButterStick, so the ladder rises in difficulty: it is structurally nearest the target, at the price of
+extending `bus_design.classify` to its net names (its 50 bus nets all fall into "other" today, so the D27 group
+criteria do not apply to it yet) and of its 0.065 mm rings, which are the most aggressive of any reference. (c)
+Hold ButterStick out of M3 as a later stretch case. (d) Leave the criteria as they are.
