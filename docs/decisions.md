@@ -334,3 +334,16 @@ lowest point, so a run is now the same in every process (checked: the per-round 
 seeds). That the same problem converges under one order and stalls under another is the negotiation's weakness to
 work on: the stall sets in with a few pairs that each have no conflict-free path while the nets holding the
 alternatives are never asked to move.
+
+**D26. The references are read before the router is designed further.** Owner's direction, 2026-09-19. The
+references were chosen as ground truth for what a working, manufacturable bus is; the router had used them only for
+constraints and for a score, and the score's length criterion (every net inside the reference's overall length
+window) was a proxy the references themselves do not meet uniformly. Work on the negotiation stops. The plan:
+measure each reference's bus design per net, per group and per package (`docs/bus-design.md`, step 1, done);
+restate M3's length criterion from those measurements (owner's decision); check the router can reproduce the
+reference's structure when given it as input (replay); turn the measured practice into the router's plan (layer
+per group, entry sides, via budget, meander room reserved before routing); LogicBone second. Measured on step 1:
+both boards match their data lanes on total net length to under a millimetre and their address and command
+loosely (6 to 12 mm at the pins); every run between vias stays on one layer; ButterStick escapes the memory balls
+on the top layer into the hollow and makes its length inside and around the memories, LogicBone dog-bones in the
+array and makes its length between the packages.
