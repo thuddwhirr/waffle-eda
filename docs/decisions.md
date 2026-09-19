@@ -357,3 +357,25 @@ spread at each memory's pins. Measured windows: ButterStick lane 0 0.73 mm, lane
 and 0.38 mm; the strobes are routed shorter), address and command 6.6 mm at IC3 and 6.1 mm at IC2. The absolute
 length is free. This replaces "lengths within the measured spread" (plan, M3), a proxy the references themselves
 do not meet uniformly. Replay (D26, step 3) starts with ButterStick.
+
+**D28. Replay of ButterStick: the search reproduces the reference's runs, the negotiation cannot pack them, and the
+grid is not the reason.** Measurement, 2026-09-19 (`scripts/replay_bus.py`, logs `build/replay-butterstick*.log`).
+The reference's 149 vias were put back on the stripped board and its 183 single-layer runs between terminals
+(`bus_design.reference_plan`) given to the router as links, each searched on its layer with no via. Findings:
+(1) every link routes on its own once a top-layer search may end on a via that sits off the half-pitch lattice
+(the hollow vias do; fixed in `_search`); before that fix 2 of 183 failed and 5 more were the plan reader's own
+fault (an inner-layer track passing under a pad was taken for its end; fixed). (2) With the reference's layers and
+vias fixed, the negotiation still leaves 40 to 43 of 55 nets contested after 60 rounds; confined to a 0.35 mm band
+around the reference's own route for every link it leaves 24 to 26. The reference's routes are therefore a packing
+the negotiation does not find even when told where to look. (3) The grid pitch is not what stands in the way: on
+both references no bus track runs closer than 0.20 mm centre to centre to another bus track on its layer, and most
+of the close running is at 0.25 to 0.45 mm (ButterStick In5.Cu: 215 of 738 mm at 0.25 to 0.30), which a 0.2 mm
+grid can represent; what it represents badly are the parallel diagonal runs, which need a two-step (0.28 mm)
+offset on a square grid and whose sampled occupancy flags a one-step offset as a conflict. (4) The lanes are
+twisted between the two packages: ordered across the bus direction, ButterStick's lane 0 changes order between
+U4 and U11 by 34 inversions of a possible 55, lane 1 by 23; LogicBone's lanes by 11 and 19; the address groups by
+110 to 177 of 351. The designers untangled them with the memory's hollow via field (a via's position in the hollow
+sets the order in which the run leaves it) and with one layer per lane per leg, not with pin choice. What this
+settles: the detailed search is sound; ordering, layer and via placement (the bus plan) must be decided before it,
+as D26 step 4 and the research report say, and the bundle's detailed routing wants track-based river routing with
+explicit spacing rather than a square grid with negotiation.

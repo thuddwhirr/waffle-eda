@@ -49,12 +49,13 @@ def replay(key: str) -> dict:
             board.Add(v)
             added += 1
     # the plan's links as (x_a, y_a, x_b, y_b, layer name)
+    band_mm = float(os.environ.get("REPLAY_BAND_MM", "0"))  # > 0: each link's search stays this close to the reference's route
     plans = {}
     skipped = 0
     for name, d in plan.items():
         pos = {label: (x, y) for (label, x, y) in d["pads"]}
         links = []
-        for (a, b, layer, L) in d["links"]:
+        for (a, b, layer, L, points) in d["links"]:
             xy = []
             for lab in (a, b):
                 if lab in pos:
@@ -65,10 +66,11 @@ def replay(key: str) -> dict:
             if None in xy:
                 skipped += 1
                 continue
-            links.append((xy[0][0], xy[0][1], xy[1][0], xy[1][1], layer))
+            link = (xy[0][0], xy[0][1], xy[1][0], xy[1][1], layer)
+            links.append(link + ((points, band_mm),) if band_mm > 0 else link)
         plans[name] = links
     print(f"   plan: {added} vias placed, {sum(len(v) for v in plans.values())} links over {len(plans)} nets, "
-          f"{skipped} links without a terminal", flush=True)
+          f"{skipped} links without a terminal" + (f", searches within {band_mm} mm of the reference's routes" if band_mm else ""), flush=True)
     parts = {r: Lattice(kb.footprint(board, r)) for r in ref.bus_parts}
     in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
     rules_bus = busr.BusRules(**{**bus_bench.bus_rules(c, 0.0).__dict__, "in_pad_packages": in_pad})

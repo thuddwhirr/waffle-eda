@@ -423,8 +423,9 @@ def report(d: dict) -> str:
 # --- the reference's plan: its vias and its single-layer runs between terminals ------------------------------------
 def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
     """For each net: its vias (x, y, diameter, drill) and its links, the maximal single-layer runs between terminals
-    (a pad or a via), as (x_a, y_a, x_b, y_b, layer, length_mm). This is what the reference decided: where the
-    layer changes are and which layer each run takes; the path between two terminals is what a router finds."""
+    (a pad or a via), as (label_a, label_b, layer, length_mm, points). This is what the reference decided: where
+    the layer changes are and which layer each run takes; the path between two terminals is what a router finds,
+    and the reference's own polyline (``points``) can bound where it looks."""
     bus_set = set(bus_nets)
     pads = defaultdict(list)
     for fp in board.GetFootprints():
@@ -482,6 +483,7 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                     used.add(idx)
                     length = ts[idx][4]
                     cur, prev_idx = nxt, idx
+                    points = [(k0[0] / 1000, k0[1] / 1000), (cur[0] / 1000, cur[1] / 1000)]
                     lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
                     while lab is None:
                         cands = [(i2, n2) for i2, n2 in adj[cur] if i2 != prev_idx and i2 not in used]
@@ -491,10 +493,11 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                         used.add(i2)
                         length += ts[i2][4]
                         prev_idx, cur = i2, n2
+                        points.append((cur[0] / 1000, cur[1] / 1000))
                         lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
                     if lab is None or lab == lab0:  # a stub inside a terminal, or copper that ends nowhere
                         continue
-                    links.append((lab0, lab, layer, round(length, 3)))
+                    links.append((lab0, lab, layer, round(length, 3), points))
         out[name] = {"vias": vias[name], "links": links, "pads": [(lab, x, y) for (x, y, _, lab, _) in pads[name]]}
     return out
 

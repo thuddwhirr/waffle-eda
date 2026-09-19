@@ -566,7 +566,7 @@ def _islands(board, net_name: str, g: BusGraph, layer_ids: set[int]) -> list[dic
 # --- the search ------------------------------------------------------------------------------------------------------
 def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Context, obs: Obstacles,
             corridor: tuple[float, float, float, float] | None = None, avoid: frozenset = frozenset(),
-            same_layer: bool = False):
+            same_layer: bool = False, allowed: set | None = None):
     """Multi-source A* from any (layer, node) in ``sources`` to any in ``targets``, inside ``corridor`` (mm).
     ``avoid`` holds (layer, node) pairs the path may not enter (a detour's first leg, so the second cannot retrace
     it and count the same copper twice)."""
@@ -631,6 +631,8 @@ def _search(g: BusGraph, net, sources: set, targets: set, costs: Costs, ctx: Con
         for nxt, length in edges:
             nx, ny = xy[nxt]
             if nx < cx0 or nx > cx1 or ny < cy0 or ny > cy1:
+                continue
+            if allowed is not None and nxt not in allowed:
                 continue
             if on_top and not g.top_ok(nxt, net_name) and layer not in target_nodes.get(nxt, ()):
                 continue  # a target node (the island's own copper) may always be entered
@@ -778,7 +780,9 @@ def _route_net_planned(g: BusGraph, net, islands: list[dict], plan: list, costs:
     for isl in islands:
         covered |= isl["covered"]
     segments = []
-    for (ax, ay, bx, by, layer) in plan:
+    for link in plan:
+        (ax, ay, bx, by, layer) = link[:5]
+        band = link[5] if len(link) > 5 else None  # (polyline, half-width): the reference's own route, widened
         r = g.step * 1.5
         sources = {(layer, n) for n in g.nodes_near(ax, ay, r) if (layer, n) in covered}
         targets = {(layer, n) for n in g.nodes_near(bx, by, r) if (layer, n) in covered}
@@ -788,7 +792,21 @@ def _route_net_planned(g: BusGraph, net, islands: list[dict], plan: list, costs:
                           "blockers": Counter()}
         m = costs.corridor_mm
         corridor = (min(ax, bx) - m, min(ay, by) - m, max(ax, bx) + m, max(ay, by) + m)
-        path, second = _search(g, net, sources, targets, costs, ctx, obs, corridor, same_layer=True)
+        allowed = None
+        if band is not None:
+            points, half = band
+            allowed = {n for _, n in sources} | {n for _, n in targets}
+            for (px, py), (qx, qy) in zip(points, points[1:]):
+                steps = max(1, int(math.ceil(math.hypot(qx - px, qy - py) / (g.step / 2))))
+                for k in range(steps + 1):
+                    allowed.update(g.nodes_near(px + (qx - px) * k / steps, py + (qy - py) * k / steps, half))
+            xs = [x for x, _ in points]
+            ys = [y for _, y in points]
+            corridor = (min(xs) - half - 0.2, min(ys) - half - 0.2, max(xs) + half + 0.2, max(ys) + half + 0.2)
+        path, second = _search(g, net, sources, targets, costs, ctx, obs, corridor, same_layer=True, allowed=allowed)
+        if path is None and allowed is not None:  # the band was too narrow for the grid: the plain corridor
+            corridor = (min(ax, bx) - m, min(ay, by) - m, max(ax, bx) + m, max(ay, by) + m)
+            path, second = _search(g, net, sources, targets, costs, ctx, obs, corridor, same_layer=True)
         if path is None:
             path, second = _search(g, net, sources, targets, costs, ctx, obs, None, same_layer=True)
         if path is None:
@@ -950,7 +968,8 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
     # the tree for the nets that have one
     link_plans: dict = {}
     for name, links in (plans or {}).items():
-        link_plans[name] = [(ax, ay, bx, by, layer_ids[L] if isinstance(L, str) else L) for (ax, ay, bx, by, L) in links]
+        link_plans[name] = [(link[0], link[1], link[2], link[3], layer_ids[link[4]] if isinstance(link[4], str) else link[4])
+                            + tuple(link[5:]) for link in links]
 
     def route_one(name, ctx_, waypoint=None):
         if name in link_plans:
