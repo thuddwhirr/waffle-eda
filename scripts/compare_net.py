@@ -238,6 +238,7 @@ def main(argv=None):
     ap.add_argument("--failed", action="store_true", help="every bus net our board leaves in more than one piece")
     ap.add_argument("--spans", type=int, default=6, help="blocked spans printed per net")
     ap.add_argument("--summary", action="store_true", help="the two boards side by side at bus level, no per-net detail")
+    ap.add_argument("--order", action="store_true", help="each bundle's order at every package, and the twist between them")
     args = ap.parse_args(argv)
 
     ref = refs.REFERENCES[args.key]
@@ -267,8 +268,21 @@ def main(argv=None):
 
     if args.summary:
         summary(ref_board, cand, ref, packages)
-        if not args.nets and not args.failed:
-            return
+    if args.order:
+        print("\n== each bundle's order where it crosses a package, and the twist between two packages")
+        a = bus_design.entry_order(ref_board, ref)
+        b = bus_design.entry_order(cand, ref)
+        for group in a:
+            print(f"   {group}")
+            for r in sorted(set(a[group]["order"]) | set(b[group]["order"])):
+                print(f"      {r} reference: {' '.join(a[group]['order'].get(r, []))}")
+                print(f"      {r} ours:      {' '.join(b[group]['order'].get(r, []))}")
+            for pair in sorted(set(a[group]["twist"]) | set(b[group]["twist"])):
+                ta, tb = a[group]["twist"].get(pair, {}), b[group]["twist"].get(pair, {})
+                print(f"      twist {pair}: reference {ta.get('inversions', 0)} of {ta.get('pairs', 0)} pairs, "
+                      f"ours {tb.get('inversions', 0)} of {tb.get('pairs', 0)}")
+    if (args.summary or args.order) and not args.nets and not args.failed:
+        return
 
     by_short = {bus_design.short_name(n): n for n in bus}
     wanted = [by_short.get(n, n) for n in args.nets]

@@ -646,6 +646,52 @@ def escape_style(board, ref) -> dict:
     return out
 
 
+def _perimeter(side: str, across: float, lat) -> float:
+    """A position along the package's boundary, walked clockwise from the north-west corner, so that the nets
+    crossing a package can be put in one order whatever side they leave by."""
+    w, h = lat.cols, lat.rows
+    return {"N": across, "E": w + across, "S": w + h + (w - across), "W": 2 * w + h + (h - across)}[side]
+
+
+def entry_order(board, ref, groups: tuple = ("lane 0", "lane 1", "address/command")) -> dict:
+    """The order in which a bundle's nets cross each package's boundary, and the twist between one package and
+    another (D28 measured this once with a scratch script; the structural planner needs it as a measurement).
+
+    For each group and package, the nets are ordered by where their copper crosses the package's array box, walked
+    clockwise. For each pair of packages the twist is the number of inversions between the two orders: the pairs of
+    nets that leave one package in one order and reach the other in the opposite one. A bundle with no twist can be
+    routed as a river; every inversion is a crossing that some via field, or a swap of the two nets' pins, has to
+    absorb."""
+    d = measure_board(board, ref)
+    lats = {p.reference: p.lattice for p in packages_of(board, ref) if p.lattice is not None}
+    out: dict = {}
+    for group in groups:
+        members = [n for n, nd in d["nets"].items() if nd["group"] == group]
+        per_pkg: dict = {}
+        for r, lat in lats.items():
+            place = []
+            for n in members:
+                entries = d["nets"][n]["entries"].get(r) or []
+                if not entries:
+                    continue
+                pos = sorted(_perimeter(side, across, lat) for (side, _, across) in entries)
+                place.append((pos[0], short_name(n)))
+            if len(place) > 1:
+                per_pkg[r] = [n for _, n in sorted(place)]
+        twist = {}
+        names = sorted(per_pkg)
+        for i, a in enumerate(names):
+            for b in names[i + 1:]:
+                common = [n for n in per_pkg[a] if n in per_pkg[b]]
+                rank = {n: k for k, n in enumerate(per_pkg[b])}
+                seq = [rank[n] for n in common]
+                inversions = sum(1 for x in range(len(seq)) for y in range(x + 1, len(seq)) if seq[x] > seq[y])
+                pairs = len(seq) * (len(seq) - 1) // 2
+                twist[f"{a}-{b}"] = {"nets": len(seq), "inversions": inversions, "pairs": pairs}
+        out[group] = {"order": per_pkg, "twist": twist}
+    return out
+
+
 def structure_lines(ours: dict, reference: dict) -> list:
     """The two structures side by side, as lines to print: what the D31 rules ask for, and where we stand."""
     out = [f"vias between the balls: {ours['vias_between_balls']} (reference {reference['vias_between_balls']})",
