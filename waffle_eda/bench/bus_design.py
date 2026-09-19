@@ -73,15 +73,16 @@ class Package:
         return {(i, j) for i in range(lat.cols) for j in range(lat.rows) if (i, j) not in lat.by_index}
 
     def where(self, x: float, y: float) -> str:
-        """array (within half a pitch of a ball), hollow (inside the array's box, no ball near), margin (inside the
-        footprint's box, outside the array's box) or nothing."""
+        """array (in the cell of a ball: on it, on a corner between balls or in the channel between two of them),
+        hollow (inside the array's box with no ball's cell around it), margin (inside the footprint's box, outside
+        the array's box) or nothing. A point on the corner between four balls lies in four cells at once, so this
+        asks ``ball_cells`` rather than rounding to one of them, which breaks ties arbitrarily."""
         lat = self.lattice
-        if lat is not None and lat.inside_array(x, y, 0.5):
-            fi, fj = (x - lat.x0) / lat.pitch, (y - lat.y0) / lat.pitch
-            i, j = round(fi), round(fj)
-            if (i, j) in lat.by_index and abs(fi - i) <= 0.5 and abs(fj - j) <= 0.5:
+        if lat is not None:
+            if ball_cells(lat, x, y):  # a ball's own cell, wherever the array's bounding box happens to fall
                 return "array"
-            return "hollow"
+            if lat.inside_array(x, y, 0.5):
+                return "hollow"
         if self.info.in_footprint_mm(x, y):
             return "margin"
         return ""
@@ -499,6 +500,163 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                         continue
                     links.append((lab0, lab, layer, round(length, 3), points))
         out[name] = {"vias": vias[name], "links": links, "pads": [(lab, x, y) for (x, y, _, lab, _) in pads[name]]}
+    return out
+
+
+# --- the structure of D31: where the vias sit and what the top layer carries ----------------------------------------
+def packages_of(board, ref) -> list:
+    out = []
+    for r in ref.bus_parts:
+        fp = kb.footprint(board, r)
+        lat = Lattice(fp)
+        out.append(Package(r, kb.package_info(fp), lat if lat.rows >= 4 and lat.cols >= 4 else None))
+    return out
+
+
+def structure(board, ref, escape_mm: float = 5.0) -> dict:
+    """The structural choices D31 measured, for any board: where each bus via sits (in a ball's pad, between the
+    balls, in the package's hollow, in its margin, outside), how much top-layer copper each net carries and which
+    nets carry more than an escape's worth of it, and the vias per net. A reference board and a candidate are
+    measured the same way, so the two are comparable."""
+    bus = set(kb.nets_matching(board, ref.bus_net_pattern))
+    pkgs = packages_of(board, ref)
+    ball_r = {}
+    for pkg in pkgs:
+        if pkg.lattice is not None:
+            ball_r[pkg.reference] = pkg.lattice.pitch / 2
+    pads = []
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() in bus:
+                p = pad.GetPosition()
+                size = pad.GetSize()
+                pads.append((kb.mm(p.x), kb.mm(p.y), max(kb.mm(size.x), kb.mm(size.y)) / 2))
+    places: Counter = Counter()
+    vias_per_net: Counter = Counter()
+    top_per_net: Counter = Counter()
+    top_in_package: Counter = Counter()
+    for item in board.GetTracks():
+        name = item.GetNetname()
+        if name not in bus:
+            continue
+        if item.GetClass() == "PCB_VIA":
+            p = item.GetPosition()
+            x, y = kb.mm(p.x), kb.mm(p.y)
+            vias_per_net[name] += 1
+            if any(math.hypot(x - px, y - py) < pr for (px, py, pr) in pads):
+                places["in a ball's pad"] += 1
+                continue
+            where = "outside the packages"
+            for pkg in pkgs:
+                w = pkg.where(x, y)
+                if w:
+                    where = {"array": "between the balls", "hollow": "in the hollow", "margin": "in the margin"}[w]
+                    where += f" of {pkg.reference}"
+                    break
+            places[where] += 1
+        elif board.GetLayerName(item.GetLayer()) == "F.Cu":
+            mm = kb.mm(item.GetLength())
+            top_per_net[short_name(name)] += mm
+            a, b = item.GetStart(), item.GetEnd()
+            mx, my = (kb.mm(a.x) + kb.mm(b.x)) / 2, (kb.mm(a.y) + kb.mm(b.y)) / 2
+            for pkg in pkgs:
+                if pkg.info.in_footprint_mm(mx, my):
+                    top_in_package[pkg.reference] += mm
+                    break
+    for name in bus:
+        vias_per_net.setdefault(name, 0)
+    transit = {n: round(mm, 1) for n, mm in top_per_net.items() if mm > escape_mm}
+    return {
+        "vias": dict(places.most_common()),
+        "vias_total": sum(places.values()),
+        "vias_between_balls": sum(v for k, v in places.items() if k.startswith("between the balls")),
+        "vias_per_net": dict(Counter(vias_per_net.values()).most_common()),
+        "max_vias_per_net": max(vias_per_net.values(), default=0),
+        "top_mm": round(sum(top_per_net.values()), 1),
+        "top_in_package": {k: round(v) for k, v in top_in_package.most_common()},
+        "top_transit_nets": dict(sorted(transit.items(), key=lambda kv: -kv[1])),
+        "top_median_mm": round(sorted(top_per_net.values())[len(top_per_net) // 2], 1) if top_per_net else 0.0,
+    }
+
+
+def ball_cells(lat, x, y) -> list:
+    """Every ball of this lattice whose cell (a square of one pitch about the ball) holds (x, y), as
+    (distance in pitches, i, j, offset i, offset j). A point on the corner between four balls belongs to all four,
+    so a rule about "the offset from its ball" has to look at each of them rather than round to one."""
+    fi, fj = (x - lat.x0) / lat.pitch, (y - lat.y0) / lat.pitch
+    out = []
+    for i in (math.floor(fi), math.ceil(fi)):
+        for j in (math.floor(fj), math.ceil(fj)):
+            if (i, j) not in lat.by_index:
+                continue
+            di, dj = fi - i, fj - j
+            if abs(di) > 0.5 + 1e-9 or abs(dj) > 0.5 + 1e-9:
+                continue
+            item = (round(math.hypot(di, dj), 6), i, j, round(di * 4) / 4, round(dj * 4) / 4)
+            if item not in out:
+                out.append(item)
+    out.sort()
+    return out
+
+
+def escape_style(board, ref) -> dict:
+    """Where each package's vias sit inside its pad array, measured rather than assumed (D32). A via in the array
+    is in exactly one of three places, and which of them a package uses is its escape style:
+
+    * **on the ball** (an in-pad via, the offset from its ball is zero),
+    * **on a corner** between four balls (a dog-bone into the widest gap of the lattice),
+    * **in the channel** between two neighbouring balls (the narrowest gap, and the one those balls' neighbours
+      escape through).
+
+    A point on a corner sits in four balls' cells at once, so the place is decided by the offsets every containing
+    ball sees, not by rounding to one of them. Returns package -> {"places": the counts, "offsets": the node
+    offsets a router may use for this package, "vias": how many were seen}. Both references use the ball and the
+    corner and avoid the channel; the offsets come back in the form ``BusRules.ball_via_offsets`` takes."""
+    bus = set(kb.nets_matching(board, ref.bus_net_pattern))
+    pkgs = [p for p in packages_of(board, ref) if p.lattice is not None]
+    per: dict = {p.reference: Counter() for p in pkgs}
+    for item in board.GetTracks():
+        if item.GetClass() != "PCB_VIA" or item.GetNetname() not in bus:
+            continue
+        p = item.GetPosition()
+        x, y = kb.mm(p.x), kb.mm(p.y)
+        for pkg in pkgs:
+            cells = ball_cells(pkg.lattice, x, y)
+            if not cells:
+                continue
+            offsets = {(di, dj) for (_, _, _, di, dj) in cells}
+            if (0.0, 0.0) in offsets:
+                per[pkg.reference]["on the ball"] += 1
+            elif all(abs(di) == 0.5 and abs(dj) == 0.5 for di, dj in offsets):
+                per[pkg.reference]["on a corner"] += 1
+            else:
+                per[pkg.reference]["in the channel"] += 1
+            break
+    out = {}
+    for name, places in per.items():
+        offsets = []
+        if places["on the ball"]:
+            offsets.append((0.0, 0.0))
+        if places["on a corner"]:
+            offsets += [(0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5)]
+        if places["in the channel"]:
+            offsets += [(0.5, 0.0), (-0.5, 0.0), (0.0, 0.5), (0.0, -0.5)]
+        out[name] = {"places": dict(places.most_common()), "offsets": tuple(offsets),
+                     "vias": sum(places.values())}
+    return out
+
+
+def structure_lines(ours: dict, reference: dict) -> list:
+    """The two structures side by side, as lines to print: what the D31 rules ask for, and where we stand."""
+    out = [f"vias between the balls: {ours['vias_between_balls']} (reference {reference['vias_between_balls']})",
+           f"vias in total: {ours['vias_total']} (reference {reference['vias_total']}), "
+           f"most per net {ours['max_vias_per_net']} (reference {reference['max_vias_per_net']})",
+           f"top-layer copper: {ours['top_mm']} mm (reference {reference['top_mm']} mm), "
+           f"{len(ours['top_transit_nets'])} nets over an escape's worth "
+           f"(reference {len(reference['top_transit_nets'])})"]
+    for k in sorted(set(ours["vias"]) | set(reference["vias"])):
+        if k.startswith("in the hollow") or k.startswith("between the balls"):
+            out.append(f"vias {k}: {ours['vias'].get(k, 0)} (reference {reference['vias'].get(k, 0)})")
     return out
 
 

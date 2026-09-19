@@ -18,7 +18,7 @@ faulthandler.enable()  # a crash in the bindings prints the Python stack instead
 from pathlib import Path
 
 import _path  # noqa: F401
-from waffle_eda.bench import constraints, harness, references as refs
+from waffle_eda.bench import bus_design, constraints, harness, references as refs
 from waffle_eda.kicad import board as kb, refill, render
 from waffle_eda.route import bus as busr, escape as esc, fanout as fo, length as lengthr
 from waffle_eda.route.lattice import Lattice
@@ -95,12 +95,35 @@ def run_reference(key: str, draw: bool = True) -> dict:
         print(f"   fan-out {part}: {len(r.escaped)}/{r.total} escaped | {time.time() - t0:.1f}s", flush=True)
         out["fanout"][part] = {"placed": len(r.escaped), "total": r.total, "failed": r.failed}
     in_pad = tuple(part for part, pc in c.packages.items() if pc.style == "in-pad")
-    rules_bus = busr.BusRules(**{**bus_rules(c).__dict__, "in_pad_packages": in_pad})
+    # D32: the escape style of each package is measured on the reference and given to the router, so its vias take
+    # the offsets from a ball that this package's own design uses. With BUS_STYLE=diagonal the router is given the
+    # rule both references obey instead (on the ball or on a diagonal corner, never in the channel between two
+    # neighbouring balls), which is what a board with no reference of its own gets.
+    style_mode = os.environ.get("BUS_STYLE", "reference")
+    diagonal = ((0.0, 0.0), (0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5))
+    ball_via_offsets: dict = {}
+    if style_mode != "off":
+        measured = bus_design.escape_style(kb.load_board(refs.board_path(ref)), ref)
+        for part, lat in parts.items():
+            if lat.rows < 4 or lat.cols < 4:
+                continue
+            if style_mode == "reference" and measured.get(part, {}).get("vias"):
+                ball_via_offsets[part] = measured[part]["offsets"]
+            else:
+                ball_via_offsets[part] = diagonal
+        print("   escape style per package: "
+              + "; ".join(f"{k} {v}" for k, v in ball_via_offsets.items()), flush=True)
+    rules_bus = busr.BusRules(**{**bus_rules(c).__dict__, "in_pad_packages": in_pad,
+                                 "ball_via_offsets": ball_via_offsets})
     answer = refs.measure(ref)
     lo, hi = answer["bus"]["length_mm"]["min"], answer["bus"]["length_mm"]["max"]
     t0 = time.time()
+    costs = bus_costs()
+    if not costs.max_vias_per_net:  # D32: the reference's own limit on a net's layer changes, unless overridden
+        costs.max_vias_per_net = bus_design.structure(kb.load_board(refs.board_path(ref)), ref)["max_vias_per_net"]
+        print(f"   vias per net: at most {costs.max_vias_per_net}, as the reference keeps them", flush=True)
     res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus,
-                         costs=bus_costs(), length_windows={n: (lo, hi) for n in bus})
+                         costs=costs, length_windows={n: (lo, hi) for n in bus})
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)
     for n, why in sorted(res.failed.items()):
         print(f"      FAILED {n}: {why}")
@@ -142,11 +165,18 @@ def run_reference(key: str, draw: bool = True) -> dict:
         print(f"      length {n}: {L} mm")
     for line in score.matching_lines:
         print(f"      {line}", flush=True)
+    # D32: how our structure stands against the reference's, every run, so the distance is measured and not guessed
+    ours_st = bus_design.structure(kb.load_board(result_path), ref)
+    ref_st = bus_design.structure(kb.load_board(refs.board_path(ref)), ref)
+    print("   structure against the reference:", flush=True)
+    for line in bus_design.structure_lines(ours_st, ref_st):
+        print(f"      {line}", flush=True)
     out["bus"] = {"routed": len(res.routed), "total": res.total, "failed": res.failed, "drc": drc,
                   "lengths_failed": tuned.failed,
                   "score": score.summary(), "passed": score.passed, "length_within": score.length_within_spread,
                   "matching": score.matching_passed, "matching_failures": score.matching_failures,
-                  "bus_nets": score.bus_nets, "vias_outside": outside}
+                  "bus_nets": score.bus_nets, "vias_outside": outside,
+                  "structure": ours_st, "structure_reference": ref_st}
     if draw:
         boxes = [kb.package_info(kb.footprint(board, r)).bbox_mm for r in ref.bus_parts]
         region = (min(b[0] for b in boxes) - 2, min(b[1] for b in boxes) - 2, max(b[2] for b in boxes) + 2, max(b[3] for b in boxes) + 2)

@@ -21,10 +21,11 @@ import os
 import random
 import time
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pcbnew
 
+from waffle_eda.bench import bus_design
 from waffle_eda.kicad import board as kb
 from waffle_eda.route.lattice import Lattice
 from waffle_eda.route.obstacles import Obstacles
@@ -44,6 +45,15 @@ class BusRules:
     margin_mm: float = 6.0  # routing region beyond the packages' footprints
     spacing_mm: float = 0.0  # extra room the negotiation keeps between bus nets outside the pad arrays, for tuning
     in_pad_packages: tuple[str, ...] = ()  # packages whose balls take a via in the pad (filled and capped)
+    # D32, measured from the references: inside a package's pad array every via of the reference sits at one of a
+    # few offsets from its ball (on it, for an in-pad package; on a diagonal corner, for a dog-bone one), the same
+    # few for every ball, so the vias form a regular field with predictable channels between them. This maps a
+    # package to the offsets its vias may take, in pitches, from the ball whose cell they are in; an empty tuple
+    # forbids a via between the balls altogether, and a package not named here is unrestricted.
+    ball_via_offsets: dict = field(default_factory=dict)
+    # D32: the references run transit on the top layer too (122 mm on ButterStick, 170 on LogicBone), so this is
+    # off by default. Set it to limit a net's top-layer copper to within that distance of one of its own pads.
+    top_escape_mm: float = math.inf
 
 
 @dataclass
@@ -54,6 +64,10 @@ class Costs:
     present: float = 0.6
     history: float = 0.4
     max_vias: int = 2
+    # D32: the references keep a net's layer changes few (ButterStick at most 3 per net, LogicBone 4) and Lattice's
+    # own checklist caps a DDR data net at 3 (D30). 0 leaves the budget to ``max_vias`` per leg, which is what the
+    # synthetic cases use; a positive number is the whole net's budget, the copper it already carries included.
+    max_vias_per_net: int = 0
     corridor_mm: float = 3.0  # a net's search stays within its islands' bounding box grown by this much
     pop_budget: int = 150000  # states a single search may settle before it is called off (runs are bounded)
     repair_partners: int = 6  # nets ripped up around a stranded net in the final pass
@@ -111,6 +125,7 @@ class BusGraph:
                         lat.Y(lat.rows - 1) + lat.pitch / 2) for lat in packages]
         self.edge_cache: dict = {}
         self.via_cache: dict = {}
+        self._top_cache: dict = {}
         self.sample_cache: dict = {}
         self.committed = Obstacles(board, items=[])
 
@@ -170,6 +185,23 @@ class BusGraph:
                     node = self._add(x, y, pi, half, in_array, via)
                     if on_pad:
                         self.pad_net[node] = lat.by_index[(i // 4, j // 4)].net
+        # D32: inside a package's array a via may only take the offsets from its ball that the package's escape
+        # style uses, so the via field stays regular and the channels between the balls stay where the other nets
+        # expect them
+        for lat in self.packages:
+            allowed = self.rules.ball_via_offsets.get(lat.reference)
+            if allowed is None:
+                continue
+            allowed = {(round(di, 2), round(dj, 2)) for di, dj in allowed}
+            for node, (x, y) in enumerate(self.xy):
+                if not self.via_site[node]:
+                    continue
+                # a node on the corner between four balls lies in all four cells: the style has to allow the offset
+                # from every one of them, or the via would be in a channel one of those balls needs
+                for (_, _, _, di, dj) in bus_design.ball_cells(lat, x, y):
+                    if (round(di, 2), round(dj, 2)) not in allowed:
+                        self.via_site[node] = False
+                        break
         self.zones = zones
         g = self.step
         lat0 = self.packages[0]
@@ -243,12 +275,30 @@ class BusGraph:
         return tuple((dx, dy) for dx in range(-r, r + 1) for dy in range(-r, r + 1)
                      if math.hypot(dx, dy) * self.u < dist_mm - 1e-9)
 
+    def top_allowance(self, net_name: str) -> set | None:
+        """The nodes where this net may put top-layer copper under ``rules.top_escape_mm``: those within that
+        distance of one of its own pads, which is the escape and nothing else (D31). None when the rule is off."""
+        if self.rules.top_escape_mm == math.inf:
+            return None
+        cached = self._top_cache.get(net_name)
+        if cached is None:
+            cached = set()
+            for fp in self.board.GetFootprints():
+                for pad in fp.Pads():
+                    if pad.GetNetname() == net_name:
+                        p = pad.GetPosition()
+                        cached.update(self.nodes_near(kb.mm(p.x), kb.mm(p.y), self.rules.top_escape_mm))
+            self._top_cache[net_name] = cached
+        return cached
+
     def top_ok(self, node: int, net_name: str = "") -> bool:
         """Where a top-layer track may run: anywhere outside the pad arrays; inside, the half-pitch nodes that are
-        not another net's pad (the net's own pad is where its route starts or ends)."""
-        if not self.in_array[node]:
-            return True
-        return self.half[node] and self.pad_net.get(node, net_name) == net_name
+        not another net's pad (the net's own pad is where its route starts or ends). Under ``top_escape_mm`` the
+        net must also stay within reach of its own pads, so the top layer carries escapes and not transit."""
+        if self.in_array[node] and not (self.half[node] and self.pad_net.get(node, net_name) == net_name):
+            return False
+        allowed = self.top_allowance(net_name)
+        return allowed is None or node in allowed
 
     # geometry -----------------------------------------------------------------------------------------------------
     def _track(self, layer, a: int, b: int, net):
@@ -691,12 +741,21 @@ def _corridor(g: BusGraph, islands: list[dict], margin_mm: float) -> tuple[float
 
 
 def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context, obs: Obstacles,
-               waypoint: int | None = None):
+               waypoint: int | None = None, vias_used: int = 0):
     """Grow a tree over the islands: connect the largest island to the nearest other, repeat; with ``waypoint``
-    the tree first goes from the largest island to that node (a detour that adds length). Returns
-    (list of (layer_nodes, vias) segments, None) or (None, diagnosis)."""
+    the tree first goes from the largest island to that node (a detour that adds length). ``vias_used`` is what
+    the net's own copper already spends of ``costs.max_vias_per_net``. Returns (list of (layer_nodes, vias)
+    segments, None) or (None, diagnosis)."""
     if len(islands) < 2:
         return [], None
+    budget = costs.max_vias_per_net - vias_used if costs.max_vias_per_net else None
+
+    def leg_costs(spent: int) -> Costs:
+        """The via budget left for one leg: the lesser of the per-leg limit and what the net has left."""
+        if budget is None:
+            return costs
+        left = max(0, budget - spent)
+        return costs if left >= costs.max_vias else replace(costs, max_vias=left)
     corridor = _corridor(g, islands, costs.corridor_mm)
     order = sorted(range(len(islands)), key=lambda i: -len(islands[i]["covered"]))
     connected: set = set(islands[order[0]]["covered"])
@@ -724,7 +783,7 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             sources = set(islands[start]["covered"])
             # the legs stay inside the corridor: a waypoint it cannot reach is a poor one, and exhausting the whole
             # region (packed with the board's other copper) costs the full search budget each time
-            path, vias = _search(g, net, sources, targets, costs, ctx, obs, corridor)
+            path, vias = _search(g, net, sources, targets, leg_costs(0), ctx, obs, corridor)
             if path is None:
                 last = {"why": "no path to the detour point", "blockers": vias}
                 continue
@@ -734,8 +793,8 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
             nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - wx,
                                                               centre(islands[i]["covered"])[1] - wy))
             avoid = frozenset(path[:-1]) | frozenset(sources)
-            path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], costs, ctx, obs, corridor,
-                                   avoid=avoid)
+            path2, vias2 = _search(g, net, {path[-1]}, islands[nearest]["covered"], leg_costs(len(vias)), ctx, obs,
+                                   corridor, avoid=avoid)
             if path2 is None:
                 last = {"why": "no path from the detour point onwards", "blockers": vias2}
                 continue
@@ -756,9 +815,11 @@ def _route_net(g: BusGraph, net, islands: list[dict], costs: Costs, ctx: Context
         nearest = min(remaining, key=lambda i: math.hypot(centre(islands[i]["covered"])[0] - cx,
                                                           centre(islands[i]["covered"])[1] - cy))
         targets = islands[nearest]["covered"]
-        path, second = _search(g, net, connected, targets, costs, ctx, obs, corridor)
+        path, second = _search(g, net, connected, targets, leg_costs(sum(len(v) for _, v in segments)), ctx, obs,
+                               corridor)
         if path is None:  # the corridor is a speed-up, not a rule: the whole region gets a try before failing
-            path, second = _search(g, net, connected, targets, costs, ctx, obs, None)
+            path, second = _search(g, net, connected, targets, leg_costs(sum(len(v) for _, v in segments)), ctx,
+                                   obs, None)
         if path is None:
             pads = [pcbnew.Cast_to_FOOTPRINT(p.GetParent()).GetReference() + "." + p.GetNumber()
                     for p in islands[nearest]["pads"]]
@@ -971,10 +1032,17 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
         link_plans[name] = [(link[0], link[1], link[2], link[3], layer_ids[link[4]] if isinstance(link[4], str) else link[4])
                             + tuple(link[5:]) for link in links]
 
+    vias_on_board: Counter = Counter()
+    if costs.max_vias_per_net:
+        for item in board.GetTracks():
+            if item.GetClass() == "PCB_VIA" and item.GetNetname() in nets:
+                vias_on_board[item.GetNetname()] += 1
+
     def route_one(name, ctx_, waypoint=None):
         if name in link_plans:
             return _route_net_planned(g, net_objs[name], islands[name], link_plans[name], costs, ctx_, obs)
-        return _route_net(g, net_objs[name], islands[name], costs, ctx_, obs, waypoint=waypoint)
+        return _route_net(g, net_objs[name], islands[name], costs, ctx_, obs, waypoint=waypoint,
+                          vias_used=vias_on_board[name])
 
     # --- negotiation -----------------------------------------------------------------------------------------------
     occ = Occupancy(g)

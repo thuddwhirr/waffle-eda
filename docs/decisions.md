@@ -511,8 +511,50 @@ different net's (the reference's A1 site holds our A0, its A15 site our WE, its 
 a permutation network with a fixed number of cells and the reference assigns each net the cell that untwists its
 lane; our negotiation hands out cells first come, so the late nets find none.
 
-What this settles: the three structural rules to give the planner, in this order. No via between balls, ever (the
-via goes in the hollow or the margin). The top layer carries escapes only, unless a net is routed on it end to end.
-Each memory's hollow cells are allocated as a permutation, by the order the lane needs, before any detailed search.
-The capacity model of D29 already measures the channels these rules protect; it cannot invent the rules, because a
-congestion cost cannot tell the difference between a via that blocks a channel and one that does not.
+What this settles: the hollow cells of each memory are allocated as a permutation, by the order the lane needs,
+before any detailed search, and the capacity model of D29 measures the channels but cannot invent that allocation.
+
+**Corrected by D32.** Two rules stated here as general ("no via between balls, ever" and "the top layer carries
+escapes only") were drawn from ButterStick alone and LogicBone refutes both: its reference puts 89 vias between
+balls and runs 170 mm of top-layer transit. What both references do obey is narrower and exact, and D32 states it.
+Everything above about ButterStick, and the diagnosis of DQ5, stands as measured.
+
+**D32. What both references actually obey: a via in a pad array sits on a ball or on a corner between four, never
+in the channel between two; and each package keeps to one escape style.** Measurement, 2026-09-19, with
+`bus_design.escape_style` and `bus_design.structure` over both references and our best board for each.
+
+A via inside a pad array is in one of three places, and the three are worth separating because they are not alike:
+on the ball (an in-pad via), on a corner between four balls (the widest gap of a square lattice), or in the channel
+between two neighbouring balls (the narrowest gap, and the one those balls' neighbours escape through). Counted
+that way:
+
+| vias inside the arrays | on the ball | on a corner | in the channel |
+| --- | --- | --- | --- |
+| ButterStick reference | 64 | 1 | 0 |
+| ButterStick, ours | 54 | 46 | 8 |
+| LogicBone reference | 0 | 89 | 0 |
+| LogicBone, ours | 0 | 87 | 6 |
+
+Neither reference puts a single via in a channel, over 154 array vias between them. Both of ours do, 8 and 6. That
+is the rule that holds across boards, and it is the one D31 should have drawn. The rest of D31's via rule is a
+per-package style, not a law: ButterStick escapes in-pad at U4 (46 of 46 on the ball) and U11 (10 of 10), and
+dog-bones U12; LogicBone dog-bones all three packages onto corners. Our ButterStick run mixes the two styles inside
+one array, putting 13 corner vias in U4 and 15 in U11 where every reference via is on the ball.
+
+D31's top-layer rule does not survive either: the references run 122 mm (ButterStick) and 170 mm (LogicBone) of
+top-layer copper further than 3 mm from any pad of its own net, against our 149 mm and 116 mm. We are not worse on
+LogicBone and only slightly worse on ButterStick, so "the top layer carries escapes only" was wrong. The knob is
+implemented (`BusRules.top_escape_mm`) and left off.
+
+Via counts do separate us from both references: ButterStick's reference uses 149 vias with at most 3 per net,
+LogicBone's 99 with at most 4; ours 172 with 4 and 123 with 5. Lattice's own checklist caps a DDR data net at 3
+(D30), so on ButterStick we exceed both the reference and the vendor.
+
+What went into the pipeline. `BusRules.ball_via_offsets` maps a package to the offsets from a ball its vias may
+take, and the bus graph drops every via site that any containing ball sees at a forbidden offset (a point on a
+corner lies in four cells at once, so each is checked; rounding to one of them breaks ties arbitrarily, which is a
+bug this work found and fixed in `Package.where` as well). `Costs.max_vias_per_net` spends one budget across the
+legs of a net's tree, counting the vias its copper already carries. `scripts/bus_bench.py` measures the reference's
+escape style and via budget and hands both to the router (`BUS_STYLE=diagonal` gives the cross-board rule instead,
+which is what a board with no reference of its own gets; `BUS_STYLE=off` restores the old freedom), and every run
+now prints its structure against the reference's, so the distance is measured rather than guessed.

@@ -192,6 +192,13 @@ def summary(ref_board, cand, ref, packages) -> None:
         return ", ".join(f"{k} {v:.0f}" if isinstance(v, float) else f"{k} {v}" for k, v in items[:6]) or "none"
 
     print("\n== the two boards at bus level")
+    ours_st = bus_design.structure(cand, ref)
+    ref_st = bus_design.structure(ref_board, ref)
+    for line in bus_design.structure_lines(ours_st, ref_st):
+        print(f"   {line}")
+    for name, style in bus_design.escape_style(ref_board, ref).items():
+        mine = bus_design.escape_style(cand, ref).get(name, {})
+        print(f"   {name} escape style: reference {style['places']}, ours {mine.get('places', {})}")
     row("nets using each layer", counts(a["layers"]["nets_using"]), counts(b["layers"]["nets_using"]))
     row("vias per net", counts(a["vias_per_net"]), counts(b["vias_per_net"]))
     places_a: Counter = Counter()
