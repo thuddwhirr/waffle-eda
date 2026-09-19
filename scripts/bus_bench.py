@@ -125,9 +125,13 @@ def run_reference(key: str, draw: bool = True) -> dict:
         costs.stall_stop = 15
     if not costs.repair_budget_s:
         costs.repair_budget_s = 900.0
-    if not costs.max_vias_per_net:  # D32: the reference's own limit on a net's layer changes, unless overridden
-        costs.max_vias_per_net = bus_design.structure(kb.load_board(refs.board_path(ref)), ref)["max_vias_per_net"]
-        print(f"   vias per net: at most {costs.max_vias_per_net}, as the reference keeps them", flush=True)
+    # D32 set this from the reference; D33 measured what it costs, so BUS_VIA_BUDGET says which to use:
+    # "reference" takes the reference's own limit, "off" leaves the per-leg limit alone, a number sets it.
+    budget_mode = os.environ.get("BUS_VIA_BUDGET", "off")
+    if not costs.max_vias_per_net and budget_mode != "off":
+        costs.max_vias_per_net = (bus_design.structure(kb.load_board(refs.board_path(ref)), ref)["max_vias_per_net"]
+                                  if budget_mode == "reference" else int(budget_mode))
+        print(f"   vias per net: at most {costs.max_vias_per_net}", flush=True)
     res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus,
                          costs=costs, length_windows={n: (lo, hi) for n in bus})
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)
