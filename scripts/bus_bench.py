@@ -26,10 +26,10 @@ from waffle_eda.route.lattice import Lattice
 
 # Room kept between bus nets outside the pad arrays so that the serpentines of the length tuning fit: a bump of
 # amplitude A needs the neighbour at least A away. Overridable for experiments with BUS_SPACING.
-# D33: the room kept between bus nets outside the pad arrays, so the length tuner has somewhere to meander.
-# Measured on ButterStick: at 0.8 mm (and at 0.4) two bus nets cannot use neighbouring channels of an 0.8 mm
-# lattice, so every net is contested from the first round and the negotiation never starts; at 0.2 mm it falls
-# 55, 53, 49 over three rounds, at 0.0 mm 55, 52, 52. 0.2 keeps the most room of the values that work.
+# D33 measured what it costs the negotiation on ButterStick: at 0.8 mm (and at 0.4) two bus nets cannot use
+# neighbouring channels of an 0.8 mm lattice, so every net is contested from the first round and the negotiation
+# never starts; at 0.2 mm the contested count falls 55, 53, 49 over three rounds and at 0.0 mm 55, 52, 52. So the
+# default is the most room the negotiation can still work in.
 SPACING_MM = float(os.environ.get("BUS_SPACING", "0.2"))
 OUT_DIR = Path(os.environ.get("BUS_OUT_DIR", "build/bench"))  # where the routed boards and drawings go
 
