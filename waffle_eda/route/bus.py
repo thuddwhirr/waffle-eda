@@ -79,6 +79,14 @@ class Costs:
     repair_negotiation: int = 12  # rounds of the local negotiation around a stranded net
     reroute_all: bool = False  # every round re-routes every net, not only the contested ones
     stall_rounds: int = 4
+    # a negotiation that has not bettered its contested count for this many rounds is not going to: it stops and
+    # hands what it has to the final pass, rather than spending the rest of the round budget standing still
+    # (measured on ButterStick: rounds 0 to 59 all left 55 nets contested, an hour for nothing). 0 keeps going.
+    stall_stop: int = 0
+    # the repair stage places stranded nets by re-packing their neighbourhoods, which is the most expensive thing
+    # the router does; past this many seconds it stops and the nets still stranded are reported as failures, so a
+    # run always ends with a board and a score instead of being killed by a timeout. 0 is no limit.
+    repair_budget_s: float = 0.0
     max_radius_hops: int = 4
     max_radius_mm: float = 4.0  # the widest rip-up around a stuck pair's paths, in the fallback by distance
     seed: int = 1
@@ -1175,6 +1183,11 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             best, since_better, forced = len(contested), 0, set()
         else:
             since_better += 1
+            if costs.stall_stop and since_better >= costs.stall_stop:
+                if TRACE:
+                    print(f"      the negotiation has not bettered {best} contested nets for {since_better} "
+                          f"rounds: stopping at round {it}", flush=True)
+                break
             if since_better >= costs.stall_rounds:
                 hops = 1 + (since_better - costs.stall_rounds) // costs.stall_rounds
                 forced = set(contested)
@@ -1333,8 +1346,21 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             commit_segments(n, saved_segs[n])
         return False
 
+    t_repair = time.time()
+
+    def repair_time_left() -> bool:
+        return not costs.repair_budget_s or time.time() - t_repair < costs.repair_budget_s
+
     for _round in range(costs.repair_rounds):
+        if not repair_time_left():
+            break
         for name in list(failed):
+            if not repair_time_left():
+                if TRACE:
+                    print(f"      repair: {costs.repair_budget_s:.0f}s spent, {len(failed)} net(s) left stranded",
+                          flush=True)
+                result.counts["repair budget spent"] = 1
+                break
             partners: Counter = Counter()
             for key, count in failed[name]["blockers"].items():
                 if ": our " in key:
@@ -1352,6 +1378,8 @@ def route_bus(board, packages: list[str], nets: set[str], rules: BusRules, costs
             # within a growing radius, the stranded net first
             points = [g.xy[n] for isl in islands[name] for _, n in isl["covered"]]
             for radius in costs.repair_radius_mm:
+                if not repair_time_left():
+                    break
                 near = []
                 for other, (segs, _) in committed.items():
                     if other == name:

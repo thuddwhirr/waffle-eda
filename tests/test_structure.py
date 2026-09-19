@@ -192,3 +192,21 @@ def test_the_sites_a_package_offers_follow_its_style(pair):
         cells = bus_design.ball_cells(lat, x, y)
         assert cells, "a corner belongs to at least one ball's cell"
         assert all(abs(di) == 0.5 and abs(dj) == 0.5 for (_, _, _, di, dj) in cells)
+
+
+def test_a_stalled_negotiation_stops_and_a_repair_budget_is_spent(tmp_path):
+    """A run must end with a board and a score: the negotiation stops when it has not bettered its contested
+    count for ``stall_stop`` rounds, and the repair stage stops when its budget is spent. Both are measured on
+    the synthetic pair, where the router succeeds, so the settings must not change a good result."""
+    case = synthetic.CASES["pair-6x6-straight"]
+    path = tmp_path / "pair.kicad_pcb"
+    manifest = synthetic.make_bga_pair(case, path)
+    board = kb.load_board(path)
+    names = [n for _, n in kb.copper_layers(board)]
+    rules = busr.BusRules(track_mm=case.track_mm, clearance_mm=case.clearance_mm, via_mm=case.via_mm,
+                          via_drill_mm=case.via_drill_mm, layers=tuple(names), margin_mm=3.0,
+                          hole_clearance_mm=case.clearance_mm)
+    costs = busr.Costs(stall_stop=3, repair_budget_s=30.0)
+    res = busr.route_bus(board, ["U1", "U2"], set(manifest["bus"]), rules, costs=costs)
+    assert not res.failed, res.summary() + " " + str(res.failed)
+    assert res.counts["iterations"] <= costs.iterations

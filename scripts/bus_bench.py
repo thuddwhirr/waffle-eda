@@ -119,6 +119,12 @@ def run_reference(key: str, draw: bool = True) -> dict:
     lo, hi = answer["bus"]["length_mm"]["min"], answer["bus"]["length_mm"]["max"]
     t0 = time.time()
     costs = bus_costs()
+    # a run has to end with a board and a score: the negotiation stops when it stops improving, and the repair
+    # stage spends at most its budget (three runs in a row were killed by a timeout in repair and measured nothing)
+    if not costs.stall_stop:
+        costs.stall_stop = 15
+    if not costs.repair_budget_s:
+        costs.repair_budget_s = 900.0
     if not costs.max_vias_per_net:  # D32: the reference's own limit on a net's layer changes, unless overridden
         costs.max_vias_per_net = bus_design.structure(kb.load_board(refs.board_path(ref)), ref)["max_vias_per_net"]
         print(f"   vias per net: at most {costs.max_vias_per_net}, as the reference keeps them", flush=True)
