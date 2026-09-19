@@ -294,6 +294,14 @@ a channel otherwise, anywhere inside the footprint outside the array), and the t
 between half-pitch nodes as the escape router does. M2's escape router and gate stand as they are; they answer
 whether every ball can escape, and the bus router uses the same rules and the same geometry.
 
+**Partly re-founded after D33.** The contested count quoted here (47 of 55 for forty rounds) was measured at
+18:29 on 18 September, after the bench's 0.8 mm bus spacing arrived at 17:37, so that number is inside the stall
+D33 describes and proves nothing on its own. The geometric reason does stand and was re-measured cleanly in D34:
+our fan-out puts 24 vias between the balls of ButterStick's memories where the reference puts one, and uses 3 of
+the hollow sites where the reference uses 72. The decision to route the memories from their pads therefore rests
+on geometry, not on that count. The experiment it replaced (keep every package's escapes and route the bus at a
+spacing the negotiation can work in) has not been redone and would settle it.
+
 **D23. Length comes from meanders inside the DRAM area, not from detours through free board area.** Measurement
 and tool change, 2026-09-18, under D21. The original ButterStick keeps its whole bus (55 nets, 29.5 to 43.6 mm)
 inside the two DRAM footprints and a margin of a millimetre or two around them, on four layers, and makes the
