@@ -432,3 +432,43 @@ at both ends, a mismatch resolved by choosing the exits (the via field as a perm
 crossing; (c) layers per bundle from a crossing graph of the bundles' rivers, a small colouring, with the affinity
 and the capacity model deciding among the colourings. The detailed router then routes inside the rivers with its
 existing plan mode.
+
+**D30. The deep research landed: the vendors' own rules are tighter than D27 on address and command, and both TI
+and Lattice permit swapping the data bits inside a byte lane. Question to the owner.** Evidence, 2026-09-19
+(`docs/research/deep-research-claims.md`, 22 claims confirmed by a three-vote adversarial check, 0 refuted; the
+run's synthesis step never ran, so the claims are recorded verbatim with their sources). What bears on our work:
+
+1. *Lattice's own checklist for the ECP5* (FPGA-TN-02038, the family on ButterStick) gives a byte-group skew budget
+   of ±50 mil (±1.27 mm) between every DQ or DM and its own DQS, ±10 mil (±0.254 mm) intra-pair for DQS and CK,
+   address and command to CK within ±100 mil (±2.54 mm), LDQS to UDQS within ±100 mil, at most three vias per data
+   net with identical via counts across the group, and it expects meanders to be used to hit these.
+2. *Our D27 criterion* judges a candidate by the reference's own spreads: lanes within 0.73 and 0.84 mm on total
+   length, pairs within 0.2 mm, address and command within the reference's spread at each memory's pins (11.9 mm at
+   U11, 7.5 mm at U12). The lane and pair figures are inside Lattice's budget, so D27 is the stricter test there.
+   The address and command figure is not: 11.9 mm is 4.7 times Lattice's ±2.54 mm. Either ButterStick's address
+   group is outside its own vendor's rule, or the quantity we measure (spread of total length at the pins) is not
+   the quantity the vendor constrains (each net against CK, segment by segment along the fly-by chain, which on a
+   dual-rank T-branch board is measured per branch). Both readings are consistent with what we measured; we have
+   not yet measured the reference per segment against CK. TI's SPRABI1 is tighter again (±10 mil in a byte lane,
+   ±20 mil to CK per segment, at most two vias, 5W spacing including meanders) and ISSI's guideline tighter still
+   on cross-group skew; the vendors disagree with each other by more than an order of magnitude.
+3. *The literature confirms the D29 architecture and adds one stage*: Ozdal and Wong reserve length room during
+   routing by Lagrangian relaxation with a graph model that guarantees the reserved area is usable for snaking;
+   BSG-Route decides topology first and then assigns area by mathematical programming; the TODAES/DAC area-assignment
+   work partitions the board, assigns each wire a region by linear program (refined to a hierarchical flow for dense
+   boards), guarantees every assigned subregion can host at least one detour, and is explicitly allowed to change a
+   wire's topology to get a better assignment. Our cell planner's "length room as optional capacity" is the same
+   idea in weaker form; its missing stage is the one D29 named, the ordering and topology decision before area.
+4. *Pin permutation is legal and we are not using it.* TI: "Data bits within a byte-lane can be swapped to simplify
+   routing." Lattice: DQ and DM may be swapped within a data group, DQS never. The twist that D28 and D29 measured
+   (34 inversions of 55 in ButterStick's lane 0, 184 of 241 planner crossings inside one bundle) is exactly what a
+   permutation removes: on a board we design, a byte lane's crossings can be relabelled away rather than routed
+   around. It does not help the replay, where the reference fixes the assignment, but it changes the target board's
+   problem, and it means the planner should own the assignment inside each byte lane.
+
+Question to the owner, on which no work depends until answered: should M3's length criterion stay as D27 wrote it
+(the reference's own spreads, which the reference by definition passes), or become the vendor rule for the part in
+question (Lattice's ECP5 numbers for these boards), which the reference may itself fail on address and command? The
+first asks the router to match a designer's practice; the second asks it to meet the part's specification, and would
+make a failing reference possible. No scope change is made here either way. A third option, if the owner wants the
+evidence first: measure both references per segment against CK, as the vendors define the quantity, and decide after.

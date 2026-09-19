@@ -126,3 +126,9 @@ seconds, the bundle structure as the reference's, but 186 to 241 crossings betwe
 reference has none, and crossings are what strands the detailed router. Next, unless the owner objects: the
 structural planner of D29 (ordered escapes per package on the inner layers, bundles as ordered rivers, layers per
 bundle by colouring), the capacity model kept as its check.
+
+The deep research the owner asked for landed (D30, `docs/research/deep-research-claims.md`): it confirms that
+architecture (topology first, then area assignment, then meanders inside the assigned area), and raises a question
+about M3's length criterion, since Lattice's own ECP5 numbers are tighter than D27 on address and command while the
+lane and pair figures of D27 are the stricter test. The question is D30's; the criterion stands as D27 wrote it
+until the owner answers.
