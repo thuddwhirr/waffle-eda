@@ -165,3 +165,30 @@ def test_the_via_budget_keeps_one_for_each_leg_still_to_route():
     assert busr.leg_budget(budget, 0, 1, per_leg) == 2  # a single leg may use the per-leg limit
     assert busr.leg_budget(budget, 2, 1, per_leg) == 0  # nothing left
     assert busr.leg_budget(None, 9, 3, per_leg) == per_leg  # no per-net limit: the per-leg limit stands
+
+
+def test_the_sites_a_package_offers_follow_its_style(pair):
+    """What the structural planner has to hand out (D29): the hollow cells, plus the ball or corner positions the
+    package's style allows. A corner is only a site when every ball whose cell holds it allows that offset."""
+    board, _, _ = pair
+
+    class Ref:
+        bus_net_pattern = r"^BUS"
+        bus_parts = ("U1", "U2")
+
+    lat = Lattice(kb.footprint(board, "U1"))
+    corners = bus_design.via_sites(board, Ref(), {"U1": {"offsets": DIAGONAL[1:]}, "U2": {"offsets": ()}})
+    assert corners["U1"]["ball"] == [], "a corner style puts no via on a ball"
+    assert corners["U1"]["corner"], "a corner style must offer the corners"
+    assert corners["U2"]["corner"] == [] and corners["U2"]["ball"] == []
+    assert corners["U2"]["capacity"] == len(corners["U2"]["hollow"])
+
+    in_pad = bus_design.via_sites(board, Ref(), {"U1": {"offsets": ((0.0, 0.0),)}})
+    assert in_pad["U1"]["corner"] == []
+    assert len(in_pad["U1"]["ball"]) == len(lat.by_index)
+
+    # every corner offered sits half a pitch diagonally from a ball, never in a channel between two
+    for (x, y) in corners["U1"]["corner"]:
+        cells = bus_design.ball_cells(lat, x, y)
+        assert cells, "a corner belongs to at least one ball's cell"
+        assert all(abs(di) == 0.5 and abs(dj) == 0.5 for (_, _, _, di, dj) in cells)

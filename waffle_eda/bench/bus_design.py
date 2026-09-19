@@ -692,6 +692,42 @@ def entry_order(board, ref, groups: tuple = ("lane 0", "lane 1", "address/comman
     return out
 
 
+def via_sites(board, ref, style: dict | None = None, clearance_mm: float = 0.0, via_mm: float = 0.4) -> dict:
+    """Where each package could take a via, given its escape style: the sites the structural planner has to hand
+    out (D29, D31). For a package these are the cells of its hollow (the empty middle, one site per lattice cell)
+    and, where the style allows them, the ball positions or the corners between four balls. Returns package ->
+    {"hollow": [(x, y)], "corner": [...], "ball": [...], "capacity": how many sites in all}.
+
+    The count is what decides whether a bundle's layer changes fit where the reference puts them: ButterStick's
+    U11 offers 48 hollow cells and its reference uses 35 of them."""
+    pkgs = [p for p in packages_of(board, ref) if p.lattice is not None]
+    styles = style or {p.reference: {"offsets": ((0.0, 0.0), (0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5))}
+                       for p in pkgs}
+    out = {}
+    for pkg in pkgs:
+        lat = pkg.lattice
+        offsets = {(round(a, 2), round(b, 2)) for a, b in styles.get(pkg.reference, {}).get("offsets", ())}
+        hollow = [(lat.X(i), lat.Y(j)) for (i, j) in sorted(pkg.hollow_cells())]
+        ball = [(lat.X(i), lat.Y(j)) for (i, j) in sorted(lat.by_index)] if (0.0, 0.0) in offsets else []
+        corner = []
+        if offsets & {(0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5)}:
+            seen = set()
+            for (i, j) in sorted(lat.by_index):
+                for (di, dj) in ((0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5)):
+                    x, y = lat.X(i) + di * lat.pitch, lat.Y(j) + dj * lat.pitch
+                    k = (round(x, 3), round(y, 3))
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    # a corner is usable only if every ball whose cell holds it allows that offset, which is what
+                    # the router's own rule asks (a corner lies in four cells at once)
+                    if all((round(a, 2), round(b, 2)) in offsets for (_, _, _, a, b) in ball_cells(lat, x, y)):
+                        corner.append((x, y))
+        out[pkg.reference] = {"hollow": hollow, "corner": sorted(corner), "ball": ball,
+                              "capacity": len(hollow) + len(corner) + len(ball)}
+    return out
+
+
 def structure_lines(ours: dict, reference: dict) -> list:
     """The two structures side by side, as lines to print: what the D31 rules ask for, and where we stand."""
     out = [f"vias between the balls: {ours['vias_between_balls']} (reference {reference['vias_between_balls']})",
