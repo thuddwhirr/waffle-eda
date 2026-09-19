@@ -206,6 +206,17 @@ def replay(key: str) -> dict:
                 name, idx, _, points = r.tag
                 link = plans[name][idx]
                 plans[name][idx] = link[:5] + ((points, band_mm),) if band_mm > 0 else link[:5]
+        dump = os.environ.get("REPLAY_PLAN_DUMP")
+        if dump:  # the plan for inspection: runs with their cells, the reference's routes, the crossings
+            Path(dump).write_text(json.dumps({
+                "cell_mm": cells.c, "origin": (cells.x0, cells.y0),
+                "runs": [{"net": r.net.split("/")[-1], "link": r.tag[1], "layer": board.GetLayerName(r.layer) if r.layer is not None else None,
+                          "reference_layer": board.GetLayerName(r.tag[2]), "reference_points": r.tag[3], "group": list(r.group[0:1]) + list(r.group[1]),
+                          "cells": r.cells, "length_mm": r.length_mm, "units": r.units, "reserved_mm": r.reserved_mm,
+                          "deficit_mm": r.deficit_mm} for r in runs],
+                "crossings": [(a, b, board.GetLayerName(L), xy) for a, b, L, xy in last["crossings"]],
+                "escapes": [(board.GetLayerName(L), pts) for (L, pts, _, _) in kept_escapes],
+                "packages": {r: bb for r, bb in boxes.items()}}, indent=0))
         if os.environ.get("REPLAY_PLAN_ONLY") == "1":
             return {"planner": stats}
     t0 = time.time()

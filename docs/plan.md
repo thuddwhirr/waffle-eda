@@ -96,7 +96,7 @@ for a length-matched bus is only known once M3 routes the bus from them. M3 star
 
 ## State of M3
 
-FAIL, in progress (session 3, decisions D21 to D27). Criteria: all bus nets, DRC clean, lengths matched as the
+FAIL, in progress (session 3, decisions D21 to D29). Criteria: all bus nets, DRC clean, lengths matched as the
 reference matches them (D27; the table below still shows the earlier "within the measured spread" proxy), layer
 changes only at the packages, on ButterStick then LogicBone. The course changed on the step-1 measurements
 (D26, `docs/bus-design.md`): the router is being re-planned from the references' own structure, ButterStick first. Best complete runs of
@@ -118,3 +118,11 @@ balls; ten nets short. The negotiation plateaus on both boards with a handful of
 four samples each (two single-layer routes between in-pad vias that must cross): more vias per leg and a wider
 corridor lower the plateau (24 to 13 contested at twenty rounds) without clearing it; re-routing every net every
 round, waypoints from the first round and uniform spacing made it worse.
+
+The replay of the reference's structure (D28) showed the detailed search sound and the negotiation unable to pack
+the reference's own runs; the bus planner (D29, `waffle_eda/route/plan.py`) then planned capacity and layers on
+0.4 mm cells with the reference's escapes and vias kept: every run placed with no boundary over capacity in
+seconds, the bundle structure as the reference's, but 186 to 241 crossings between same-layer runs left where the
+reference has none, and crossings are what strands the detailed router. Next, unless the owner objects: the
+structural planner of D29 (ordered escapes per package on the inner layers, bundles as ordered rivers, layers per
+bundle by colouring), the capacity model kept as its check.

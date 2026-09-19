@@ -381,3 +381,42 @@ as D26 step 4 and the research report say, and the bundle's detailed routing wan
 explicit spacing rather than a square grid with negotiation. Final pass of the band variant, for the record: 44 of
 55 nets connected, zero electrical violations, 13 bus nets left unconnected, the D27 judgement failing on every
 group because of them (14 minutes in all, most of it the repair).
+
+**D29. The bus planner's first form, capacity negotiation on cells, plans capacity and layers but not order; order
+is the whole problem.** Measurement and decision, 2026-09-19 (`waffle_eda/route/plan.py`, `scripts/replay_bus.py`
+with `REPLAY_PLANNER=1`, logs `build/replay-butterstick-planner.log`, `build/plan-wide.log`). What was built
+(D26 step 4, on the reference's escapes as the owner asked): a grid of 0.4 mm cells per bus layer over the routing
+region; the capacity of each cell boundary is the number of tracks that cross it clear of the fixed copper (pads
+as circles or rectangles, vias, tracks, and the escapes the plan keeps), the narrowest of three parallel cuts,
+counted at the detailed grid's step (0.2 mm) so that the plan promises no more than the detailed router can hold;
+around a run's own terminals the capacities are recomputed without its net's copper (the clock termination
+resistors sit against U11's balls and only their own net gets out). Runs are the reference's via-to-via links and
+its long runs to a pad (102 of 55 nets; the 81 escapes, top-layer pad-to-via runs under 8 mm, stay the reference's);
+each is searched on every layer it may take (a pad terminal restricts it, a via allows all four) inside a corridor
+around its terminals, with a turn cost, a bias off the top layer, a bundle affinity (runs of one group between the
+same two packages prefer one layer) and PathFinder costs on the boundaries' usage; the length a net is short of its
+group (D27 windows) is asked for as extra tracks beside its runs, taken where a boundary has them to spare and paid
+for where it has not. Findings on ButterStick: (1) capacity is not what constrains this board: 113 by 87 cells,
+23 to 31 thousand track-boundaries per layer, all 102 runs placed with no boundary over capacity within 3 to 12
+rounds, 8 to 10 s in all; length room found for 27 of the 35 nets that need it, the per-rank command nets short
+(ODT0 8.8 of 18.7 mm, CKE0 10.8 of 15.3, CS0 14.4 of 17.2), which is where the reference meanders in U11's margin.
+(2) The layer choice with the bundle affinity reproduces the reference's bundle structure (lane 0 from U4 to U12
+on B.Cu 11 of 11, lane 1 from U12 to U11 on In5.Cu 11 of 11, 55 of 102 runs on the reference's layer, the rest
+on another inner layer). (3) Crossings decide everything and the cell negotiation does not resolve them: the
+reference's own runs, rasterised to the same cells, cross nowhere on any layer (0 of 42 In5.Cu, 32 In2.Cu, 21 B.Cu,
+7 F.Cu runs); the planner's shortest runs on the reference's own layers start with 234 crossings and 40 rounds of
+negotiation with crossings as conflicts (the runs a run crossed cost it like an overflow, the shared cells gain
+history) leave 186 to 241, spread over every layer (In5.Cu 162 of them at the end); with free layers 590 fall to
+186 to 231. The routes' order within a layer is set by the side each run passes each via and each package on (its
+homotopy), and a congestion negotiation swaps two runs that cross back and forth: the plateau of D28 again, at
+0.4 mm instead of 0.2. The reference's answer is structural: its runs come around the memory (U11 is entered from
+the north 58 times, the south 31, the west 28, the east 18) and the hollow via field is where the order changes
+(a run leaves the hollow on the row its via's position allows). Decision: the planner keeps the capacity model as
+its check and gets a structural front end, to be built next unless the owner objects: (a) at each package, an
+ordered escape of every run from its via to the package boundary on the run's layer, which is the M2 escape
+router's problem on the inner layers with the reference's vias as input and the order along the boundary as its
+output; (b) between packages, each bundle as an ordered river, its members' order fixed by the escapes' exit order
+at both ends, a mismatch resolved by choosing the exits (the via field as a permutation network) rather than by
+crossing; (c) layers per bundle from a crossing graph of the bundles' rivers, a small colouring, with the affinity
+and the capacity model deciding among the colourings. The detailed router then routes inside the rivers with its
+existing plan mode.
