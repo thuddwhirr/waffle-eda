@@ -594,6 +594,13 @@ negotiation cannot resolve, was measured inside this stall and cannot carry that
 D29 come from the planner, which has no spacing, and stand. D31's and D32's structural measurements are of the
 boards themselves and stand. The **rules** of D32 are unmeasured: they were only ever run inside the stall.
 
-What changed: nothing in the router. The spacing is a bench setting and the right value is to be measured, not
-assumed; it trades the tuner's room against the negotiation's. Until that measurement exists, no run at 0.8 mm
-should be read as a statement about the router.
+What changed: the bench's default spacing is now 0.2 mm, the most room of the values the negotiation can work in
+(0.4 and 0.8 stall it, 0.0 and 0.2 do not). Nothing in the router changed.
+
+With that fixed, the full bench on ButterStick with both D32 rules off reaches **42 of 55 nets at 0.0 mm spacing**
+(27 kept from the negotiation, 13 stranded when the repair budget ran out, zero electrical violations) and **39 of
+55 at 0.2 mm**. Neither reproduces the 54 of 55 of 18 September, whose negotiation reached 13 contested by round
+19 where today's settles at 28. So the spacing was one cause of the collapse and not the whole of it: a further
+regression sits somewhere between that run and today, and the recorded M3 numbers in the plan cannot be relied on
+until it is found. The repair stage is now the binding constraint, spending its whole budget and leaving 13 to 16
+nets stranded.

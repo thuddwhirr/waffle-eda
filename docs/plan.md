@@ -104,9 +104,14 @@ changes only at the packages, on ButterStick then LogicBone. The course changed 
 
 | board | routed | electrical violations | lengths within spread | vias inside packages | run |
 | --- | --- | --- | --- | --- | --- |
-| ButterStick | 53 of 55 | 0 | 36 of 55 (29.5 to 43.6 mm) | 100 % | pads, tuner in the DRAM hollows |
-| ButterStick | 54 of 55 | 0 | 27 of 55 | 100 % | the artifact on disk, DQ5 failed (D31) |
-| LogicBone | 45 of 50 | 0 | 40 of 50 (12.4 to 43.5 mm) | 100 % | FPGA fan-out kept, DRAMs from pads |
+| ButterStick | 42 of 55 | 0 | 25 of 55 | 100 % | today's code, no extra bus spacing (D33) |
+| ButterStick | 39 of 55 | 0 | 25 of 55 | 100 % | today's code at the 0.2 mm default (D33) |
+| ButterStick | 53 to 54 of 55 | 0 | 27 to 36 of 55 | 100 % | 18 September, **not reproducible** (D33) |
+| LogicBone | 45 of 50 | 0 | 40 of 50 (12.4 to 43.5 mm) | 100 % | 18 September, not re-measured since (D33) |
+
+The 18 September rows are what the bench reported then. D33 could not reproduce them: with the bus spacing that
+makes the negotiation work at all, today's code reaches 42 of 55. The spacing was one cause and is fixed; the rest
+of the gap is unattributed, and no number in the two older rows should be relied on until it is.
 
 Failing cases and their blockers. ButterStick: CKE0 (to U4.F18) and DQ5 (to U12.H8) end the negotiation
 contested with an adjacent ball's net and are walled in by the other 53 nets in the final pass; each routes alone
