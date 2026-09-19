@@ -604,3 +604,41 @@ With that fixed, the full bench on ButterStick with both D32 rules off reaches *
 regression sits somewhere between that run and today, and the recorded M3 numbers in the plan cannot be relied on
 until it is found. The repair stage is now the binding constraint, spending its whole budget and leaving 13 to 16
 nets stranded.
+
+**D34. What of the research is in the tooling, and what it says about M1 and M2.** Review with measurements,
+2026-09-19, prompted by the owner's question.
+
+*In the tooling: one thing.* `Costs.max_vias_per_net` caps a net's layer changes, which both references and
+Lattice's checklist support (D30, D32); D33 measured what it costs us and it is off by default. Everything else the
+research gave us sits in `docs/research/` and in D30's open question, not in code: judging length as delay in ps
+with a per-layer velocity, the vendors' per-segment matching against CK rather than a total-length spread, TI's 5W
+centre-to-centre including serpentines, the freedom to swap DQ and DM inside a byte lane, and the Vref and VTT
+placement rules (which belong to M4, not here). The literature's architecture claims (topology first, then area
+assignment, then meanders inside the assigned area) agree with D29's planner and changed nothing in it.
+
+*M1 is not invalidated.* Its harness measures what it says it measures: nets connected, electrical violations,
+length against the board's measured spread, vias inside packages, layers used. The research does not contradict
+any of that; it says the length criterion should be a delay and per segment, which is exactly D30's open question
+for the owner. One measured caution on TI's 5W rule (0.44 mm centre to centre at our 0.0889 mm track): neither
+reference obeys it, both run bus tracks at 0.20 mm centre to centre (D28), so it cannot be imposed without
+declaring both references non-compliant.
+
+*M2 passes what it asserts and asserts too little.* Its gate is every bus ball escaped with zero electrical
+violations, and the fan-out does that on 9 of 9 cases. But measured the way D32 measures a board, our escape is the
+opposite of ButterStick's at the memories:
+
+| ButterStick bus vias | in a ball's pad | in the hollows | between the balls |
+| --- | --- | --- | --- |
+| reference (149) | 64 | 72 | 1 |
+| our fan-out (88) | 60 | 3 | 24 |
+
+The reference dog-bones U12 into the hollow; we dog-bone into the array. On LogicBone our fan-out matches its
+reference closely (61 corner vias against 89, 3 in hollows against 5, and both boards use the corners). So the
+gap is ButterStick-specific and it is the same one D22 found empirically, which is why M3 keeps only the
+controller's escapes and routes the memories from their pads: two thirds of M2's output is discarded by the next
+stage. Nothing here says M2's result is wrong; it says the criteria do not distinguish an escape the bus router
+can use from one it cannot.
+
+Not a scope change, and not made here: adding a structural criterion to M2 (the escape style of each package, and
+whether the hollow is used where the reference uses it) would turn our present ButterStick fan-out into a failing
+case. That is the owner's call. Reopening M1 is not recommended on this evidence.
