@@ -86,18 +86,22 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## Pending owner decisions
 
-* **The fab tier for the target board** (PCBWay standard with 0.45/0.15 vias is marginal; advanced tier or a thinner
-  board is comfortable) and the gate's DRC criterion for the benchmark: see decisions D16. M6 and the cost model
-  depend on them; M3a and M3b do not.
+* **The fab tier for the target board** and the gate's DRC criterion for the benchmark: see D16. M6 and the cost
+  model depend on them; M3a and M3b do not. A vendor landscape is being researched (all regions, prototype
+  quantities of 5 to 20, vendors that also assemble fine-pitch BGAs), because D16 could only speak for one fab.
+  D42 has since measured what a board of this shape actually needs: a 0.8 mm caBGA381 does not require a finer
+  process than the standard tier for its escape if it is dog-boned rather than via-in-pad, which is what
+  LogicBone does with the same part; OrangeCrab's 0.5 mm pitch is the one case where the part itself rules the
+  standard tier out.
 * **The length criterion of M3b** (D30): stay with the reference's own spreads as D27 wrote them, move to the
   vendor's numbers for the part (Lattice's ECP5 checklist is tighter than D27 on address and command while D27 is
   the stricter test on lanes and pairs), or measure both references per segment against the clock first and decide
   after. M3b's gate depends on this, and so now does M3a: D40 had to decide what a net's length deficit is
   measured against and took D27's answer, the spread the board itself achieves. If D30 goes the vendor's way, the
   windows tighten, every deficit grows and M3a has to be re-run against the new criterion.
-* **The regression D33 did not close** (D33, D38): the 54 of 55 of 18 September is not reproducible and the spacing
-  setting explains only part of the gap. Either bisect the rest, at a few hour-long runs, or accept 42 of 55 as the
-  baseline. It matters less than it did: those runs had no plan to route inside, and M3b starts from one.
+* ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is
+  not bisected. Those runs were completing boards with no plan behind them, so neither figure is one M3b can be
+  compared against.
 
 ## State of M2
 

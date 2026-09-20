@@ -844,3 +844,65 @@ against the board's 3.
 The general lesson is the one D33 taught in another form. A criterion that two knobs can trade against each
 other is a criterion with a missing mechanism, and turning the knobs will find a board that passes and hide the
 gap rather than close it.
+
+**D42. What ButterStick asks of a fabricator that LogicBone does not, and which of it is the part's doing.**
+Measurement, 2026-09-20, asked by the owner, in `scripts/fab_attribution.py`. It holds each reference's bus
+against one yardstick -- PCBWay's standard quick-order tier as D16 read it, 0.1 mm track and space, 0.15 mm
+annular ring -- and for every demand that exceeds it, reports where on the board the demand is made: inside a
+ball array, where the pitch leaves no choice, or out in open board, where there was room.
+
+The comparison that settles it: **ButterStick and LogicBone carry the same FPGA in the same package on the same
+number of layers**, an ECP5 caBGA381, 381 balls at 0.8 mm, 8 layers. They ask for different processes.
+
+| | ButterStick U4 | LogicBone IC1 |
+| --- | --- | --- |
+| ball pads | 0.4 mm | 0.3 mm |
+| escape | via in the ball, 46 of them | dog-bone to a corner, 34 of them |
+| vias | 0.4/0.2, ring 0.100 mm (**under**) | 0.5/0.2, ring 0.150 mm (meets it) |
+| thinnest bus track | 0.089 mm (**under**) | 0.100 mm (meets it) |
+| closest the bus comes to itself | 0.089 mm (**under**) | 0.081 mm (**under**) |
+
+So for the same part, LogicBone meets the standard tier on everything but spacing, and ButterStick misses it on
+three counts. The part is not what is asking.
+
+Taking ButterStick's demands one at a time:
+
+* **The via in the ball, and the 0.100 mm ring that follows from it, are a choice.** The diagonal gap between
+  four of U4's balls leaves 0.366 mm of copper-free radius, so a via up to 0.53 mm across fits there with 0.1 mm
+  to spare -- larger than the 0.5 mm standard-tier via LogicBone puts in the same gap on the same package. Once
+  via-in-pad is chosen the via can be no wider than the 0.4 mm pad it sits in, which caps the ring at 0.100 mm
+  whatever the drill. The ring is a consequence of the escape style, not of the ball pitch.
+* **The 0.089 mm tracks are a board-wide choice, not congestion.** Of the 1437 segments at that width, 1133 are
+  in package margins or open board and only 337 are inside a ball array. Congestion inside the arrays is not what
+  sets the width; the likeliest reason is a target impedance on that stackup, which is a stackup decision. (This
+  is where the measurement stops and inference begins: the boards do not record why.)
+* **The 0.089 mm spacing is partly forced.** Of 59 places where the bus runs closer than 0.1 mm, 24 are inside
+  ball arrays and hollows and 35 are in margins or open board.
+
+Two findings beyond ButterStick:
+
+* **Every DDR3 reference here runs its bus closer than 0.1 mm somewhere**, ButterStick, LogicBone and OrangeCrab
+  alike, and LogicBone's tightest 38 places are in open board. Sub-0.1 mm spacing on a bus like this is the norm
+  among these four, not an outlier -- ULX3S is the exception at 0.127 mm, and it is a four-layer board with a
+  smaller and slower bus.
+* **OrangeCrab is the one genuine case of the part asking.** At 0.5 mm pitch with 0.23 mm pads the diagonal gap
+  leaves only 0.239 mm, so a dog-bone via can be at most 0.28 mm across; it uses 0.28/0.15, a ring of 0.065 mm.
+  No standard-tier via fits between those balls at all. That is the part, and no layout decision changes it.
+
+What this means for the target board: a 0.8 mm caBGA381 does not require a finer process than the standard tier
+for its escape, provided it is dog-boned rather than via-in-pad and the footprint uses the smaller pads. Track
+width and spacing are separate questions, the first set by the stackup and impedance target and the second by how
+hard the bus is packed, and both are the tool's to decide rather than the part's. The vendor landscape, which
+D16 could only speak to for one fab, is being researched separately.
+
+**D43. The unattributed regression is closed by accepting the baseline.** Owner's word, 2026-09-20, on the
+question D33 and D38 left open. The 53 to 54 of 55 bus nets reported on 18 September is not reproducible and the
+spacing default of D33 explains only part of the gap. The owner's decision is to accept 42 of 55 as the honest
+baseline and not to spend further runs bisecting the difference, on the grounds that those runs were completing
+boards that had no plan behind them: the router drew one net at a time with nothing deciding order, layer or via
+site, which D29 and D38 identified as the actual defect. M3b routes inside an M3a plan, so neither the 42 nor the
+54 is a number it can be compared against, and bisecting to recover a figure from a superseded arrangement buys
+nothing.
+
+This closes the third of the three questions the plan listed as pending. It does not reopen D33's substance: the
+measurement-provenance rule stands, and no figure from before the provenance mechanism is quotable.
