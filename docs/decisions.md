@@ -897,6 +897,28 @@ Two findings beyond ButterStick:
   the same part. Note that OrangeCrab's memory, `MT41K64M16TW` at 0.8 mm, could have taken a standard-tier via
   and does not: its 0.3/0.15 vias are a board-wide via definition, a choice, not a constraint.
 
+**The pitch sets the track width too, by the same arithmetic, and it is computable before anything is routed.**
+One track passing through the channel between two neighbouring balls, with equal clearance either side, takes a
+third of the gap the pads leave: `w = (pitch - pad) / 3`. Against what each board actually uses:
+
+| package | pitch | pad | gap | (pitch - pad)/3 | measured track / clearance |
+| --- | --- | --- | --- | --- | --- |
+| OrangeCrab U3 | 0.5 | 0.230 | 0.270 | **0.090** | **0.089 / 0.0891** |
+| ULX3S U1 | 0.8 | 0.400 | 0.400 | 0.133 | 0.127 / 0.1266 |
+| LogicBone IC2, IC3 | 0.8 | 0.420 | 0.380 | 0.127 | 0.135 / 0.0797 |
+| ButterStick U4 | 0.8 | 0.400 | 0.400 | 0.133 | 0.089 / 0.0891 |
+
+Three of the four sit on the prediction. OrangeCrab's 0.089 mm track and 0.089 mm clearance are not a style at
+all: they are what 0.5 mm pitch leaves, to the micrometre. ButterStick is the exception, using 0.089 where its
+own pitch allows 0.133, which is the finding above reached from the other direction.
+
+So a package's pitch and pad size fix three demands at once -- the track width, the clearance beside it, and the
+via that fits between four balls -- and at 0.8 mm all three sit inside the standard tier while at 0.5 mm all
+three fall outside it. It is a step rather than a slope, and the common pitches (1.0, 0.8, 0.65, 0.5, 0.4) leave
+little middle ground. The consequence for the pipeline is that the fab tier, and therefore part of the cost, is
+derivable from part selection before any routing happens; it belongs in the cost model of M5 rather than being
+discovered from a finished layout.
+
 What this means for the target board: a 0.8 mm caBGA381 does not require a finer process than the standard tier
 for its escape, provided it is dog-boned rather than via-in-pad and the footprint uses the smaller pads. Track
 width and spacing are separate questions, the first set by the stackup and impedance target and the second by how
