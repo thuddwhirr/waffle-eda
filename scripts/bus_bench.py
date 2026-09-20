@@ -11,6 +11,7 @@ from __future__ import annotations
 import faulthandler
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -70,6 +71,25 @@ def partner_sides(board, parts: dict, bus: set[str]) -> dict[str, dict[str, str]
                 cy = sum(y for _, y in others) / len(others)
                 out[part][net] = lat.facing_side(cx, cy)
     return out
+
+
+def provenance(costs: busr.Costs, rules: busr.BusRules) -> dict:
+    """What this run actually ran with (D33, working agreement): the commit, whether the tree was clean, the
+    environment overrides and the settings that came out of them. A result without this is not quotable."""
+    def git(*args) -> str:
+        try:
+            return subprocess.run(["git", *args], cwd=refs.repo_root(), capture_output=True, text=True,
+                                  timeout=10).stdout.strip()
+        except Exception:
+            return ""
+
+    env = {k: v for k, v in sorted(os.environ.items())
+           if k.startswith("BUS_") or k in ("REPLAY_PLANNER", "PLAN_COSTS")}
+    return {"commit": git("rev-parse", "--short", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+            "env": env, "spacing_mm": SPACING_MM,
+            "costs": {k: v for k, v in costs.__dict__.items() if not k.startswith("_")},
+            "rules": {k: v for k, v in rules.__dict__.items() if k != "ball_via_offsets"},
+            "ball_via_offsets": {k: list(v) for k, v in rules.ball_via_offsets.items()}}
 
 
 def run_reference(key: str, draw: bool = True) -> dict:
@@ -136,6 +156,10 @@ def run_reference(key: str, draw: bool = True) -> dict:
         costs.max_vias_per_net = (bus_design.structure(kb.load_board(refs.board_path(ref)), ref)["max_vias_per_net"]
                                   if budget_mode == "reference" else int(budget_mode))
         print(f"   vias per net: at most {costs.max_vias_per_net}", flush=True)
+    prov = provenance(costs, rules_bus)
+    print(f"   provenance: commit {prov['commit']}{' (tree dirty)' if prov['dirty'] else ''}, spacing "
+          f"{prov['spacing_mm']} mm, overrides {prov['env'] or 'none'}", flush=True)
+    out["provenance"] = prov
     res = busr.route_bus(board, [p for p, l in parts.items() if l.rows >= 4 and l.cols >= 4], bus, rules_bus,
                          costs=costs, length_windows={n: (lo, hi) for n in bus})
     print(f"   bus: {res.summary()} | {time.time() - t0:.1f}s", flush=True)

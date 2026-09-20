@@ -210,3 +210,24 @@ def test_a_stalled_negotiation_stops_and_a_repair_budget_is_spent(tmp_path):
     res = busr.route_bus(board, ["U1", "U2"], set(manifest["bus"]), rules, costs=costs)
     assert not res.failed, res.summary() + " " + str(res.failed)
     assert res.counts["iterations"] <= costs.iterations
+
+
+def test_the_bench_records_what_it_ran_with():
+    """The working agreement's provenance rule (D33, D38): a result must name the commit, the environment
+    overrides and the settings that came out of them, or it is not quotable in the plan."""
+    import os
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "scripts"))
+    import bus_bench
+
+    os.environ["BUS_STYLE"] = "off"
+    try:
+        rules = busr.BusRules(track_mm=0.1, clearance_mm=0.1, via_mm=0.4, via_drill_mm=0.2, layers=("F.Cu", "B.Cu"))
+        prov = bus_bench.provenance(busr.Costs(iterations=7), rules)
+    finally:
+        del os.environ["BUS_STYLE"]
+    assert prov["commit"], "the commit must be recorded"
+    assert prov["env"].get("BUS_STYLE") == "off", "an override must be recorded"
+    assert prov["costs"]["iterations"] == 7
+    assert prov["rules"]["track_mm"] == 0.1
+    assert "spacing_mm" in prov
