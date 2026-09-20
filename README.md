@@ -54,6 +54,10 @@ python3 -m waffle_eda.bench.fanout_measure          # how each reference escapes
 python3 -m waffle_eda.bench.constraints             # each reference's constraints as if agreed upstream (build/constraints-*.json)
 python3 scripts/gate.py m2                          # the milestone gate: PASS or FAIL, one line per case
 python3 scripts/fanout_bench.py synthetic butterstick logicbone   # strip, escape, gate and DRC
+python3 scripts/plan_bus.py butterstick             # plan the bus and check the plan (M3a)
+python3 scripts/plan_bus.py butterstick --reference # read the board's own routing back as a plan: the answer key
+python3 scripts/bus_bench.py butterstick            # route the bus and score it (M3b)
+python3 scripts/compare_net.py butterstick --failed # our copper under the reference's route, net by net
 python3 -m pytest -q
 ```
 

@@ -744,3 +744,67 @@ length-criterion question, are named in the plan as pending owner decisions rath
 
 What is not decided by this, and still open: which way the regression debt goes (bisect, or accept 42 of 55 as the
 baseline), and D30 itself.
+
+**D39. How a bus plan is made crossing-free: a monotone mesh and node-disjoint paths.** Implementation with
+measurements, 2026-09-20, in `waffle_eda/route/busplanner.py`, under M3a of D38.
+
+The plan is routed on one grid per copper layer whose lines are not evenly spaced. Every bus package contributes
+its own half-pitch lines, so a ball centre, a corner between four balls and a channel between two of them are all
+nodes; the rest of the region is filled in at a step of its own. The three references make this necessary rather
+than elegant: OrangeCrab's two packages are on 0.5 and 0.8 mm pitches, and LogicBone's and ButterStick's are on
+one pitch but origins 9.4 and 18.3 mm apart, neither a multiple of a half pitch. No single even grid holds all of
+their ball and corner positions.
+
+Deformed like that the grid is still a grid: x increases with i and y with j. Two orthogonal paths through
+disjoint sets of nodes of such a grid cannot cross. So the planner never checks for crossings and repairs them;
+it routes every net on node-disjoint paths and crossing-freeness follows on every layer at once, whatever the
+geometry. Negotiated congestion (PathFinder) is what drives the nets apart, and the plan is only finished when no
+node is claimed twice.
+
+Three things this settles that were being assumed:
+
+* **Via sites.** A layer change happens at a column, held by one net on every layer as a through via is, so "one
+  net to a via site" is a property of the construction too. A column inside a package's array is offered only
+  where that package's measured style puts its vias (D32), so ButterStick's nets turn down inside their own balls
+  and OrangeCrab's dog-bone out to a corner first, neither of them by instruction.
+* **Which layers the bus may use.** Measured: a copper layer that carries fewer than 20 distinct non-bus nets is
+  a plane and the bus does not cut it. The counts separate cleanly on all three boards (OrangeCrab 95, 55 and 39
+  against 10, 1, 1; LogicBone 260, 113, 57 and 42 against 19, 1, 0, 0; ButterStick 232, 127, 57 and 52 against
+  13, 8, 0, 0) and pick out exactly the layers each reference's own bus uses. Zone coverage does not separate
+  them: LogicBone pours ground on its signal layers as well as its planes, so every layer of it reads as covered.
+* **Rip-up.** Re-routing every net each round does not settle. A net moves off a contested node and another moves
+  straight on to it and the two trade places; LogicBone and ButterStick sat at one to six contested nodes for a
+  dozen rounds. After round one only the nets in a conflict are ripped up and re-routed against the others'
+  standing claims. OrangeCrab settles in 5 rounds and 2 s where it had taken 17 rounds and 12 s.
+
+**D40. What a length deficit is, and what room a plan may claim for it.** Implementation with measurements,
+2026-09-20, in `waffle_eda/route/busplanner.py`, under M3a of D38.
+
+Two numbers in M3a's fourth criterion ("every net's reserved room at least its length deficit") had no definition
+and both were got wrong first.
+
+*The deficit.* Against what, and how closely? The first answer was the longest net of the group exactly, which
+asked ButterStick's ODT0 for 45.4 mm of meander where its own reference meanders at most 16.6 mm. The criterion
+M3b is judged by is the reference's spread, not zero: plan.md asks for "lengths matched as the reference matches
+them" and D27 measured what that is. So a group has to match to within the spread the board itself achieves, and
+the plan records it: address/command 6.7 mm on OrangeCrab, 8.0 on ButterStick, 11.4 on LogicBone; the data lanes
+0.5 to 0.8 mm on OrangeCrab and ButterStick, 4.2 and 7.1 on LogicBone. A board with no bus routed yet has no
+spread to measure and its groups match exactly.
+
+*The room.* A serpentine at the tightest period the mesh allows, one node out and one node back, turns a run of
+length l into l*sqrt(1 + 4a^2) where a is its amplitude in mesh steps, so the room affords l*(sqrt(1+4a^2) - 1):
+about 1.2 times the run at one node of amplitude, 3.1 at two, 5.1 at three. The first model counted two mesh
+steps per node held and was three times too generous, which would have passed the gate on room that was not
+there. The amplitude is what the net actually holds beside its run, not what happens to be free beside it: room
+two nets could both use is room neither can rely on.
+
+That distinction forces the plan to do area assignment rather than hope. A first pass lays every net down one
+track wide and says what each is short of its group; a second routes them again, neediest first, each holding the
+tracks beside its run that its deficit asks for; a net still short then takes what is left free beside its runs.
+Without it the negotiation packs a bundle shoulder to shoulder, and a net short of its group has nowhere to make
+the length up -- on ButterStick 21 nets had no room at all.
+
+One more number had to be capped. Every cost in the planner is millimetres of run, and the congestion term grew
+by 1.6 a round without bound, so by round 24 leaving a contested node was worth thirty metres of detour:
+ButterStick's DQ10 came out 68.3 mm long against a reference of 30, and its lane 1 spread 48.3 mm against a
+reference of 0.8. Capped at 40 mm, with a via priced at 8 mm rather than 3, all three references pass.

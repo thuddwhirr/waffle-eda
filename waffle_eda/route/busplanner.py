@@ -46,13 +46,19 @@ from waffle_eda.route.busplan import BusPlan, Leg, Site, _site_of, styles_of, te
 class PlanCosts:
     step_mm: float = 0.4  # the filler grid between the packages' own lines
     margin_mm: float = 0.10  # copper to the centre of a run: the plan's clearance, not M3b's DRC
-    via_mm: float = 3.0  # what a layer change costs, in millimetres of run
+    via_mm: float = 8.0  # what a layer change costs, in millimetres of run
     plane_mm: float = 0.0  # extra cost per mm on a layer a power or ground pour covers
     room_mm: float = 2.0  # what crossing the meander room another net holds costs
-    present: float = 1.0  # the weight of this round's claims
-    present_growth: float = 1.7  # how much dearer a contested node gets each round
+    present: float = 2.0  # what sharing a node with one other net costs this round, in millimetres
+    present_growth: float = 1.6  # how much dearer a contested node gets each round
+    present_max: float = 15.0  # and how dear it may get: every cost here is millimetres of run, so an
+    # uncapped congestion term buys absurd detours. At 1.6 to the 24th it was worth thirty metres of detour to
+    # leave one contested node, and ButterStick's DQ10 came out 68 mm long where its reference is 30.
     history: float = 1.0  # what a node that has ever been contested keeps costing
+    detour: float = 1.5  # how far a run may wander: this many times the distance it has to cover, plus
+    detour_mm: float = 4.0  # this much slack, before the search refuses the detour
     rounds: int = 24
+    finisher_steps: int = 200  # how many nets the finisher may move off contested nodes
     min_nets_for_signal_layer: int = 20  # below this a layer is a plane, not a routing layer
     meander_depth: int = 3  # how far to either side of a run the plan will look for meander room
     budget_s: float = 900.0
@@ -278,6 +284,7 @@ class Router:
         self.want: dict = {}  # node -> the one net holding it as meander room beside its run
         self.halo: dict = defaultdict(set)  # net -> the nodes it holds that way
         self.history: dict = defaultdict(float)
+        self.forbid: dict = defaultdict(set)  # net -> nodes it may not use, set by the finisher
         self.present = costs.present
 
     def node_cost(self, nid: int, net: str) -> float:
@@ -288,18 +295,28 @@ class Router:
         return (self.present * others + self.costs.room_mm * (room is not None and room != net)
                 + self.history[nid])
 
-    def route_net(self, net: str, targets: list, seeds: set) -> list | None:
+    def route_net(self, net: str, targets: list, seeds: set, exclusive: bool = False) -> list | None:
         """Grow the net's tree to every target in turn, nearest first, each by an A* over the mesh. Returns the
-        edges of the tree, or None if a target cannot be reached."""
+        edges of the tree, or None if a target cannot be reached.
+
+        Each search is bounded: a run may be `detour` times the distance it has to cover, and no more. Without
+        that bound congestion buys any detour it can pay for, and a bundle comes out with one net wandering the
+        board while the rest take the short way -- which is the whole of the length deficit the plan then has to
+        find room for. On OrangeCrab one address line came out 53.1 mm long where the board's own longest is
+        21.7, and every other net in its group inherited that as a deficit. A net that cannot be routed inside
+        its bound gets it doubled, and then lifted, rather than going unrouted."""
         tree = set(seeds)
         edges = []
         left = [t for t in targets if not (set(t) & tree)]
         while left:
             best = None
-            for k, target in enumerate(left):
-                path = self._search(net, tree, set(target))
-                if path and (best is None or path[0] < best[0]):
-                    best = (path[0], k, path[1])
+            for slack in (self.costs.detour, self.costs.detour * 2, math.inf):
+                for k, target in enumerate(left):
+                    path = self._search(net, tree, set(target), slack, exclusive)
+                    if path and (best is None or path[0] < best[0]):
+                        best = (path[0], k, path[1])
+                if best is not None:
+                    break
             if best is None:
                 return None
             _cost, k, path = best
@@ -310,7 +327,10 @@ class Router:
             left = [t for t in left if not (set(t) & tree)]
         return edges
 
-    def _search(self, net: str, sources: set, targets: set):
+    def _search(self, net: str, sources: set, targets: set, slack: float = math.inf, exclusive: bool = False):
+        """A* from anywhere in the net's tree to the target, on cost, with the run's own length kept beside the
+        cost and bounded: a layer change costs but adds no length, so the bound is on copper, which is what the
+        length criterion is about."""
         m = self.mesh
         via = self.costs.via_mm
         step = self.costs.step_mm
@@ -321,14 +341,28 @@ class Router:
             x, y = m.xy(nid)
             return min(abs(x - a) + abs(y - b) for a, b in zip(tx, ty))
 
+        banned = self.forbid.get(net, ())
+
+        def taken(nid):
+            """Under ``exclusive`` a node another net has is not merely dear, it is closed. That is what makes a
+            repair monotone: the net it moves comes down on free nodes, so the conflict it was moved off is gone
+            and no new one is made. Without it the finisher shuffles the same conflicts around the board."""
+            if not exclusive:
+                return False
+            li2, i2, j2 = m.unpack(nid)
+            return bool(self.use[nid] - {net}) or bool(self.column_use[(i2, j2)] - {net})
+
         dist: dict = {}
+        glen: dict = {}
         prev: dict = {}
         heap = []
         for s in sources:
             if m.blocked[s] and s not in targets:
                 continue
             dist[s] = 0.0
+            glen[s] = 0.0
             heapq.heappush(heap, (h(s), 0.0, s))
+        limit = math.inf if slack == math.inf else slack * min(h(s) for s in sources) + self.costs.detour_mm
         while heap:
             _f, d, nid = heapq.heappop(heap)
             if d > dist.get(nid, math.inf) + 1e-9:
@@ -340,18 +374,23 @@ class Router:
                 return d, path[::-1]
             li, i, j = m.unpack(nid)
             x, y = m.X[i], m.Y[j]
+            here = glen[nid]
             factor = 1.0 + (self.costs.plane_mm if li in self.plane else 0.0)
             for (di, dj) in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 a, b = i + di, j + dj
                 if not (0 <= a < m.nx and 0 <= b < m.ny):
                     continue
                 nxt = m.nid(li, a, b)
-                if (m.blocked[nxt] or m.owner.get(nxt, net) != net) and nxt not in targets:
+                if (m.blocked[nxt] or m.owner.get(nxt, net) != net or nxt in banned or taken(nxt)) \
+                        and nxt not in targets:
                     continue
-                w = (abs(m.X[a] - x) + abs(m.Y[b] - y)) * factor + self.node_cost(nxt, net)
-                nd = d + w
+                span = abs(m.X[a] - x) + abs(m.Y[b] - y)
+                if here + span + h(nxt) > limit:
+                    continue  # no route through here can come in under the bound
+                nd = d + span * factor + self.node_cost(nxt, net)
                 if nd < dist.get(nxt, math.inf) - 1e-9:
                     dist[nxt] = nd
+                    glen[nxt] = here + span
                     prev[nxt] = nid
                     heapq.heappush(heap, (nd + h(nxt), nd, nxt))
             if not self.columns[i * m.ny + j]:
@@ -360,11 +399,13 @@ class Router:
                 if lk == li:
                     continue
                 nxt = m.nid(lk, i, j)
-                if (m.blocked[nxt] or m.owner.get(nxt, net) != net) and nxt not in targets:
+                if (m.blocked[nxt] or m.owner.get(nxt, net) != net or nxt in banned or taken(nxt)) \
+                        and nxt not in targets:
                     continue
                 nd = d + via + self.node_cost(nxt, net) + step * 1e-3 * abs(lk - li)
                 if nd < dist.get(nxt, math.inf) - 1e-9:
                     dist[nxt] = nd
+                    glen[nxt] = here
                     prev[nxt] = nid
                     heapq.heappush(heap, (nd + h(nxt), nd, nxt))
         return None
@@ -543,13 +584,16 @@ def group_windows(board, ref) -> dict:
     return {g: round(max(v) - min(v), 3) for g, v in per.items() if len(v) > 1}
 
 
-def negotiate(router: Router, targets: dict, bus: list, costs: PlanCosts, halo: dict, t0: float, say) -> tuple:
+def negotiate(router: Router, targets: dict, bus: list, costs: PlanCosts, halo: dict, t0: float, say,
+              need: dict | None = None) -> tuple:
     """Negotiated congestion to node-disjoint paths, which is what makes the plan crossing-free. ``halo`` is the
-    room each net holds beside its run for its meanders."""
-    order = sorted(bus, key=lambda n: (-halo.get(n, 0), -_extent(targets.get(n, []))))
+    room each net holds beside its run for its meanders, and ``need`` how short of its group each one is: the
+    neediest is routed first, because the room goes to whoever claims it."""
+    need = need or {}
+    order = sorted(bus, key=lambda n: (-need.get(n, 0.0), -halo.get(n, 0), -_extent(targets.get(n, []))))
     trees: dict = {}
     failed: list = []
-    best = None
+    best = None  # the best (unrouted, contested) any round reached, for the trace only
     rnd = 0
     for rnd in range(costs.rounds):
         # Round one lays every net down; after that only the nets in a conflict are ripped up and re-routed
@@ -573,26 +617,53 @@ def negotiate(router: Router, targets: dict, bus: list, costs: PlanCosts, halo: 
         bad = router.conflicts()
         say(f"   round {rnd + 1}: {len(trees)} of {len(bus)} nets routed, {len(todo)} re-routed, "
             f"{len(bad)} contested nodes, {time.time() - t0:.0f}s")
-        if best is None or (len(failed), len(bad)) < best[0]:
-            best = ((len(failed), len(bad)), dict(trees))
+        best = min(best or (len(failed), len(bad)), (len(failed), len(bad)))
         if not bad and not failed:
             break
         for nid in bad:
             router.history[nid] += costs.history
-        router.present *= costs.present_growth
+        router.present = min(router.present * costs.present_growth, costs.present_max)
         if time.time() - t0 > costs.budget_s:
             say(f"   the budget of {costs.budget_s:.0f}s is spent after round {rnd + 1}")
             break
-    if best[0] != (0, 0):  # the best round, not the last: a later round can be worse than one already seen
-        for net in set(trees) - set(best[1]):
-            router.release(net, trees[net])
-        for net, edges in best[1].items():
-            if net not in trees:
-                router.claim(net, edges, halo.get(net, 0))
-        contested = sorted({router.where(nid) for nid in router.conflicts()})
-        say(f"   {best[0][0]} net(s) unrouted and {len(contested)} node(s) still contested: "
+    # The finisher. Crossing-freeness rests on node-disjointness, so a node two nets still want when the rounds
+    # are spent is not a near miss, it is a crossing. Take one of them off it and route it again on free nodes
+    # only: the conflict goes and no new one comes, so every step that succeeds leaves strictly fewer. A net that
+    # cannot be re-routed that way is put back where it was and the other net is tried.
+    moved = 0
+    for _step in range(costs.finisher_steps):
+        left = router.conflicts()
+        if not left or time.time() - t0 > costs.budget_s:
+            break
+        _li, i, j = router.mesh.unpack(left[0])
+        nets = [n for n in sorted(router.use[left[0]] | router.column_use[(i, j)]) if n in trees]
+        column = {router.mesh.nid(k, i, j) for k in range(router.mesh.nl)}
+        for net in sorted(nets, key=lambda n: _extent(targets.get(n, []))):
+            was = trees[net]
+            keep = set(router.forbid[net])
+            router.forbid[net] |= column
+            router.release(net, was)
+            edges = router.route_net(net, targets[net][1:], set(targets[net][0]), exclusive=True)
+            if edges is None:  # it cannot leave that node without taking someone else's: put it back
+                router.forbid[net] = keep
+                router.claim(net, was, halo.get(net, 0))
+                continue
+            trees[net] = edges
+            router.claim(net, edges, halo.get(net, 0))
+            moved += 1
+            break
+        else:
+            break  # neither net at this node can be moved without making a new conflict
+    if moved:
+        say(f"   the finisher moved {moved} net(s) onto free nodes; {len(router.conflicts())} contested left, "
+            f"{time.time() - t0:.0f}s")
+
+    left = router.conflicts()
+    if left or failed:
+        contested = sorted({router.where(nid) for nid in left})
+        say(f"   {len(failed)} net(s) unrouted and {len(contested)} node(s) still contested: "
             + ", ".join(contested[:6]))
-    return best[1], rnd + 1
+    return trees, rnd + 1
 
 
 def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
@@ -637,8 +708,10 @@ def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
         say(f"   pass 2: {len(halo)} net(s) short of their group by up to {max(deficit.values()):.1f} mm, "
             f"holding up to {max(halo.values())} track(s) of room each")
         router = Router(mesh, columns, costs, plane)
-        trees, more = negotiate(router, targets, bus, costs, halo, t0, say)
+        trees, more = negotiate(router, targets, bus, costs, halo, t0, say, deficit)
         rounds += more
+
+    lengthen(mesh, router, trees, windows, costs, say)
 
     plan = BusPlan(board=ref.key)
     for net, edges in sorted(trees.items()):
@@ -670,6 +743,110 @@ def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
         "unrouted": sorted(set(bus) - set(trees)),
     }
     return plan
+
+
+def lengthen(mesh: Mesh, router: Router, trees: dict, windows: dict, costs: PlanCosts, say) -> dict:
+    """Make the length rather than only reserve room for it.
+
+    A bundle routed at its shortest comes out with the spread of its geometry, not of its criterion: on
+    ButterStick our lane 1 spanned 29.2 mm where the board's own spans 0.8, and a net 26 mm short of its group
+    then wants a corridor five tracks wide to meander in, which a packed bundle does not have. So a net below its
+    group's target is grown in place first, and only what cannot be grown is left as room to reserve.
+
+    The growth is the serpentine itself, written into the plan: every edge of the mesh is one step, so an edge
+    a--b is replaced by a--p--q--b one step to the side, which adds two steps of length and takes two nodes that
+    were free. Node-disjointness is preserved because the nodes are claimed as the net's own, so the plan stays
+    crossing-free; and no net is grown past its group's longest, so growing one does not move the target for the
+    rest."""
+    planned = {net: _tree_length(mesh, edges) for net, edges in trees.items()}
+    groups: dict = defaultdict(list)
+    for net in planned:
+        groups[bus_design.classify(net)[0]].append(net)
+    target = {}
+    for group, members in groups.items():
+        if group == "other" or len(members) < 2:
+            continue
+        aim = max(planned[m] for m in members) - windows.get(group, 0.0)
+        for m in members:
+            if planned[m] < aim - 1e-6:
+                target[m] = aim
+    grown = 0.0
+    for net in sorted(target, key=lambda n: planned[n] - target[n]):
+        need = target[net] - planned[net]
+        for depth in range(1, costs.meander_depth + 1):
+            if need <= 1e-6:
+                break
+            edges, made = _weave(mesh, router, net, trees[net], need, depth)
+            trees[net] = edges
+            need -= made
+            grown += made
+            if made <= 1e-6:
+                break
+    if grown:
+        say(f"   grew {len(target)} short net(s) by {grown:.0f} mm in all, to within their groups' spread")
+    return target
+
+
+def _weave(mesh: Mesh, router: Router, net: str, edges: list, need: float, depth: int) -> tuple:
+    """One pass of serpentine over a net's tree at the given amplitude, up to ``need`` millimetres."""
+    out = []
+    made = 0.0
+    skip = False
+    # the net's own nodes are not free either: a detour that lands on one folds the run back over itself, which
+    # is a self-crossing and cuts the run into legs where there is no site
+    mine = {nid for edge in edges for nid in edge}
+    for (a, b) in edges:
+        la, ia, ja = mesh.unpack(a)
+        lb, ib, jb = mesh.unpack(b)
+        if skip or la != lb or made >= need - 1e-6:
+            out.append((a, b))
+            skip = False
+            continue
+        di, dj = (0, 1) if ib != ia else (1, 0)  # across the run
+        done = False
+        for sign in (1, -1):
+            side = []
+            ok = True
+            for d in range(1, depth + 1):
+                for (i, j) in ((ia + di * d * sign, ja + dj * d * sign), (ib + di * d * sign, jb + dj * d * sign)):
+                    if not (0 <= i < mesh.nx and 0 <= j < mesh.ny):
+                        ok = False
+                        break
+                    nid = mesh.nid(la, i, j)
+                    if mesh.blocked[nid] or mesh.owner.get(nid, net) != net or router.use[nid] \
+                            or router.want.get(nid, net) != net or nid in mine:
+                        ok = False
+                        break
+                    side.append(nid)
+                if not ok:
+                    break
+            if not ok or len(side) != 2 * depth:
+                continue
+            outward = side[0::2]  # above a, going out
+            back = side[1::2]  # above b, coming back
+            chain = [a] + outward + back[::-1] + [b]
+            added = 0.0
+            for (u, v) in zip(chain, chain[1:]):
+                _l, ui, uj = mesh.unpack(u)
+                _l, vi, vj = mesh.unpack(v)
+                added += abs(mesh.X[vi] - mesh.X[ui]) + abs(mesh.Y[vj] - mesh.Y[uj])
+            straight = abs(mesh.X[ib] - mesh.X[ia]) + abs(mesh.Y[jb] - mesh.Y[ja])
+            if added - straight > need - made + 1e-6:
+                continue  # this amplitude overshoots what the net is short of
+            out += list(zip(chain, chain[1:]))
+            for nid in side:
+                mine.add(nid)
+                router.use[nid].add(net)
+                if router.want.get(nid) == net:
+                    del router.want[nid]
+                    router.halo[net].discard(nid)
+            made += added - straight
+            done = True
+            skip = True
+            break
+        if not done:
+            out.append((a, b))
+    return out, made
 
 
 def _short(plan: BusPlan, deficit: dict) -> dict:
@@ -815,7 +992,11 @@ def _afforded(mesh: Mesh, router: Router, leg: Leg) -> float:
         for sign in (1, -1):
             for d in range(1, max(mesh.nx, mesh.ny)):
                 u, v = a + di * d * sign, b + dj * d * sign
-                if not (0 <= u < mesh.nx and 0 <= v < mesh.ny) or mesh.nid(li, u, v) not in held:
+                if not (0 <= u < mesh.nx and 0 <= v < mesh.ny):
+                    break
+                nid = mesh.nid(li, u, v)
+                # a node the net held but another net's run has since taken is not room any more
+                if nid not in held or (router.use[nid] - {leg.net}):
                     break
                 beside += 1
     amplitude = beside / (2 * len(walk))
