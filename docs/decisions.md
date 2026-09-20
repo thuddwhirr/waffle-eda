@@ -734,3 +734,13 @@ solve; order is. A plan that fixes order, layer and via site is a smaller artifa
 against an answer key we can already read, and it costs seconds rather than an hour, so a mistake in it is caught
 in the same session it is made. The present arrangement can only be tested by a route, which is why a bench setting
 was able to invalidate six weeks of measurement without anyone noticing.
+
+**D38. The owner accepted D37; the plan is revised.** Owner's word, 2026-09-20, on the proposal of D37. M3 becomes
+M3a (the bus plan, gated in seconds against the reference's own plan) and M3b (the routing inside that plan, with
+M3's present criteria). The class C ladder rises: OrangeCrab, LogicBone, ButterStick. M2 keeps its gate for
+packages with no bus and hands the bus packages' escapes to M3a. Measurement provenance becomes a rule in the
+working agreement with a mechanism in the bench. The two debts, the regression D33 did not close and D30's
+length-criterion question, are named in the plan as pending owner decisions rather than left as background.
+
+What is not decided by this, and still open: which way the regression debt goes (bisect, or accept 42 of 55 as the
+baseline), and D30 itself.

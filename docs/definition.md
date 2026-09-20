@@ -86,6 +86,11 @@ Adapted from the `waffle-fpga` brief, section 9, and kept.
 * Record every constraint a tool imposes and check it against the references before keeping it. The last project
   failed against constraints of its own invention.
 * Keep the decisions log: what was tried, the numbers, why it was dropped.
+* Every recorded result names the configuration that produced it: the commit, the environment overrides and the
+  resolved settings the tool ran with. A result without that provenance is not quotable in the plan. Any bench
+  parameter that changes a result is measured before it is set, never assumed (D33: a 0.8 mm spacing between bus
+  nets, chosen by assumption, made every net contested by construction and invalidated six weeks of routing
+  measurements without anyone noticing).
 * When a tool fails three times on the same problem, stop and find the missing constraint or the missing test. Do not
   brute-force.
 * Report briefly: numbers per stage, what is open, what is next. Do not narrate iterations.
