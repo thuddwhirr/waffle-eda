@@ -69,10 +69,17 @@ layers) and every synthetic case, with zero electrical violations under each ref
 9 of 9 cases; decisions D17 to D20); 23 reference boards registered and measured
 ([`docs/references.md`](docs/references.md)); the strip-and-score harness. See [`docs/plan.md`](docs/plan.md).
 
-M3, the bus stage, in progress and failing its gate. It is now two milestones (D37, D38): M3a produces a bus plan,
-the layer, via site and bundle order for every net, checked in seconds against the reference's own plan; M3b routes
-inside that plan. Reproducible today on ButterStick with the structural rules off: 42 of 55 bus nets with zero
-electrical violations and every via inside a package. The 53 to 54 of 55 recorded earlier is not reproducible and
-the reason is only half understood (D33). What the measurement established: the negotiation's plateau is an
-ordering problem, not a capacity one (D29, D31, D32); the bench's own spacing setting had made every net contested
-by construction (D33); and a bus package's escape belongs to the bus plan rather than to M2 (D36).
+M3a, the bus plan, complete: `python3 scripts/gate.py m3a` PASS on all three class C references (OrangeCrab,
+LogicBone, ButterStick). The planner routes on a grid whose lines are every package's own half pitch, so a ball, a
+corner between four balls and a channel between two of them are all nodes of it and the grid stays monotone -- and
+two orthogonal paths through disjoint nodes of a monotone grid cannot cross, which makes crossing-freeness a
+property of the construction rather than something to check and repair. Each plan fixes every net's layer, via
+site, bundle order and length room, and is checked in under a second (decisions D39 to D41).
+
+M3b, the routing inside that plan, not built. The last reproducible bus routing, from before there was a plan to
+route inside, is 42 of 55 nets on ButterStick with zero electrical violations; the 53 to 54 of 55 recorded on
+18 September is not reproducible and the reason is only half understood (D33). What the measurement established:
+the negotiation's plateau is an ordering problem, not a capacity one (D29, D31, D32); the bench's own spacing
+setting had made every net contested by construction (D33); a bus package's escape belongs to the bus plan rather
+than to M2 (D36); and a criterion two knobs can trade against each other is a criterion with a missing mechanism
+(D41).

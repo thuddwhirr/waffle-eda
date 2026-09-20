@@ -45,7 +45,8 @@ boards is never requested by the bus router. M2's gate therefore stands for pack
 escaping is the whole job; for the bus packages the escape router is the subroutine M3a calls once it knows each
 net's order and layer, and the escapes are judged by M3a and M3b.
 
-**M3a. The bus plan** (D37, D38). For a reference, produce a plan before any detailed search: per net and leg, the
+**M3a. The bus plan** (complete: `python3 scripts/gate.py m3a` PASS, 3 of 3 class C references; decisions D39 to
+D41). For a reference, produce a plan before any detailed search: per net and leg, the
 layer, the via site at each package taken from that package's measured escape style (D32), the order of each bundle
 where it crosses each package boundary, and the length room reserved along each run. Gate (`scripts/gate.py m3a`):
 every run placed; no two runs of one layer crossing; every via site legal for its package's style and used by one
@@ -91,10 +92,12 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 * **The length criterion of M3b** (D30): stay with the reference's own spreads as D27 wrote them, move to the
   vendor's numbers for the part (Lattice's ECP5 checklist is tighter than D27 on address and command while D27 is
   the stricter test on lanes and pairs), or measure both references per segment against the clock first and decide
-  after. M3b's gate depends on this; M3a does not.
+  after. M3b's gate depends on this, and so now does M3a: D40 had to decide what a net's length deficit is
+  measured against and took D27's answer, the spread the board itself achieves. If D30 goes the vendor's way, the
+  windows tighten, every deficit grows and M3a has to be re-run against the new criterion.
 * **The regression D33 did not close** (D33, D38): the 54 of 55 of 18 September is not reproducible and the spacing
   setting explains only part of the gap. Either bisect the rest, at a few hour-long runs, or accept 42 of 55 as the
-  baseline and spend the time on M3a instead.
+  baseline. It matters less than it did: those runs had no plan to route inside, and M3b starts from one.
 
 ## State of M2
 
@@ -118,15 +121,45 @@ originals meet by construction; every original passes its own constraints file. 
 eleven seconds. The escapes differ from the originals' in via count and layer use, and whether they are as good
 for a length-matched bus is only known once M3 routes the bus from them. M3 starts on the owner's word.
 
-## State of M3a and M3b
+## State of M3a
 
-Both FAIL; M3a is not built. The sessions of 19 and 20 September spent themselves on measurement rather than on
-routing, and what they establish is recorded in D28 to D38. In short: the negotiation's plateau is an ordering
-problem and not a capacity one (D29, D31, D32); the bench's own spacing setting had made every net contested by
-construction, so the routing measurements of six weeks were taken inside a stall (D33); and the escape of a bus
-package belongs to the bus plan (D36).
+**PASS.** `python3 scripts/gate.py m3a` exits 0: all three class C references, every net planned in one piece, no
+two runs of one layer crossing, every via site legal for its package's measured style and used by one net only,
+room for every net's length deficit, and every bus ball escaped by the plan rather than by M2.
 
-Reproducible ButterStick results, both with the structural rules of D32 switched off and zero DRC errors:
+```
+=== GATE M3A: PASS (3 of 3 cases pass) ===
+  pass  butterstick            the plan passes
+  pass  logicbone              the plan passes
+  pass  orangecrab-r0.2.1      the plan passes
+```
+
+How the plans compare with the boards' own, ours first in each pair (D39, D40, D41):
+
+| board | nets | legs | address/command spread | lane 0 | lane 1 | vias, most per net | vias in all | to build |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| OrangeCrab | 50 | 145 | 17.1 / 6.7 mm | 9.4 / 0.5 | 0.8 / 0.6 | 4 / 2 | 93 / 87 | 9 s |
+| LogicBone | 50 | 272 | 11.7 / 11.4 mm | 4.4 / 4.2 | 7.2 / 7.1 | 7 / 4 | 154 / 99 | 94 s |
+| ButterStick | 55 | 255 | 28.4 / 8.0 mm | 1.3 / 0.7 | 10.8 / 0.8 | 13 / 3 | 193 / 149 | 114 s |
+
+The gate is met on all three and the plan is not equally good on all three. LogicBone's spreads land on its
+board's own to a tenth of a millimetre; ButterStick's address and command still spread 28.4 mm against its
+board's 8.0, and one of its nets takes 13 vias against a reference of 3. Those are differences M3b has to live
+with, and they are the first place to look when it fails.
+
+Checking a plan takes under a second on every board, which is the point of the split (D37): a mistake in a plan
+is caught in the session that makes it rather than after an hour of routing.
+
+## State of M3b
+
+FAIL; the routing inside the plan is not built. What the measurement sessions of 19 and 20 September established
+is recorded in D28 to D41: the negotiation's plateau is an ordering problem and not a capacity one (D29, D31,
+D32); the bench's own spacing setting had made every net contested by construction, so the routing measurements
+of six weeks were taken inside a stall (D33); a bus package's escape belongs to the bus plan (D36); and a
+criterion two knobs can trade against each other is a criterion with a missing mechanism (D41).
+
+The last reproducible bus routing, from before M3a existed, both with the structural rules of D32 switched off
+and zero DRC errors:
 
 | board | routed | electrical violations | lengths within spread | vias inside packages | run |
 | --- | --- | --- | --- | --- | --- |
@@ -135,8 +168,6 @@ Reproducible ButterStick results, both with the structural rules of D32 switched
 | ButterStick | 53 to 54 of 55 | 0 | 27 to 36 of 55 | 100 % | 18 September, **not reproducible** (D33) |
 | LogicBone | 45 of 50 | 0 | 40 of 50 | 100 % | 18 September, not re-measured since (D33) |
 
-The repair stage is the binding constraint on the reproducible runs: it spends its whole budget and leaves 13 to 16
+The repair stage was the binding constraint on the reproducible runs: it spent its whole budget and left 13 to 16
 nets stranded. The 18 September rows are what the bench reported then and no number in them should be relied on.
-
-The structural distance from the reference, which every bench run now prints (D32): 43 vias in the channels between
-balls against the reference's 1, 168 vias against 149, up to 6 per net against 3.
+None of these runs had a plan to route inside, which is what M3b changes.

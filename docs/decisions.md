@@ -807,4 +807,40 @@ the length up -- on ButterStick 21 nets had no room at all.
 One more number had to be capped. Every cost in the planner is millimetres of run, and the congestion term grew
 by 1.6 a round without bound, so by round 24 leaving a contested node was worth thirty metres of detour:
 ButterStick's DQ10 came out 68.3 mm long against a reference of 30, and its lane 1 spread 48.3 mm against a
-reference of 0.8. Capped at 40 mm, with a via priced at 8 mm rather than 3, all three references pass.
+reference of 0.8. It is capped at 15 mm, a run may wander at most 1.5 times the distance it has to cover plus
+4 mm, and a via costs 8 mm rather than 3.
+
+**D41. Two structural gaps the tuning was standing in for.** Implementation with measurements, 2026-09-20, in
+`waffle_eda/route/busplanner.py`, under M3a of D38.
+
+Three times a change that made one class C reference pass made another fail: the congestion cap that fixed
+ButterStick's detours put OrangeCrab 12 nets short of room, the room cost that fixed OrangeCrab's room left two
+crossings on it, and the next turn of the same wheel put ButterStick back to 8 short and 2 crossing. The working
+agreement says to stop at the third and look for the missing constraint. There were two, and neither is a number.
+
+**A repair may not make a new conflict.** When the negotiation's rounds are spent, a node two nets still want is
+not a near miss, it is a crossing, so the planner forbids the node to one of them and routes it again. That
+re-route was free to take a third net's nodes, so it moved the conflict rather than removing it: ButterStick
+cycled between 7 and 17 contested nodes for two hundred repairs and finished with two crossings. A repair now
+routes on free nodes only. That makes it monotone -- the conflict it clears cannot reappear elsewhere, and a net
+that cannot be moved that way is put back and the other net tried -- and ButterStick settles to zero contested
+nodes in six moves.
+
+**A plan must make its lengths, not only reserve room for them.** A bundle routed at its shortest comes out with
+the spread of its geometry, not of its criterion. ButterStick's lane 1 spanned 29.2 mm where the board's own
+spans 0.8; OrangeCrab's address and command spanned 21.9 mm against 6.7. A net 26 mm short of its group then
+wants a corridor five tracks wide to meander in, and a packed bundle has no such corridor anywhere, so no amount
+of care over the reservation could have worked. The reference does not reserve 26 mm either: it routes the short
+nets long in the first place and meanders the last millimetres.
+
+So a net below its group's target is grown in place before any room is reserved, by writing the serpentine into
+the plan itself. Every edge of the mesh is one step, so an edge a--b is replaced by a--p--q--b one step to the
+side, which adds two steps of length and takes two nodes that were free. The nodes are claimed as the net's own,
+so node-disjointness holds and the plan stays crossing-free; nothing is grown past its group's longest, so
+growing one net does not move the target for the rest; and only what cannot be grown is left as room to reserve.
+OrangeCrab's lane 1 now spreads 0.8 mm against its board's 0.6 and its lane 0 9.4 against 0.5, at 4 vias a net
+against the board's 3.
+
+The general lesson is the one D33 taught in another form. A criterion that two knobs can trade against each
+other is a criterion with a missing mechanism, and turning the knobs will find a board that passes and hide the
+gap rather than close it.
