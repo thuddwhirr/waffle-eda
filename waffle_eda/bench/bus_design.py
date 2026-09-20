@@ -463,7 +463,10 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                     return label
             return None
 
-        # per layer, the tracks form chains between terminals; walk each chain from a terminal end
+        # per layer the tracks form a graph, not a chain: a net's copper branches where it feeds two packages from
+        # one run. So a run ends at a terminal or at a junction (a track end of any degree but two), and every
+        # maximal run between two of those is a link. Walking chains from terminals only and taking the first
+        # branch at a junction loses the others, which on ButterStick dropped A7's leg to U11 and RST's to U4.
         by_layer = defaultdict(list)
         for t in tracks[name]:
             by_layer[t[5]].append(t)
@@ -473,11 +476,14 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
             for idx, (ax, ay, bx, by, L, _) in enumerate(ts):
                 adj[_key(ax, ay)].append((idx, _key(bx, by)))
                 adj[_key(bx, by)].append((idx, _key(ax, ay)))
+            label_at = {k: terminal_of(k[0] / 1000, k[1] / 1000, layer) for k in adj}
+            stops = {k for k in adj if label_at[k] or len(adj[k]) != 2}
+
+            def name_of(k):
+                return label_at[k] or f"j@{k[0] / 1000:.3f},{k[1] / 1000:.3f}"
+
             used = set()
-            # start from track ends that lie on a terminal
-            starts = [(k, terminal_of(k[0] / 1000, k[1] / 1000, layer)) for k in adj]
-            starts = [(k, lab) for k, lab in starts if lab]
-            for k0, lab0 in starts:
+            for k0 in sorted(stops):
                 for idx, nxt in adj[k0]:
                     if idx in used:
                         continue
@@ -485,8 +491,7 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                     length = ts[idx][4]
                     cur, prev_idx = nxt, idx
                     points = [(k0[0] / 1000, k0[1] / 1000), (cur[0] / 1000, cur[1] / 1000)]
-                    lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
-                    while lab is None:
+                    while cur not in stops:
                         cands = [(i2, n2) for i2, n2 in adj[cur] if i2 != prev_idx and i2 not in used]
                         if not cands:
                             break
@@ -495,10 +500,9 @@ def reference_plan(board, bus_nets, controller: str | None = None) -> dict:
                         length += ts[i2][4]
                         prev_idx, cur = i2, n2
                         points.append((cur[0] / 1000, cur[1] / 1000))
-                        lab = terminal_of(cur[0] / 1000, cur[1] / 1000, layer)
-                    if lab is None or lab == lab0:  # a stub inside a terminal, or copper that ends nowhere
-                        continue
-                    links.append((lab0, lab, layer, round(length, 3), points))
+                    if cur not in stops or name_of(cur) == name_of(k0):
+                        continue  # copper that ends nowhere, or a stub inside one terminal
+                    links.append((name_of(k0), name_of(cur), layer, round(length, 3), points))
         out[name] = {"vias": vias[name], "links": links, "pads": [(lab, x, y) for (x, y, _, lab, _) in pads[name]]}
     return out
 
