@@ -885,9 +885,17 @@ Two findings beyond ButterStick:
   alike, and LogicBone's tightest 38 places are in open board. Sub-0.1 mm spacing on a bus like this is the norm
   among these four, not an outlier -- ULX3S is the exception at 0.127 mm, and it is a four-layer board with a
   smaller and slower bus.
-* **OrangeCrab is the one genuine case of the part asking.** At 0.5 mm pitch with 0.23 mm pads the diagonal gap
-  leaves only 0.239 mm, so a dog-bone via can be at most 0.28 mm across; it uses 0.28/0.15, a ring of 0.065 mm.
-  No standard-tier via fits between those balls at all. That is the part, and no layout decision changes it.
+* **OrangeCrab is the one genuine case of the part asking, and it is a package choice inside one chip family.**
+  All four boards carry a Lattice ECP5. Three use the caBGA381 at 0.8 mm (`ECP5UM5G-85`, `ECP5UM`,
+  `LFE5U-85F-6BG381C`); OrangeCrab uses `LFE5U-25F-8MG285C`, the 285-ball csfBGA at 0.5 mm, presumably for the
+  Feather form factor. At 0.5 mm pitch with 0.23 mm pads the diagonal point between four balls is 0.354 mm from
+  each centre, leaving 0.239 mm of bare board, a circle 0.48 mm across. A standard-tier via is a 0.15 mm drill
+  with a 0.15 mm ring all round, so a 0.45 mm pad, 0.65 mm with clearance: it does not fit, and it does not fit
+  at any ball pad size, since shrinking the pads to 0.20 mm still yields only 0.51 mm. OrangeCrab uses 0.28/0.15,
+  a ring of 0.065 mm, which is the largest that fits. The same sum at 0.8 mm gives 0.73 mm against the 0.65 mm
+  needed, which is why LogicBone's standard-tier via fits. The threshold sits between the two package options of
+  the same part. Note that OrangeCrab's memory, `MT41K64M16TW` at 0.8 mm, could have taken a standard-tier via
+  and does not: its 0.3/0.15 vias are a board-wide via definition, a choice, not a constraint.
 
 What this means for the target board: a 0.8 mm caBGA381 does not require a finer process than the standard tier
 for its escape, provided it is dog-boned rather than via-in-pad and the footprint uses the smaller pads. Track
