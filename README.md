@@ -65,9 +65,10 @@ layers) and every synthetic case, with zero electrical violations under each ref
 9 of 9 cases; decisions D17 to D20); 23 reference boards registered and measured
 ([`docs/references.md`](docs/references.md)); the strip-and-score harness. See [`docs/plan.md`](docs/plan.md).
 
-M3, the bus router, in progress and failing its gate: from the pads, by negotiated congestion on a union of the
-packages' quarter-pitch lattices, ButterStick routes 53 of 55 bus nets and LogicBone 45 of 50 with zero electrical
-violations and every via inside a package; 36 of 55 and 40 of 50 nets are within the reference's length spread
-(decisions D21 to D29, plan: State of M3). A bus planner (`waffle_eda/route/plan.py`) plans layers and coarse
-routes under channel capacities; its first form leaves the same-layer crossings that strand the detailed router
-unresolved (D29), and a structural planner is next.
+M3, the bus stage, in progress and failing its gate. It is now two milestones (D37, D38): M3a produces a bus plan,
+the layer, via site and bundle order for every net, checked in seconds against the reference's own plan; M3b routes
+inside that plan. Reproducible today on ButterStick with the structural rules off: 42 of 55 bus nets with zero
+electrical violations and every via inside a package. The 53 to 54 of 55 recorded earlier is not reproducible and
+the reason is only half understood (D33). What the measurement established: the negotiation's plateau is an
+ordering problem, not a capacity one (D29, D31, D32); the bench's own spacing setting had made every net contested
+by construction (D33); and a bus package's escape belongs to the bus plan rather than to M2 (D36).
