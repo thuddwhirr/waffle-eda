@@ -138,3 +138,51 @@ architecture (topology first, then area assignment, then meanders inside the ass
 about M3's length criterion, since Lattice's own ECP5 numbers are tighter than D27 on address and command while the
 lane and pair figures of D27 are the stricter test. The question is D30's; the criterion stands as D27 wrote it
 until the owner answers.
+
+
+## Proposed revision, awaiting the owner's word (D37)
+
+Nothing below is in force. It is the plan as the sessions of 19 and 20 September would write it, given D29 to D36.
+Accepting it means deleting the superseded text above and this heading; rejecting it means deleting this section.
+
+**Why a revision at all.** Three findings, none of which the current plan anticipates. A bench setting silently
+invalidated six weeks of routing measurements (D33). The escape of a bus package is an output of the bus plan, not
+an input to it, so M2's artifact cannot be used by M3 and 50 to 65 % of it never is (D36). And the order in which
+each bundle leaves a package, not channel capacity, is what the router cannot resolve (D29, D31, D32).
+
+**1. M3 splits at the plan, not at the escape.** Today M3 is one milestone whose only gate is an hour-long route.
+Proposed instead:
+
+*M3a, the bus plan.* For a reference, produce a plan: per net and leg, the layer, the via site at each package
+(from that package's measured escape style, D32), the order of each bundle where it crosses each package boundary,
+and the length room reserved along each run. Gate: every run placed, no two runs of one layer crossing, every via
+site legal and distinct, every net's reserved room at least its length deficit, and the escapes of the bus packages
+included in the plan rather than taken from M2. The reference's own plan is the answer key and we can already read
+it (`bus_design.reference_plan`, `entry_order`, `via_sites`). This gate runs in seconds, which is the point: the
+present one costs an hour and, as D33 showed, can measure nothing at all.
+
+*M3b, the bus routing.* Route inside the plan, tune the lengths, DRC. Gate as M3 has it today: all bus nets, DRC
+clean, lengths matched as the reference matches them (D27, or the vendor rule if the owner answers D30 that way),
+layer changes only at the packages.
+
+**2. The class C ladder is re-ordered to rise (D35).** OrangeCrab first: one x16 memory and dog-bones at both
+packages, which is the M6 target's shape. Then LogicBone: two x8, dog-bone, and the only reference inside the
+standard fab tier but for spacing. Then ButterStick: dual rank, via-in-pad, hollow escapes, the finest rules of the
+four. Cost of promoting OrangeCrab: `bus_design.classify` does not know its net names, so its 50 bus nets fall into
+"other" and the group criteria do not yet apply to it.
+
+**3. M2 keeps its gate for packages with no bus, and hands the bus packages to M3a (D36).** M2's result stands as
+recorded; its escape router becomes the subroutine the planner calls once it knows each net's order and layer. No
+code is deleted.
+
+**4. Measurement hygiene becomes a rule with a mechanism (D33).** Every recorded result names the configuration
+that produced it: `scripts/bus_bench.py` writes the commit, the environment overrides and the resolved costs into
+its log header and into `bus-results.json`, and a result without that provenance is not quotable in the plan. Any
+bench parameter that changes a result is measured before it is set, as the spacing now is.
+
+**5. Two debts are named as work, not as background.** The unattributed regression between the run of 18 September
+and today, which D33 halved but did not close: either bisect it or accept 42 of 55 as the baseline, by the owner's
+choice. And the D30 question on the length criterion, which M3b's gate depends on.
+
+**What does not change.** The milestone order (M1 to M4 first, depth in the routing back half), the definition of
+done, the reference-ladder principle that a class needs several boards, and M4 to M6 as written.

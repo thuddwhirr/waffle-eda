@@ -717,3 +717,20 @@ For the owner, and not decided here: this is a larger change than the structural
 escape router should become a subroutine the bus planner calls once it knows the order and the layer each net
 needs, with M2's gate retained for packages with no bus, and M3's own criteria covering the escapes of the bus
 packages. It does not invalidate M2's result or its code.
+
+**D37. A proposed revision of the plan, for the owner.** Proposal, 2026-09-20, written into `docs/plan.md` under
+"Proposed revision, awaiting the owner's word" and in force nowhere until the owner accepts it.
+
+It carries five changes. M3 splits into M3a, a bus plan with a gate that runs in seconds and is checked against
+the reference's own plan, and M3b, the routing inside that plan with M3's present criteria. The class C ladder is
+re-ordered to rise, OrangeCrab then LogicBone then ButterStick, per D35. M2 keeps its gate for packages with no
+bus and hands the bus packages' escapes to M3a, per D36. Measurement hygiene becomes a rule with a mechanism: the
+bench records the commit, the environment and the resolved costs with every result, and a result without that
+provenance is not quotable, per D33. And two debts are named as work rather than left as background: the
+unattributed regression D33 did not close, and D30's length-criterion question that M3b's gate depends on.
+
+The reasoning for the split is the one D29 measured and D33 sharpened. Capacity is not what the router cannot
+solve; order is. A plan that fixes order, layer and via site is a smaller artifact than a route, it is checkable
+against an answer key we can already read, and it costs seconds rather than an hour, so a mistake in it is caught
+in the same session it is made. The present arrangement can only be tested by a route, which is why a bench setting
+was able to invalidate six weeks of measurement without anyone noticing.
