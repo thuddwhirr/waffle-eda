@@ -39,7 +39,7 @@ import pcbnew
 
 from waffle_eda.bench import bus_design
 from waffle_eda.kicad import board as kb
-from waffle_eda.route.busplan import BusPlan, Leg, Site, _site_of, terminals
+from waffle_eda.route.busplan import BusPlan, Leg, Site, _site_of, styles_of, terminals
 
 
 @dataclass
@@ -48,6 +48,7 @@ class PlanCosts:
     margin_mm: float = 0.10  # copper to the centre of a run: the plan's clearance, not M3b's DRC
     via_mm: float = 3.0  # what a layer change costs, in millimetres of run
     plane_mm: float = 0.0  # extra cost per mm on a layer a power or ground pour covers
+    room_mm: float = 2.0  # what crossing the meander room another net holds costs
     present: float = 1.0  # the weight of this round's claims
     present_growth: float = 1.7  # how much dearer a contested node gets each round
     history: float = 1.0  # what a node that has ever been contested keeps costing
@@ -254,8 +255,8 @@ def via_columns(mesh: Mesh, styles: dict, shapes: dict) -> bytearray:
                 centres[(mesh.near_x(ball.x_mm), mesh.near_y(ball.y_mm))] = True
     for pads in shapes.values():
         for (_label, x, y, hx, hy) in pads:
-            lo_i, hi_i = mesh._span(mesh.X, x - hx, x + hx)
-            lo_j, hi_j = mesh._span(mesh.Y, y - hy, y + hy)
+            lo_i, hi_i = mesh._span(mesh.X, x - hx - 1e-3, x + hx + 1e-3)
+            lo_j, hi_j = mesh._span(mesh.Y, y - hy - 1e-3, y + hy + 1e-3)
             for i in range(lo_i, hi_i + 1):
                 for j in range(lo_j, hi_j + 1):
                     if not centres.get((i, j)):
@@ -272,8 +273,10 @@ class Router:
         self.columns = columns
         self.costs = costs
         self.plane = plane  # layer indices carrying a power or ground pour
-        self.use: dict = defaultdict(set)  # node -> the nets claiming it
+        self.use: dict = defaultdict(set)  # node -> the nets whose run passes through it
         self.column_use: dict = defaultdict(set)  # (i, j) -> the nets with a via there
+        self.want: dict = {}  # node -> the one net holding it as meander room beside its run
+        self.halo: dict = defaultdict(set)  # net -> the nodes it holds that way
         self.history: dict = defaultdict(float)
         self.present = costs.present
 
@@ -281,7 +284,9 @@ class Router:
         m = self.mesh
         li, i, j = m.unpack(nid)
         others = len(self.use[nid] - {net}) + len(self.column_use[(i, j)] - {net})
-        return self.present * others + self.history[nid]
+        room = self.want.get(nid)
+        return (self.present * others + self.costs.room_mm * (room is not None and room != net)
+                + self.history[nid])
 
     def route_net(self, net: str, targets: list, seeds: set) -> list | None:
         """Grow the net's tree to every target in turn, nearest first, each by an A* over the mesh. Returns the
@@ -364,7 +369,7 @@ class Router:
                     heapq.heappush(heap, (nd + h(nxt), nd, nxt))
         return None
 
-    def claim(self, net: str, edges: list):
+    def claim(self, net: str, edges: list, halo: int = 0):
         m = self.mesh
         for (a, b) in edges:
             for nid in (a, b):
@@ -373,11 +378,54 @@ class Router:
             lb, _ib, _jb = m.unpack(b)
             if la != lb:
                 self.column_use[(ia, ja)].add(net)
+        for nid in self.beside(net, edges, halo):
+            self.want[nid] = net
+            self.halo[net].add(nid)
+
+    def beside(self, net: str, edges: list, depth: int) -> list:
+        """The free nodes within ``depth`` of a run, across it: the room a serpentine would use. A node another
+        net's run passes through, or that another net already holds, is not room."""
+        m = self.mesh
+        out = []
+        for (a, b) in edges:
+            la, ia, ja = m.unpack(a)
+            lb, ib, jb = m.unpack(b)
+            if la != lb:
+                continue
+            across = ((0, 1), (0, -1)) if ib != ia else ((1, 0), (-1, 0))
+            for (di, dj) in across:
+                for d in range(1, depth + 1):
+                    i, j = ia + di * d, ja + dj * d
+                    if not (0 <= i < m.nx and 0 <= j < m.ny):
+                        break
+                    nid = m.nid(la, i, j)
+                    if m.blocked[nid] or m.owner.get(nid, net) != net or (self.use[nid] - {net}):
+                        break
+                    if self.want.get(nid, net) != net:
+                        break
+                    out.append(nid)
+        return out
+
+    def release(self, net: str, edges: list):
+        m = self.mesh
+        for (a, b) in edges:
+            for nid in (a, b):
+                self.use[nid].discard(net)
+            la, ia, ja = m.unpack(a)
+            if la != m.unpack(b)[0]:
+                self.column_use[(ia, ja)].discard(net)
+        for nid in self.halo.pop(net, ()):
+            if self.want.get(nid) == net:
+                del self.want[nid]
 
     def conflicts(self) -> list:
         out = [nid for nid, nets in self.use.items() if len(nets) > 1]
         out += [self.mesh.nid(0, i, j) for (i, j), nets in self.column_use.items() if len(nets) > 1]
         return out
+
+    def where(self, nid: int) -> str:
+        x, y = self.mesh.xy(nid)
+        return f"({x:.2f}, {y:.2f})"
 
     def contested_nets(self) -> set:
         out = set()
@@ -450,28 +498,6 @@ def _length(points: list) -> float:
     return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(points, points[1:]))
 
 
-def _room(mesh: Mesh, router: Router, net: str, walk: list, depth: int) -> float:
-    """The length the room beside a run affords: at every other node of the run, how far a meander could step to
-    either side before it meets copper or another net, one step of the mesh being one step of the serpentine."""
-    total = 0.0
-    for k in range(0, len(walk) - 1, 2):
-        li, i, j = mesh.unpack(walk[k])
-        li2, i2, j2 = mesh.unpack(walk[k + 1])
-        if li2 != li:
-            continue
-        across = ((0, 1), (0, -1)) if i2 != i else ((1, 0), (-1, 0))
-        for (di, dj) in across:
-            for d in range(1, depth + 1):
-                a, b = i + di * d, j + dj * d
-                if not (0 <= a < mesh.nx and 0 <= b < mesh.ny):
-                    break
-                nid = mesh.nid(li, a, b)
-                if mesh.blocked[nid] or mesh.owner.get(nid, net) != net or (router.use[nid] - {net}):
-                    break
-                total += 2 * (abs(mesh.X[a] - mesh.X[i]) + abs(mesh.Y[b] - mesh.Y[j])) / max(d, 1)
-    return total
-
-
 def _order_of(plan: BusPlan, board, ref) -> dict:
     """The order each bundle crosses each package's boundary, measured on our own plan the way
     `bus_design.entry_order` measures the reference's: walk the array's box clockwise and read the nets off."""
@@ -504,47 +530,51 @@ def _order_of(plan: BusPlan, board, ref) -> dict:
     return {k: [n for _p, n in sorted(v)] for k, v in out.items() if len(v) > 1}
 
 
-def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
-    """Plan the bus of a board: the answer M3a has to produce, in the form `busplan.check` judges."""
-    costs = costs or PlanCosts()
-    t0 = time.time()
-    say = trace or (lambda _s: None)
-    layers = signal_layers(board, ref, costs.min_nets_for_signal_layer)
-    mesh = Mesh(board, ref, layers, costs)
-    shapes, names, _balls = terminals(board, ref)
-    styles = bus_design.escape_style(board, ref)
-    columns = via_columns(mesh, styles, shapes)
-    plane = _plane_layers(board, mesh)
-    say(f"   mesh {mesh.nx}x{mesh.ny} nodes on {mesh.nl} layers "
-        f"({', '.join(mesh.layer_name[L] for L in mesh.layers)}), "
-        f"{sum(columns)} via columns of {mesh.nx * mesh.ny}, {time.time() - t0:.1f}s")
+def group_windows(board, ref) -> dict:
+    """How closely each group has to match: the spread the board itself achieves. That is the criterion M3b is
+    judged by -- plan.md asks for "lengths matched as the reference matches them", and D27 measured what that is
+    per group -- so it is also the target a plan has to reserve room against. A board with no bus routed yet has
+    no spread to measure and its groups match exactly."""
+    d = bus_design.measure_board(board, ref)
+    per: dict = defaultdict(list)
+    for _n, nd in d["nets"].items():
+        if nd["length_mm"] > 0:
+            per[nd["group"]].append(nd["length_mm"])
+    return {g: round(max(v) - min(v), 3) for g, v in per.items() if len(v) > 1}
 
-    bus = sorted(kb.nets_matching(board, ref.bus_net_pattern))
-    targets, label_at, pad_layers = _terminal_nodes(mesh, shapes, names)
-    router = Router(mesh, columns, costs, plane)
 
-    order = sorted(bus, key=lambda n: -_extent(targets.get(n, [])))
+def negotiate(router: Router, targets: dict, bus: list, costs: PlanCosts, halo: dict, t0: float, say) -> tuple:
+    """Negotiated congestion to node-disjoint paths, which is what makes the plan crossing-free. ``halo`` is the
+    room each net holds beside its run for its meanders."""
+    order = sorted(bus, key=lambda n: (-halo.get(n, 0), -_extent(targets.get(n, []))))
+    trees: dict = {}
+    failed: list = []
     best = None
+    rnd = 0
     for rnd in range(costs.rounds):
-        router.use = defaultdict(set)
-        router.column_use = defaultdict(set)
-        trees: dict = {}
-        failed = []
-        for net in order:
+        # Round one lays every net down; after that only the nets in a conflict are ripped up and re-routed
+        # against the others' standing claims. Re-routing all of them every round does not settle: a net moves
+        # off a contested node and another moves straight on to it, and the two trade places for ever.
+        todo = order if rnd == 0 else [n for n in order if n in router.contested_nets() or n in failed]
+        for net in todo:
             t = targets.get(net)
             if not t:
                 continue
+            if net in trees:
+                router.release(net, trees.pop(net))
+            if net in failed:
+                failed.remove(net)
             edges = router.route_net(net, t[1:], set(t[0]))
             if edges is None:
                 failed.append(net)
                 continue
             trees[net] = edges
-            router.claim(net, edges)
+            router.claim(net, edges, halo.get(net, 0))
         bad = router.conflicts()
-        say(f"   round {rnd + 1}: {len(trees)} of {len(bus)} nets routed, {len(bad)} contested nodes, "
-            f"{time.time() - t0:.0f}s")
+        say(f"   round {rnd + 1}: {len(trees)} of {len(bus)} nets routed, {len(todo)} re-routed, "
+            f"{len(bad)} contested nodes, {time.time() - t0:.0f}s")
         if best is None or (len(failed), len(bad)) < best[0]:
-            best = ((len(failed), len(bad)), trees, dict(router.use), dict(router.column_use))
+            best = ((len(failed), len(bad)), dict(trees))
         if not bad and not failed:
             break
         for nid in bad:
@@ -553,29 +583,129 @@ def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
         if time.time() - t0 > costs.budget_s:
             say(f"   the budget of {costs.budget_s:.0f}s is spent after round {rnd + 1}")
             break
-        order = sorted(order, key=lambda n: (n not in router.contested_nets(), -_extent(targets.get(n, []))))
+    if best[0] != (0, 0):  # the best round, not the last: a later round can be worse than one already seen
+        for net in set(trees) - set(best[1]):
+            router.release(net, trees[net])
+        for net, edges in best[1].items():
+            if net not in trees:
+                router.claim(net, edges, halo.get(net, 0))
+        contested = sorted({router.where(nid) for nid in router.conflicts()})
+        say(f"   {best[0][0]} net(s) unrouted and {len(contested)} node(s) still contested: "
+            + ", ".join(contested[:6]))
+    return best[1], rnd + 1
 
-    _score, trees, use, column_use = best
-    router.use = defaultdict(set, {k: v for k, v in use.items()})
-    router.column_use = defaultdict(set, {k: v for k, v in column_use.items()})
-    packages = mesh.packages
+
+def plan_bus(board, ref, costs: PlanCosts | None = None, trace=None) -> BusPlan:
+    """Plan the bus of a board: the answer M3a has to produce, in the form `busplan.check` judges.
+
+    Two passes. The first lays every net down at one track wide and says what each net's length deficit is; the
+    second routes them again with the neediest first and each holding the room its meanders will need, which is
+    the area assignment the plan owes M3b. Reserving nothing and hoping is what packs a bundle shoulder to
+    shoulder and leaves a net short of its group with nowhere to make the length up."""
+    costs = costs or PlanCosts()
+    t0 = time.time()
+    say = trace or (lambda _s: None)
+    layers = signal_layers(board, ref, costs.min_nets_for_signal_layer)
+    mesh = Mesh(board, ref, layers, costs)
+    shapes, names, _balls = terminals(board, ref)
+    styles = styles_of(board, ref)
+    columns = via_columns(mesh, styles, shapes)
+    plane = _plane_layers(board, mesh)
+    windows = group_windows(board, ref)
+    say(f"   mesh {mesh.nx}x{mesh.ny} nodes on {mesh.nl} layers "
+        f"({', '.join(mesh.layer_name[L] for L in mesh.layers)}), "
+        f"{sum(columns)} via columns of {mesh.nx * mesh.ny}, {time.time() - t0:.1f}s")
+    say("   match to within " + ", ".join(f"{g} {w:.1f} mm" for g, w in sorted(windows.items())))
+
+    bus = sorted(kb.nets_matching(board, ref.bus_net_pattern))
+    targets, label_at, _pad_layers = _terminal_nodes(mesh, shapes, names)
+    router = Router(mesh, columns, costs, plane)
+
+    say("   pass 1: one track a net")
+    trees, rounds = negotiate(router, targets, bus, costs, {}, t0, say)
+    deficit = _deficits(mesh, trees, windows)
+    halo = {}
+    for net in trees:
+        if bus_design.classify(net)[0] == "other":
+            continue
+        d = deficit.get(net, 0.0)
+        l = max(_tree_length(mesh, trees[net]), 1e-6)
+        # invert the serpentine: the amplitude in mesh steps that affords d over a run of l
+        want = math.sqrt(max((d / l + 1) ** 2 - 1, 0.0)) / 2
+        halo[net] = max(1, min(costs.meander_depth, math.ceil(want)))
+    if halo:
+        say(f"   pass 2: {len(halo)} net(s) short of their group by up to {max(deficit.values()):.1f} mm, "
+            f"holding up to {max(halo.values())} track(s) of room each")
+        router = Router(mesh, columns, costs, plane)
+        trees, more = negotiate(router, targets, bus, costs, halo, t0, say)
+        rounds += more
+
     plan = BusPlan(board=ref.key)
     for net, edges in sorted(trees.items()):
-        legs = _tree_legs(mesh, net, edges, label_at, packages, shapes.get(net, ()), names.get(net, {}))
-        plan.legs += legs
-    _reserve(mesh, router, plan, costs)
+        plan.legs += _tree_legs(mesh, net, edges, label_at, mesh.packages, shapes.get(net, ()), names.get(net, {}))
+    deficit = _reserve(mesh, router, plan, windows)
+    short = _short(plan, deficit)
+    if short:
+        say(f"   {len(short)} net(s) still short of room: taking what is left beside their runs, neediest first")
+        for net, _gap in sorted(short.items(), key=lambda kv: -kv[1]):
+            for nid in router.beside(net, trees[net], costs.meander_depth * 3):
+                router.want[nid] = net
+                router.halo[net].add(nid)
+        deficit = _reserve(mesh, router, plan, windows)
+        short = _short(plan, deficit)
+    if short:
+        say(f"   {len(short)} net(s) have no room for their deficit: "
+            + ", ".join(f"{bus_design.short_name(n)} {g:.1f} mm" for n, g in sorted(short.items())[:6]))
     plan.order = _order_of(plan, board, ref)
     plan.provenance = {
         "source": "the planner of M3a",
         "layers": [mesh.layer_name[L] for L in mesh.layers],
         "mesh": f"{mesh.nx}x{mesh.ny}x{mesh.nl}",
         "styles": {k: v["places"] for k, v in styles.items()},
-        "costs": {k: v for k, v in costs.__dict__.items()},
-        "rounds": rnd + 1,
+        "match_window_mm": windows,
+        "costs": dict(costs.__dict__),
+        "rounds": rounds,
+        "contested": sorted({router.where(nid) for nid in router.conflicts()}),
         "build_s": round(time.time() - t0, 1),
         "unrouted": sorted(set(bus) - set(trees)),
     }
     return plan
+
+
+def _short(plan: BusPlan, deficit: dict) -> dict:
+    """Net -> how much of its deficit the plan has found no room for."""
+    room: dict = defaultdict(float)
+    for leg in plan.legs:
+        room[leg.net] += leg.reserved_mm
+    return {net: round(d - room[net], 3) for net, d in deficit.items() if d > room[net] + 1e-6}
+
+
+def _tree_length(mesh: Mesh, edges: list) -> float:
+    total = 0.0
+    for (a, b) in edges:
+        la, ia, ja = mesh.unpack(a)
+        lb, ib, jb = mesh.unpack(b)
+        if la == lb:
+            total += abs(mesh.X[ib] - mesh.X[ia]) + abs(mesh.Y[jb] - mesh.Y[ja])
+    return total
+
+
+def _deficits(mesh: Mesh, trees: dict, windows: dict) -> dict:
+    """Each net's shortfall against the longest of its group, less the spread that group is allowed."""
+    planned = {net: _tree_length(mesh, edges) for net, edges in trees.items()}
+    groups: dict = defaultdict(list)
+    for net in planned:
+        groups[bus_design.classify(net)[0]].append(net)
+    out = {}
+    for group, members in groups.items():
+        if group == "other" or len(members) < 2:
+            continue
+        longest = max(planned[m] for m in members)
+        for m in members:
+            d = longest - windows.get(group, 0.0) - planned[m]
+            if d > 1e-6:
+                out[m] = round(d, 3)
+    return out
 
 
 def _plane_layers(board, mesh: Mesh) -> set:
@@ -631,28 +761,65 @@ def _extent(groups: list) -> float:
     return float(len(groups))
 
 
-def _reserve(mesh: Mesh, router: Router, plan: BusPlan, costs: PlanCosts):
-    """Each net's length deficit against its group's longest member, and the room the plan reserves for it."""
+def _reserve(mesh: Mesh, router: Router, plan: BusPlan, windows: dict):
+    """What each net needs and what the plan reserves for it.
+
+    A serpentine of amplitude ``a`` at the tightest period the mesh allows -- one node out and one node back --
+    turns a run of length ``l`` into ``l * sqrt(1 + 4a^2)`` where ``a`` is measured in mesh steps, so the length
+    it affords is ``l * (sqrt(1 + 4a^2) - 1)``: about 1.2 times the run at one node of amplitude and 3.1 at two.
+    The amplitude is what the net actually holds beside that run, averaged over it, not what happens to be free:
+    room two nets could both use is room neither can rely on."""
     planned: dict = defaultdict(float)
     for leg in plan.legs:
         planned[leg.net] += leg.length_mm
     groups: dict = defaultdict(list)
     for net in planned:
         groups[bus_design.classify(net)[0]].append(net)
-    deficit: dict = {}
+    deficit = {}
     for group, members in groups.items():
         if group == "other" or len(members) < 2:
             continue
         longest = max(planned[m] for m in members)
         for m in members:
-            if longest - planned[m] > 1e-6:
-                deficit[m] = round(longest - planned[m], 3)
+            d = longest - windows.get(group, 0.0) - planned[m]
+            if d > 1e-6:
+                deficit[m] = round(d, 3)
     for leg in plan.legs:
-        walk = [mesh.nid(mesh.index_of_layer[_layer_id(mesh, leg.layer)], mesh.near_x(x), mesh.near_y(y))
-                for (x, y) in leg.route]
-        leg.reserved_mm = round(_room(mesh, router, leg.net, walk, costs.meander_depth), 3)
-        leg.units = 1 + int(math.ceil(leg.reserved_mm / max(leg.length_mm, 1e-6)))
+        leg.reserved_mm = round(_afforded(mesh, router, leg), 3)
+        # the tracks the leg asks for: itself, and the amplitude its room affords to either side of it
+        ratio = leg.reserved_mm / max(leg.length_mm, 1e-6)
+        leg.units = 1 + 2 * int(math.ceil(math.sqrt(max((ratio + 1) ** 2 - 1, 0.0)) / 2))
     plan.deficit_mm = deficit
+    return deficit
+
+
+def _afforded(mesh: Mesh, router: Router, leg: Leg) -> float:
+    """The length the room this leg holds affords, by the serpentine above."""
+    held = router.halo.get(leg.net, ())
+    if not held or leg.length_mm <= 0:
+        return 0.0
+    li = mesh.index_of_layer[_layer_id(mesh, leg.layer)]
+    corners = [(mesh.near_x(x), mesh.near_y(y)) for (x, y) in leg.route]
+    walk = []
+    for (i, j), (i2, j2) in zip(corners, corners[1:]):
+        si, sj = (i2 > i) - (i2 < i), (j2 > j) - (j2 < j)
+        a, b = i, j
+        while (a, b) != (i2, j2):
+            walk.append((a, b))
+            a, b = a + si, b + sj
+    walk.append(corners[-1])
+    beside = 0
+    for k, (a, b) in enumerate(walk):
+        other = walk[k + 1] if k + 1 < len(walk) else walk[k - 1]
+        di, dj = (0, 1) if other[0] != a else (1, 0)  # across the run
+        for sign in (1, -1):
+            for d in range(1, max(mesh.nx, mesh.ny)):
+                u, v = a + di * d * sign, b + dj * d * sign
+                if not (0 <= u < mesh.nx and 0 <= v < mesh.ny) or mesh.nid(li, u, v) not in held:
+                    break
+                beside += 1
+    amplitude = beside / (2 * len(walk))
+    return leg.length_mm * (math.sqrt(1 + 4 * amplitude ** 2) - 1)
 
 
 def _layer_id(mesh: Mesh, name: str) -> int:

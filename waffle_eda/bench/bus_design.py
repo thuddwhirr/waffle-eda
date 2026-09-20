@@ -22,19 +22,21 @@ MEANDER_HEADWAY = 0.5  # a window whose ends are closer than this fraction of it
 
 # --- signal groups ------------------------------------------------------------------------------------------------
 def short_name(net: str) -> str:
+    """The signal's own name: the sheet path, KiCad's overbar braces and the board's prefix for the bus taken
+    off. ButterStick and LogicBone write `DDR3_DQ0`, OrangeCrab `RAM_D0`."""
     s = net.split("/")[-1]
     s = s.replace("~{", "").replace("}", "")
-    return re.sub(r"^DDR\d?_", "", s)
+    return re.sub(r"^(DDR\d?|RAM|MEM|SDRAM)_", "", s)
 
 
 def classify(net: str) -> tuple[str, str, str | None]:
     """(group, role, pair) for a bus net: the group whose lengths are matched together, the net's role in it
     (data, strobe, mask, clock, command, other) and the differential pair it belongs to, if any."""
-    s = short_name(net)
-    m = re.fullmatch(r"DQ(\d+)", s)
+    s = short_name(net).rstrip("#")  # OrangeCrab marks the active-low command lines `RAM_CAS#`
+    m = re.fullmatch(r"DQ?(\d+)", s)
     if m:
         return f"lane {int(m.group(1)) // 8}", "data", None
-    m = re.fullmatch(r"([LU])DQS[_]?([PN])", s) or re.fullmatch(r"DQS(\d)([+-])", s)
+    m = re.fullmatch(r"([LU])DQS[_]?([PN+-])", s) or re.fullmatch(r"DQS(\d)[_]?([PN+-])", s)
     if m:
         lane = {"L": 0, "U": 1}.get(m.group(1), None)
         lane = int(m.group(1)) if lane is None else lane

@@ -123,6 +123,27 @@ def terminals(board, ref) -> tuple:
     return shapes, names, balls
 
 
+# D32: both references put their bus vias on a ball or on a corner between four balls and never in the channel
+# between two neighbouring balls, which is the narrowest gap and the one those balls' own neighbours escape
+# through. A package whose board has not escaped it yet has no style to measure, and this is the rule it gets.
+CROSS_BOARD_STYLE = {"places": {"on the ball": 0, "on a corner": 0}, "vias": 0,
+                     "offsets": ((0.0, 0.0), (0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5))}
+
+
+def styles_of(board, ref) -> dict:
+    """Each bus package's escape style: the one the board's own vias show where there are any (D32), and the
+    cross-board rule where there are none. The planner and the gate ask this same question, so a plan can never
+    be built to one rule and judged by another."""
+    out = {}
+    measured = bus_design.escape_style(board, ref)
+    for pkg in bus_design.packages_of(board, ref):
+        if pkg.lattice is None:
+            continue
+        style = measured.get(pkg.reference)
+        out[pkg.reference] = style if style and style["vias"] else dict(CROSS_BOARD_STYLE)
+    return out
+
+
 def _terminal_names(pads: list, bus_parts: tuple) -> dict:
     """One name for each terminal of a net. Two pads whose copper overlaps are one terminal: on ButterStick each
     clock ball sits 0.13 to 0.20 mm from its termination resistor's pad, closer than their copper is wide, so the
@@ -254,7 +275,7 @@ def check(plan: BusPlan, board, ref, styles: dict | None = None) -> list:
     out: list = []
     bus = sorted(kb.nets_matching(board, ref.bus_net_pattern))
     packages = {p.reference: p for p in bus_design.packages_of(board, ref)}
-    styles = styles or bus_design.escape_style(board, ref)
+    styles = styles or styles_of(board, ref)
 
     # 1. every net planned, and its pads joined into one piece
     by_net: dict = defaultdict(list)
