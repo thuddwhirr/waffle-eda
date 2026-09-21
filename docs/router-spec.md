@@ -4,10 +4,13 @@ Status: **proposed, for the owner to read before the router is trusted.** A firs
 `waffle_eda/route/board_router.py`, has never been executed, and contains only a fraction of what is below.
 Section 14 is the honest table. Nothing here is a claim about working code.
 
-**This is the second version.** The first was written from the code I had just written plus six fresh
-measurements. It cited seven of the fifty decisions and nothing at all from the three research reports or the
-carried lessons, and it proposed an architecture that both the research and this project's own history say is
-wrong. That is corrected here, and section 2 is the correction.
+**This is the third version, and each correction went the same way.** The first was written from the code plus
+six fresh measurements; it cited seven of fifty decisions and nothing from the three research reports or the
+carried lessons, and proposed an architecture both the research and this project's own history call wrong
+(section 2). The second still framed the work as a menu with cheaper options, which is deciding in advance that
+part of a board is a person's job; the goal is zero interactive routing, so there is no cheaper option, only an
+order (section 13). The second also had no closure loop at all, which is the difference between a router and an
+automated one (section 10).
 
 
 ## 0. What this draws on
@@ -54,6 +57,7 @@ So the router is staged:
 | C. Detailed route | exact copper inside each guide | KiCad's own collision test, per edge |
 | D. Planes and rails | pours, feeds, stitching | every rail in one piece, every pad fed |
 | E. Verification | the gate's score | `scripts/gate.py m4` |
+| F. Closure | a change to a free variable when no copper works, and a retry | the loop terminates inside its budget (section 10) |
 
 Each stage checks that the previous one delivered what it assumes. That is the recurring lesson of
 `layout-practices.md`, stated there as item 3 and again in its closing line.
@@ -70,7 +74,9 @@ the pad it could not reach and why.
 
 **Invariants.**
 
-* Never moves, rotates or deletes a footprint. Placement is an input at M4; it is M5's problem.
+* Never moves, rotates or deletes a footprint **within a run**. Placement is an input to the router. When no
+  arrangement of copper works, the router asks for a placement change rather than making one, and the tool
+  retries: section 10.
 * Never edits or deletes copper of a fixed net.
 * Never returns a board it has not checked: every piece of copper cleared the board when it was laid.
 * Never reports a net routed whose pads are not all joined.
@@ -88,8 +94,8 @@ crosstalk, length/skew, plane integrity, via-stub resonance", and the lesson dra
 *electrical and physics-derived*, fed to the router as hard/soft costs, not applied as an afterthought"
 (`foundational-reference.md` §4).
 
-Section 13 question 1 is one instance already found: the gate accepts minimum-width copper on a 20 A rail. The
-electrical constraints that belong in the criterion, in the order they are cheap to add:
+One instance is already found: the gate accepts minimum-width copper on a 20 A rail. The electrical constraints
+that belong in the criterion, in the order they are cheap to add:
 
 1. **Track width by net class**, from the reference's own measured widths (section 5).
 2. **A return via near every signal via.** UG583 codifies one ground via within a 50 mil perimeter of a layer
@@ -97,7 +103,16 @@ electrical constraints that belong in the criterion, in the order they are cheap
 3. **Plane integrity**: no net routed across a split in the plane that references it. This is the check that
    makes stage D worth doing rather than decorative.
 
-These are proposed for the gate, not assumed. They change D50's criterion, so they are the owner's.
+**All three are required, and none of them is optional.** `definition.md` section 3 says a run ends complete or
+failed with a report, and that "a partially routed board with a list of nets for a human to finish in KiCad's
+interactive router is **not a valid outcome**". Anything the gate does not check is a defect the tool ships and a
+human repairs, which is the thing this project exists to prevent. A criterion that omits current capacity does
+not make the router simpler; it moves the work to a person.
+
+Track width is not even a question of taste: `definition.md` section 4 lists "track width and spacing within the
+fab's capability" among the **free variables the tool explores on its own**. Setting it correctly is the
+router's job as already defined. The only open item is recording the change to D50's criterion, which CLAUDE.md
+requires before scope changes.
 
 
 ## 5. Stage A: rules and net classes
@@ -220,14 +235,41 @@ D41's warning applies: a criterion two knobs can trade against each other has a 
 ordering can be traded against each other to reach the same score, the score is not measuring what it should.
 
 
-## 10. Failure reporting and staged checks
+## 10. Failure, closure, and staged checks
 
 **Fail with a diagnosis, never with a list**, which is the plan's rule for M3b and applies here. A net that
 cannot be routed is reported with the pad it could not reach and why the search ended. A run that fails many
-nets says what they have in common.
+nets says what they have in common. A half-routed net is a failure, never a partial success. Every stage checks
+that the previous one delivered what it assumes (`layout-practices.md`, item 3 and its closing line).
 
-Every stage checks that the previous one delivered what it assumes (`layout-practices.md`, item 3 and its
-closing line). A half-routed net is a failure, never a partial success.
+**A diagnosis is not the end of the run, and this is the part the first two versions of this spec left out.**
+`definition.md` section 3 requires a failed run to name "the design changes that would resolve it", and section
+4 lists what the tool may change **on its own, within a budget, logging every attempt so nothing is tried
+twice**: placement, rotation and side; pin assignment; layer count and stack-up; via type; track width and
+spacing; board size. The owner is asked only when the best solution found needs a *locked* constraint crossed:
+maximum board size, cost ceiling, agreed interface positions, feature set.
+
+So the router does not hand a diagnosis to a person. It emits a change an earlier stage can act on, and the
+tool retries:
+
+| What the router found | What it asks for | Which stage acts |
+|---|---|---|
+| a net with no path at any layer | one more layer pair | PCB specification (stage 4) |
+| congestion concentrated around one part | that part moved or rotated | placement (stage 5) |
+| two pads that cannot be reached in the order they sit | a pin or lane swap | pin assignment |
+| a rail that cannot be fed as copper | a via type, or a layer for the plane | specification |
+| copper that fits nowhere at this size | a larger board, inside the maximum | specification |
+| any of the above needing more than the maximum size or the cost ceiling | **the owner**, with evidence and options | escalation |
+
+This loop is what makes the difference between a router and an automated router, and nothing in the tree
+implements it yet. M4's gate does not exercise it either, because the benchmark re-routes a board whose
+placement and layer count are the reference's and are known to work. That makes it invisible to the gate and
+still required: the first board where no arrangement works is the one that proves it, and by then it is too late
+to design.
+
+**Budgets, so the loop terminates.** Every retry is bounded and logged. A router that has not converged within
+its budget stops and reports rather than running for hours (`definition.md` section 3). The log is what stops
+the same change being tried twice.
 
 
 ## 11. Fixed copper
@@ -258,20 +300,26 @@ invalidating only entries within one clearance of copper just placed, is a secon
 Target: the smallest board in seconds, the largest in minutes, which is the standard M1's harness set.
 
 
-## 13. Questions for the owner
+## 13. What is actually the owner's
 
-1. **Track width, and what else belongs in the criterion.** The gate accepts minimum-width copper everywhere;
-   `libresolar-mppt-2420` carries 20 A on 0.5 mm while its signals are 0.25 mm, so a router laying 0.25 mm
-   everywhere passes and is wrong. Section 4 proposes three additions: width by net class, a return via near
-   every signal via, and plane integrity. All three change D50's criterion.
-2. **Plane nets: declared or inferred?** A declared list is what stages 1 to 4 of the pipeline would supply and
-   is honest; inference by name and pad count is what the benchmark can do unaided.
-3. **How much of stage B to build now.** A full PathFinder global router is the right answer and is a week.
-   A cheaper version, coarse cells with capacities and no negotiation, may carry the class A ladder. The
-   research says negotiation is for residual conflicts, which argues for the cheaper version first.
-4. **Freerouting.** The plan names it as the alternative and the research recommends wrapping it as a baseline
-   to measure against. Nobody has tested whether it can be made to respect fixed copper. Worth a day to find
-   out, and it would give every later number something to be compared with.
+Earlier versions of this section asked four questions. Three of them were not the owner's and two were
+scope reduction dressed as a choice: how much of stage B to build, and whether to grade current capacity at all.
+Both amount to deciding in advance that some of the board is a person's job. The goal is zero interactive
+routing, so the answer to "how much of this do we build" is all of it, and the only real questions are order and
+evidence.
+
+**The one decision to record.** D50's criterion gains width by net class, a return via near every signal via,
+and plane integrity (section 4). CLAUDE.md requires a criterion change to be recorded in the decisions log
+before the scope changes, so this needs the owner's word — not on whether, but to enter it in the log.
+
+**Not the owner's, and already answered.** Track width is a free variable the tool sets (`definition.md`
+section 4). Whether plane nets are declared or inferred is a question of which stage of the tool decides, and
+both stages are the tool. How much of stage B to build is answered by the ladder: class A may survive coarse
+cells without negotiation, and class B, B+ and C will not, so negotiation is built once rather than twice.
+
+**A measurement worth making, not a permission to seek.** Freerouting, which the plan names and the research
+recommends wrapping as a baseline. It is the kind of router the research says fails on electrical intent, so it
+is a number to beat rather than a destination, and nobody has yet tested whether it will respect fixed copper.
 
 
 ## 14. What the code does today against this spec
@@ -287,6 +335,7 @@ Target: the smallest board in seconds, the largest in minutes, which is the stan
 | Rip-up and reroute | **no.** Sequential; a blocked net fails |
 | Fixed copper | argument exists, never exercised |
 | Diagnosis | partial: names the unreachable pad, does not group causes |
+| Closure: a change an earlier stage can act on | **no.** The loop of section 10 does not exist anywhere in the tree |
 | Caching | **no** |
 
 So the code is a fragment of stage C. On section 12 alone it should not be expected to finish

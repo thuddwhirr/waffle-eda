@@ -35,13 +35,15 @@ is unknown, and the gate may now fail with an exception instead of a stated reas
 `tinkerforge-temperature` first, the registry's own smoke test, and believe the score rather than this
 paragraph.
 
-**Read [`router-spec.md`](router-spec.md) before changing it.** It is the second version: the first was
-written from the code and missed the research reports and the carried lessons entirely, and proposed a
-single-stage router, which is the architecture D29 to D33 already showed does not work and which M3a exists to
-replace. The spec now stages the router as this project staged the bus -- rules, a coarse global route, exact
-copper inside its guides, then planes -- and section 14 is an honest table showing the committed code is a
-fragment of the third stage only. Section 13 puts four questions to the owner, the first of which is a gap in
-the benchmark's criterion rather than in the router.
+**Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
+coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no
+copper works the router asks for a change to a free variable -- a layer, a placement, a pin swap, a via type --
+and the tool retries, escalating to the owner only when a locked constraint would have to be crossed
+(`definition.md` sections 3 and 4). That loop exists nowhere in the tree and is the difference between a router
+and an automated one. The committed code is a fragment of the third stage only, which the spec's last section
+states. One decision needs recording before the work: D50's criterion gains track width by net class, a return
+via near every signal via, and plane integrity. Not whether -- the definition already requires all three --
+but into the log.
 
 **M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
 session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
