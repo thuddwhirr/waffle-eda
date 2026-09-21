@@ -86,13 +86,22 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## Pending owner decisions
 
-* **The fab tier for the target board** and the gate's DRC criterion for the benchmark: see D16. M6 and the cost
-  model depend on them; M3a and M3b do not. A vendor landscape is being researched (all regions, prototype
-  quantities of 5 to 20, vendors that also assemble fine-pitch BGAs), because D16 could only speak for one fab.
+* **The fab tier for the target board**: see D16. M6 and the cost model depend on it; M3a and M3b do not. A
+  vendor landscape is being researched (all regions, prototype quantities of 5 to 20, vendors that also assemble
+  fine-pitch BGAs), because D16 could only speak for one fab.
   D42 has since measured what a board of this shape actually needs: a 0.8 mm caBGA381 does not require a finer
   process than the standard tier for its escape if it is dog-boned rather than via-in-pad, which is what
   LogicBone does with the same part; OrangeCrab's 0.5 mm pitch is the one case where the part itself rules the
   standard tier out.
+* **The benchmark's DRC criterion**, which D16 raised alongside the fab tier and which must be decided apart
+  from it. The benchmark holds each reference to the rules measured off that board
+  (`waffle_eda/bench/constraints.py`, which refuses to proceed if the original would fail its own measured
+  rules), never to a fab's tier. Answering this one with a fab tier instead would fail every class C reference by
+  construction: D42 measured that OrangeCrab's 0.089 mm tracks and 0.065 mm rings are what its 0.5 mm pitch
+  leaves, so no tier that rules them out can be met on that board by anyone, and the tool would spend the
+  milestone chasing something the board's own designer did not achieve either. The recommendation is to keep the
+  per-board demonstrated rules as the benchmark's criterion and to hold the fab tier where it belongs, on the
+  target board of M6.
 * **The length criterion of M3b** (D30): stay with the reference's own spreads as D27 wrote them, move to the
   vendor's numbers for the part (Lattice's ECP5 checklist is tighter than D27 on address and command while D27 is
   the stricter test on lanes and pairs), or measure both references per segment against the clock first and decide
