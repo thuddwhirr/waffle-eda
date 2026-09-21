@@ -10,7 +10,7 @@ anyone's memory):
 
 ```
 python3 scripts/gate.py m3a     # expect PASS, 3 of 3 class C references
-python3 -m pytest -q            # 166 tests; expect 0 failed, about 21 minutes
+python3 -m pytest -q -rs        # 166 tests; expect 0 failed, about 21 minutes. -rs prints why anything skipped
 python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick   # the D48 evidence for D30
 ```
 
