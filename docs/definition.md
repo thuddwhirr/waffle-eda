@@ -93,6 +93,11 @@ Adapted from the `waffle-fpga` brief, section 9, and kept.
   measurements without anyone noticing).
 * When a tool fails three times on the same problem, stop and find the missing constraint or the missing test. Do not
   brute-force.
+* Before a long background job, check that its sources are reachable, and fetch known documents by their URL
+  rather than searching for them. While it runs, look for failure signals in its output rather than confirming it
+  is alive. A job that cannot reach its sources is a failure from its third minute and saying so then costs
+  nothing (D46: two research rounds ran four and a half hours, 213 agents and 12.8 M tokens, against domains the
+  egress policy had already refused, and the refusals were in the log three minutes after launch).
 * Report briefly: numbers per stage, what is open, what is next. Do not narrate iterations.
 * Ask the owner only for locked-constraint changes and design revisions.
 

@@ -1056,3 +1056,38 @@ numbers to decide against now exist; the convention does not yet.
 One correction to plan.md carried here: its summary of D30 said "D27 is the stricter test on lanes and pairs".
 That holds for ButterStick (0.73 and 0.84 mm against Lattice's 2.54 mm window) and OrangeCrab (0.5 and 0.6), but
 not for LogicBone, whose lanes measure 4.15 and 7.1 mm on total length and are **looser** than Lattice's rule.
+
+**D46. Two research rounds were launched without a reachability check, and their failure went unreported for two
+hours.** Process failure, 2026-09-20 to 21, raised by the owner. Recorded as a rule, not as an apology.
+
+**What happened.** Both rounds of D44 and D45 were launched at about 22:20 with no check that their sources were
+reachable. The environment publishes a proxy status endpoint, named in this session's own environment notes,
+whose `recentRelayFailures` list answers the question directly. Run afterwards it showed `403 to CONNECT (policy
+denial)` for `jlcpcb.com` and `comparepcb.com` at 22:25, `www.edaboard.com` and `www.micron.com` at 22:37 -- four
+of the domains the rounds most needed. The first agent complaint about a block or an exhausted search budget was
+written at 22:23, three minutes after launch. The failure was reported to the owner on completion, about two
+hours later for the first round and two and a half for the second: 213 agents and 12.8 M tokens, for a vendor
+landscape covering one vendor and a practice survey covering none.
+
+**Three errors, in order of cost.**
+
+1. *No pre-flight.* The check costs one command and a few seconds. It was documented in the environment and was
+   not run. A deep-research round had already been run earlier in the same session, so search-budget pressure was
+   foreseeable as well.
+2. *The wrong shape.* Both rounds were built to lean on web search, when the material actually needed -- vendor
+   capability pages, Lattice's checklist, ISSI's guidelines -- sits at known stable URLs. Direct fetches worked
+   throughout: the Lattice PDF was read in full, and that is where D45's entire usable result came from. The
+   retry proposed afterwards, fetch by URL rather than search, was the right design before launch, not after.
+3. *Liveness checked instead of health.* Asked mid-run whether the rounds were still going, the answer given was
+   that both were running and "doing real primary-source work", from reading the last three lines of the journal.
+   That was true and beside the point. The evidence of failure was in the same directory, and a grep for a
+   failure signal would have surfaced it at the first check rather than at completion.
+
+**The rule, added to the working agreement.** Before a long background job: check that its sources are reachable
+and prefer fetching known documents by URL over searching for them. While it runs: grep its output for failure
+signals rather than confirming it is alive. A job that cannot reach its sources is a failure from its third
+minute, and saying so then costs nothing.
+
+This is D33's lesson in another costume. There, a bench setting made every measurement meaningless and nobody
+looked at the setting; here, an egress policy made a round's sources unreachable and nobody looked at the policy.
+Both were one cheap check away, and in both cases the expensive artifact looked healthy while it was running.
