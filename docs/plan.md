@@ -22,18 +22,22 @@ them. Measured on 2026-09-21: **180 passed, 3 skipped, 0 failed** with the const
 skip without them. Run those two scripts first if you want the full count. Do not read a skip as a pass, and do
 not add one.
 
-**The next action is M4's general router.** Its benchmark is **built** (D50): `waffle_eda/bench/rebuild.py`
-strips every net's copper from a board and scores a candidate that re-routes it, and the pair that makes the
-number trustworthy holds on all six class A references, the original copper scoring 1.000 and the stripped board
-0.000. `python3 scripts/gate.py m4` runs the ladder and is **red on all six with the reason
-`M4's general router is not built`**, which is the honest state of the milestone.
+**The next action is to run M4's router for the first time.** Its benchmark is **built** (D50):
+`waffle_eda/bench/rebuild.py` strips every net's copper from a board and scores a candidate that re-routes it,
+and the pair that makes the number trustworthy holds on all six class A references, the original copper scoring
+1.000 and the stripped board 0.000.
 
-So write `waffle_eda/route/board_router.py`, whose docstring states what it must do and what it can reuse. In
-short: `route.obstacles` is the clearance index and is general, `route.length` tunes a run under the same
-collision test, and the negotiated-congestion scheme exists twice already (`route.escape`, `route.bus`) so the
-pattern is known. Neither of those routers applies, because both are built around a ball-grid package and a
-class A board has none. Planes and power rails with their feeds and stitching are the part with no precedent in
-the tree at all.
+**A first router is written and has never been run.** `waffle_eda/route/board_router.py` no longer raises
+`NotImplementedError`: it builds a uniform grid on every copper layer with a node at each pad, grows each net as
+a tree by A* from every node the tree holds, and checks every edge against `route.obstacles` rather than against
+a proxy. **No claim is made for it.** It has not been executed once, so the M4 gate's behaviour with it in place
+is unknown, and the gate may now fail with an exception instead of a stated reason. Run it on
+`tinkerforge-temperature` first, the registry's own smoke test, and believe the score rather than this
+paragraph.
+
+What it does not have: rip-up and negotiation, which both existing routers needed, and planes with their feeds
+and stitching, which M4's criterion names and which nothing in the tree has a precedent for. Power nets are
+routed as ordinary tracks today.
 
 **M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
 session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
@@ -137,7 +141,8 @@ if it can be made to respect fixed copper), planes and power rails on continuous
 checks at every stage. Passes a full re-route of a class A or B reference from placement, DRC clean.
 
 *State: the benchmark is built and its gate is red.* `python3 scripts/gate.py m4` FAIL, 0 of 6 class A
-references, each with the reason `M4's general router is not built` (D49, D50). The problem board is placement,
+references (D49, D50). Those runs predate the first router; a router has since been written and never run, so
+the gate's present output is unverified. The problem board is placement,
 pads, outline and keepouts with every track, arc, via and pour removed, which is what `definition.md` gives
 stage 5; a candidate is scored on every routable net connected and zero electrical violations under the rules
 measured off that board. Both sanity checks hold on all six: the original copper scores 1.000 and the stripped

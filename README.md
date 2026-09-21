@@ -82,8 +82,8 @@ site, bundle order and length room, and is checked in under a second (decisions 
 
 M4, a full re-route of a whole board from placement, is the milestone in progress (D49): the owner took it ahead
 of M3b because M4 feeds M5 and the first manufacturable board, while M3b feeds M6. Its benchmark is built and its
-gate is red for the stated reason -- `python3 scripts/gate.py m4` FAIL, 0 of 6 class A references, each
-`M4's general router is not built`. The benchmark strips every track, via and pour from a reference and keeps
+gate is red -- `python3 scripts/gate.py m4` FAIL, 0 of 6 class A references. That run predates the first
+router, which is now written in `waffle_eda/route/board_router.py` and has never been executed. The benchmark strips every track, via and pour from a reference and keeps
 placement, pads, outline and keepouts, which is what stage 5 of the pipeline is given; a candidate is scored on
 every routable net connected and zero electrical violations under rules measured off that board. On all six class
 A references the original copper scores 1.000 and the stripped board 0.000 (D50).
