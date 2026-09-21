@@ -1414,3 +1414,45 @@ vendor limits later.
 **Why this was recorded rather than discussed again.** The via and the tier sat in the plan's pending-decisions
 list, so every session read them, raised them, and proposed the same vendor research. The loop was in the
 document, not in anyone's memory. Removing the entries is the fix.
+
+**D54. The delay model is too crude to gate on, and the vendors specify a constraint that removes the need for
+it.** Correction to D48's recommendation, 2026-09-21, prompted by the owner asking what the tool actually
+measures.
+
+**What `waffle_eda/bench/delay.py` measures, and what it assumes.** It measures one thing from the board: the
+copper length of each path on each layer, and which layers are outer. Everything else is assumed. It multiplies
+that length by one of two constants, 5.59 ps/mm for an outer layer and 7.08 ps/mm for an inner one, a ratio of
+1.266. It uses **no trace geometry at all**: not width, not dielectric height, not copper thickness. Real
+microstrip effective permittivity depends strongly on the width-to-height ratio, and this formula has no width
+term. The permittivity is read from the board file only when the file records a stackup, which of the three
+class C references is **ButterStick alone**; LogicBone and OrangeCrab use a default of 4.5. It also assumes
+every inner layer is stripline, which means a reference plane on both sides, and that is never verified.
+
+So the output is copper length scaled by one of two constants. It is not a field solve and must not be
+presented as one.
+
+**What survives that, and what does not.** The direction is physics and is certain: an inner layer is slower,
+because a stripline is fully embedded in dielectric while a microstrip has part of its field in air. The two
+findings of D48 rest only on that direction and on a rough magnitude, and they hold: LogicBone shortened its
+inner-layer strobes relative to its outer-layer data, and OrangeCrab did not. What does not survive is the
+picosecond figures as a *tolerance*. Gating on them would put the model's error inside the criterion.
+
+**The constraint that removes the problem.** Every vendor in the research specifies it, and specifies it for
+exactly this reason. ISSI: "same layer for a net group and for a byte group". The deep-research round, on the
+same point: "All nets in a single byte-lane group should be routed on the same layer to eliminate the
+[velocity difference]". Xilinx UG583: DQ and DQS of a byte on the same layer except in the breakout.
+
+**Revised recommendation for D30, replacing part 2 of D48.** Do not grade the byte lanes in modelled delay.
+Require every net of a matched group to use one layer, and keep copper length as the criterion. Within a group
+on one layer, every net has the same ps/mm, so matching length *is* matching delay and no permittivity model
+enters the gate. Report the modelled delay beside the result, as D48's part 3 already says, and never as the
+tolerance.
+
+**This also renames OrangeCrab's defect.** Its lane 0 runs its data bits on `B.Cu` and its strobe pair and mask
+on `In2.Cu`. The 27 ps of skew is not a length-matching failure that a delay criterion would have caught. It is
+a violation of the same-layer rule, and a same-layer constraint catches it directly, with no model.
+
+**Cost, against D48's estimate.** D48 said part 2 required an M3a change and a re-gate because the planner
+works in millimetres. Under this revision the planner keeps working in millimetres. What it gains is a
+constraint that a group's nets share a layer, which M3a already assigns per net. That is a smaller change and it
+needs no conversion.

@@ -79,9 +79,13 @@ ones that met the rule -- carry 27 ps of skew against their own strobe.
 
 **What blocks M3b when it is picked up again.** Its gate is graded by the length criterion of D30, which is
 undecided. The recommendation is in D48 and has two parts: keep D27's spreads as the tolerance, and grade the
-byte lanes in delay rather than copper, because a router graded on copper can pass the gate by reproducing
-OrangeCrab's own mistake. The benchmark's DRC criterion is no longer open: D53 settled it as the per-board
-measured rules. Do not build M3b against a criterion that has not been fixed.
+byte lanes in delay rather than copper. **D54 has since replaced that second part.** The delay model uses no
+trace geometry and reads a real permittivity from only one of the three boards, so it is too crude to be a
+tolerance. Every memory and FPGA vendor specifies the constraint that removes the need for it: all nets of a
+matched group on one layer. On one layer, matching length is matching delay. So part 2 is now a same-layer
+constraint with copper length kept as the criterion, which is a smaller change than D48 estimated and needs no
+model. The benchmark's DRC criterion is no longer open: D53 settled it as the per-board measured rules. Do not
+build M3b against a criterion that has not been fixed.
 
 **What settling D30 costs, by option.** Part 1 alone (keep D27's spreads) leaves M3a untouched and M3b starts on
 its ladder below. Part 2 as well (grade the byte lanes in delay) is a change to M3a and a re-gate: the planner's
