@@ -15,6 +15,8 @@ stage repeats it:
 * Every iteration of ``board.GetTracks()`` or ``fp.Pads()`` yields new proxy objects for the same C++ items, so
   ``is`` and ``id()`` never identify an item across calls; compare ``m_Uuid.AsString()``. An index that keeps a
   proxy of an item the board has since deleted holds a dangling pointer, and the next collision test segfaults.
+* A net name is escaped in the board file and in the API (``/RX{slash}SCL``) and unescaped in a DRC report
+  (``/RX/SCL``); matching one against the other silently misses the net. Use :func:`unescape_net` on both sides.
 * A shape built in Python (``pcbnew.SHAPE_CIRCLE(...)``) exposes only the ``Collide(SEG, ...)`` overload; make the
   shape from ``GetEffectiveShape()`` (typed as the base ``SHAPE``) the receiver and pass the built shape as the
   argument, or the call raises a ``TypeError`` about ``SEG const &``.
@@ -115,6 +117,21 @@ def set_via_diameter(via: pcbnew.PCB_VIA, diameter_mm: float) -> None:
     except TypeError:
         for layer in via.GetLayerSet().Seq():
             via.SetWidth(layer, nm(diameter_mm))
+
+
+# KiCad stores a net name escaped in the board file and prints it unescaped in a DRC report, so a name read
+# through the API never matches the same net in a report until both sides are unescaped. `open-book-c1` has
+# `/RX{slash}SCL`, which a report calls `/RX/SCL`.
+NET_ESCAPES = {"{slash}": "/", "{backslash}": "\\", "{dblquote}": '"', "{quote}": "'", "{lbrace}": "{",
+               "{rbrace}": "}", "{lt}": "<", "{gt}": ">", "{bar}": "|", "{colon}": ":", "{space}": " ",
+               "{dollar}": "$", "{tab}": "\t", "{return}": "\n"}
+
+
+def unescape_net(name: str) -> str:
+    """A net name as KiCad's DRC report writes it, from the escaped form the board file and API use."""
+    for token, char in NET_ESCAPES.items():
+        name = name.replace(token, char)
+    return name
 
 
 def net_names(board: pcbnew.BOARD) -> list[str]:

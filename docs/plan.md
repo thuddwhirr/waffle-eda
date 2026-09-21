@@ -10,20 +10,30 @@ anyone's memory):
 
 ```
 python3 scripts/gate.py m3a     # expect PASS, 3 of 3 class C references
-python3 -m pytest -q -rs        # 166 tests; expect 0 failed, about 21 minutes. -rs prints why anything skipped
+python3 -m pytest -q -rs        # 183 tests; expect 0 failed, about 21 minutes. -rs prints why anything skipped
 python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick   # the D48 evidence for D30
 ```
 
-On a container that has only fetched the references, that run is **161 passed, 5 skipped, 0 failed**. The skips
-are the guards the tests already carry for build artifacts rather than anything disabled: three escape cases want
-the stripped boards `scripts/fanout_bench.py` writes, and two want the constraints files
-`python3 -m waffle_eda.bench.constraints` writes. Run those two first and the count rises; a *failure* is a
-different thing and there are none. Do not read a skip as a pass, and do not add one.
+**0 failed is the criterion; the pass count moves and that is not a fault.** The skips are guards the tests
+already carry for build artifacts, not anything disabled, so the number that skip depends on what `build/`
+already holds. Three escape cases want the stripped boards `scripts/fanout_bench.py` writes; two more want the
+constraints files `python3 -m waffle_eda.bench.constraints` writes, and they pass once anything has written
+them. Measured on 2026-09-21: **180 passed, 3 skipped, 0 failed** with the constraints files present, and five
+skip without them. Run those two scripts first if you want the full count. Do not read a skip as a pass, and do
+not add one.
 
-**The next action is M4, and its gate before its router.** The owner took M4 ahead of M3b on 2026-09-21 (D49).
-Build the strip-and-score that M4's criterion needs, on the class A ladder starting at
-`tinkerforge-temperature`, and only then the router. M1 came before M2 for this reason: a milestone whose
-criterion is written after its tool is a milestone that grades itself.
+**The next action is M4's general router.** Its benchmark is **built** (D50): `waffle_eda/bench/rebuild.py`
+strips every net's copper from a board and scores a candidate that re-routes it, and the pair that makes the
+number trustworthy holds on all six class A references, the original copper scoring 1.000 and the stripped board
+0.000. `python3 scripts/gate.py m4` runs the ladder and is **red on all six with the reason
+`M4's general router is not built`**, which is the honest state of the milestone.
+
+So write `waffle_eda/route/board_router.py`, whose docstring states what it must do and what it can reuse. In
+short: `route.obstacles` is the clearance index and is general, `route.length` tunes a run under the same
+collision test, and the negotiated-congestion scheme exists twice already (`route.escape`, `route.bus`) so the
+pattern is known. Neither of those routers applies, because both are built around a ball-grid package and a
+class A board has none. Planes and power rails with their feeds and stitching are the part with no precedent in
+the tree at all.
 
 **M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
 session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
@@ -125,6 +135,15 @@ decisions D27, subject to D30), layer changes only at the packages. Fails with a
 **M4. The rest of the copper.** A router for the miscellaneous nets with the bus and pairs fixed (own, or Freerouting
 if it can be made to respect fixed copper), planes and power rails on continuous copper with feeds and plane vias,
 checks at every stage. Passes a full re-route of a class A or B reference from placement, DRC clean.
+
+*State: the benchmark is built and its gate is red.* `python3 scripts/gate.py m4` FAIL, 0 of 6 class A
+references, each with the reason `M4's general router is not built` (D49, D50). The problem board is placement,
+pads, outline and keepouts with every track, arc, via and pour removed, which is what `definition.md` gives
+stage 5; a candidate is scored on every routable net connected and zero electrical violations under the rules
+measured off that board. Both sanity checks hold on all six: the original copper scores 1.000 and the stripped
+board 0.000. Its ladder, smallest first: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
+`olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420`. The last is the one whose power on
+continuous copper the others do not exercise.
 
 **M5. The front half and the first end-to-end run.** Design document, BOM under a cost ceiling, a readable schematic,
 the PCB specification with a price estimate, then stages 5 and 6 on the class A or B target. First board to fab outputs

@@ -60,6 +60,8 @@ python3 scripts/bus_bench.py butterstick            # route the bus and score it
 python3 scripts/compare_net.py butterstick --failed # our copper under the reference's route, net by net
 python3 scripts/fab_attribution.py butterstick logicbone   # what each board asks of a fab, and where
 python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick  # each leg as length and as delay
+python3 scripts/rebuild_bench.py tinkerforge-temperature   # strip a whole board and score a re-route (M4)
+python3 scripts/gate.py m4                          # the M4 gate: red until the general router exists
 python3 -m pytest -q
 ```
 
@@ -78,7 +80,15 @@ two orthogonal paths through disjoint nodes of a monotone grid cannot cross, whi
 property of the construction rather than something to check and repair. Each plan fixes every net's layer, via
 site, bundle order and length room, and is checked in under a second (decisions D39 to D41).
 
-M3b, the routing inside that plan, not built. The last reproducible bus routing, from before there was a plan to
+M4, a full re-route of a whole board from placement, is the milestone in progress (D49): the owner took it ahead
+of M3b because M4 feeds M5 and the first manufacturable board, while M3b feeds M6. Its benchmark is built and its
+gate is red for the stated reason -- `python3 scripts/gate.py m4` FAIL, 0 of 6 class A references, each
+`M4's general router is not built`. The benchmark strips every track, via and pour from a reference and keeps
+placement, pads, outline and keepouts, which is what stage 5 of the pipeline is given; a candidate is scored on
+every routable net connected and zero electrical violations under rules measured off that board. On all six class
+A references the original copper scores 1.000 and the stripped board 0.000 (D50).
+
+M3b, the routing inside the M3a plan, deferred rather than descoped (D49); M6 still requires it. The last reproducible bus routing, from before there was a plan to
 route inside, is 42 of 55 nets on ButterStick with zero electrical violations; the 53 to 54 of 55 recorded on
 18 September is not reproducible and the reason is only half understood (D33). What the measurement established:
 the negotiation's plateau is an ordering problem, not a capacity one (D29, D31, D32); the bench's own spacing

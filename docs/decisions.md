@@ -1262,3 +1262,50 @@ already calls it "the smallest board in the ladder, a smoke test for every stage
 layers and 0.3 mm tracks. Then the rest of class A, with `libresolar-mppt-2420` last of them, the board whose own
 registry note says power on continuous copper matters there, which is the part of M4's criterion nothing else in
 the ladder exercises.
+
+**D50. M4's benchmark, and the four ways it credited work nobody did before it was believed.** Built 2026-09-21
+in `waffle_eda/bench/rebuild.py`, gated by `python3 scripts/gate.py m4`, per D49's first task.
+
+**The problem board is placement and nothing else.** `definition.md` gives stage 5 a specification, a netlist and
+footprints, so `strip_all` removes every track, arc, via and copper zone and keeps the footprints, pads and
+outline. Keeping the reference's pours was considered and rejected: on a two-layer board the ground pour *is*
+how ground is routed, and M4 is the milestone that has to produce planes with their feeds and stitching, so
+keeping them would hand the tool most of the answer. **Keepouts stay**: a rule area is part of the specification
+the router is handed, not copper it laid, and `open-book-c1` carries two inside the footprint of U3.
+
+**The criterion** is every routable net connected and zero electrical violations under rules measured off that
+board (`measure_rules`), which is what D17 and D18 do for the bus and what the open question on the benchmark's
+DRC criterion is recommended to settle on. The rules are unconditional rather than scoped to a net list, because
+here the whole board is ours.
+
+**The sanity pair, on all six class A references.** The original copper scores 1.000 and passes; the stripped
+board scores 0.000 and fails. That pair is the reason to trust the number and it is asserted per board in
+`tests/test_rebuild.py`. Getting there took four corrections, each of which made the do-nothing tool look better
+than it was, or failed the reference for something it demonstrably does:
+
+1. **Single-pad nets.** Five of `tinkerforge-temperature`'s eleven nets reach one pad. KiCad never reports such a
+   net unconnected, so counting them scored the empty board 5 of 11, **0.455 instead of 0.000**. The denominator
+   is now `routable_nets`, the nets reaching two pads or more.
+2. **Violations between two fixed items.** The pad `EP` of the connector `P1` sits on the board edge. Graded, it
+   measured the board's edge clearance as **0 mm**, which would have let a candidate run track along the rim;
+   ungraded, the same board measures **0.548 mm**. A violation now counts against the router only when at least
+   one of its items is copper the router laid, and the fixed ones are reported separately rather than dropped.
+3. **The board outline read as routed copper.** KiCad calls the outline's graphics `Segment` and `Arc`, and
+   `Arc` is also a routed copper arc, so an `Arc on Edge.Cuts` was charged to the router and `open-book-c1`
+   reported an electrical violation on a board carrying no copper at all.
+4. **Net names are escaped in the API and unescaped in the DRC report.** `open-book-c1` has `/RX{slash}SCL`,
+   which a report calls `/RX/SCL`. Comparing the two forms directly found the net in no unconnected list and
+   scored it **connected on an empty board**. `kb.unescape_net` now normalises both sides, and the pitfall is
+   recorded with the others in `waffle_eda/kicad/board.py`.
+
+Points 1 and 4 are D33's lesson again, in the form this project keeps meeting it: a benchmark whose number looks
+plausible while the thing it counts is not the thing it names. Each was found only by asking why the empty board
+did not score zero, which is why the sanity pair is asserted per board rather than once.
+
+**Not checked, and not claimed.** The bus benchmark matches bus net names against DRC descriptions the same way
+point 4 does. No class C reference has an escaped character in a bus net name today, so no result changes, but
+`harness.drc_facts` has the same latent defect and M3b should not be built on it without fixing it first.
+
+**M4's gate is red, for the stated reason.** `scripts/gate.py m4` runs the ladder of six class A references and
+reports `M4's general router is not built` against each; `waffle_eda/route/board_router.py` is the interface it
+calls and raises `NotImplementedError`. A milestone with no tool is a failing milestone, not a pending one.

@@ -12,6 +12,9 @@
     python3 scripts/gate.py m3b    # the bus routing inside that plan: every bus net connected, zero violations
                                    # under the constraints, lengths matched as the reference matches them (D27),
                                    # vias only inside the packages
+    python3 scripts/gate.py m4     # the whole board re-routed from placement: every net of every class A
+                                   # reference connected, zero electrical violations under the rules measured
+                                   # off that board, planes on continuous copper (D49)
 
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
 """
@@ -21,10 +24,19 @@ import sys
 
 import _path  # noqa: F401
 from waffle_eda.bench import harness, references as refs, synthetic
+from waffle_eda.kicad import board as kb
 
 
 def bus_references():
     return [r for r in refs.REFERENCES.values() if r.has_bus]
+
+
+def m4_references():
+    """M4's ladder: class A, smallest first, as D49 sets it. `tinkerforge-temperature` is the registry's own
+    smoke test for every stage; `libresolar-mppt-2420` is the one whose power on continuous copper matters."""
+    order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
+             "crkbd-corne-cherry", "libresolar-mppt-2420"]
+    return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES]
 
 
 def gate_m1() -> list[tuple[str, bool, str]]:
@@ -95,6 +107,37 @@ def gate_m3a() -> list[tuple[str, bool, str]]:
     return rows
 
 
+def gate_m4() -> list[tuple[str, bool, str]]:
+    """M4: a full re-route of each class A reference from placement, DRC clean (plan.md, M4; D49).
+
+    The ladder rises as class C's does: the smallest board first. The benchmark is `waffle_eda.bench.rebuild`,
+    whose two sanity checks (the stripped board scores 0.000, the original 1.000) are asserted by the tests. This
+    gate judges only what the tool produces, so while M4's router is unbuilt every row fails with that reason.
+    """
+    from waffle_eda.bench import rebuild
+    from waffle_eda.route import board_router
+    rows = []
+    for ref in m4_references():
+        if not refs.is_fetched(ref):
+            rows.append((ref.key, False, "not fetched"))
+            continue
+        try:
+            bare, _info = rebuild.strip_all(ref)
+            rules = rebuild.measure_rules(ref)
+            routed = board_router.route_board(kb.load_board(bare), rules)
+        except NotImplementedError as why:
+            rows.append((ref.key, False, str(why).split(".")[0]))
+            continue
+        except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
+            rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
+            continue
+        out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
+        kb.save_board(routed, out)
+        s = rebuild.score(ref, out)
+        rows.append((ref.key, s.passed, s.summary()))
+    return rows
+
+
 def gate_m3() -> list[tuple[str, bool, str]]:
     import bus_bench  # noqa: E402  (scripts/)
     rows = []
@@ -116,10 +159,11 @@ def gate_m3() -> list[tuple[str, bool, str]]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or argv[0] not in ("m1", "m2", "m3", "m3a", "m3b"):
+    if len(argv) != 1 or argv[0] not in ("m1", "m2", "m3", "m3a", "m3b", "m4"):
         print(__doc__)
         return 2
-    rows = {"m1": gate_m1, "m2": gate_m2, "m3a": gate_m3a, "m3": gate_m3, "m3b": gate_m3}[argv[0]]()
+    rows = {"m1": gate_m1, "m2": gate_m2, "m3a": gate_m3a, "m3": gate_m3, "m3b": gate_m3,
+            "m4": gate_m4}[argv[0]]()
     failed = [r for r in rows if not r[1]]
     print(f"\n=== GATE {argv[0].upper()}: {'PASS' if not failed else 'FAIL'} ({len(rows) - len(failed)} of {len(rows)} cases pass) ===")
     for key, ok, detail in sorted(rows, key=lambda r: r[1]):
