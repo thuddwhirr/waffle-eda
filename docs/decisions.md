@@ -1353,3 +1353,38 @@ route but a stage of its own (D36).
 
 **Not claimed.** The five larger class A boards have not been run. The two nets that did route are the two whose
 pads sit on the coarse connector, so 2 of 6 is not evidence that anything harder works.
+
+**D52. The escape has to end where the geometry allows, not on a lattice line; 2 of 6 becomes 4 of 6.**
+Implementation with measurements, 2026-09-21, `waffle_eda/route/board_router.py` on
+`tinkerforge-temperature`, following D51.
+
+| change | result on the smoke test |
+| --- | --- |
+| D51's state | 2 of 6 nets, score 0.333 |
+| escape as edges into the lattice, eight rays | 3 of 6, score 0.500 |
+| grid step from the finest pad pitch (0.4969 -> 0.1659 mm) | 3 of 6, **no change** |
+| escape stubs as real off-lattice nodes | **4 of 6, score 0.667**, zero electrical violations |
+
+**The finer grid did nothing, and that refutes half of D51.** D51 concluded the step had to come from the pad
+pitch rather than the track width. It does, and it is not sufficient: at 0.1659 mm the middle pads of the
+SOT-563 still had **no reachable lattice node at all**. The geometry says why. A straight track of this board's
+width leaves that pad cleanly at 0.4 mm north or south from the pad's exact centre, and the nearest lattice node
+to that direction sits sideways of it, so the track to it runs into the neighbouring pad. **No grid affordable
+over a whole board resolves a 0.498 mm pad row**, so the escape must end at a computed point and that point must
+be a node.
+
+With stubs as nodes, VCC reaches its SOT-563 pad and the board goes to 4 of 6.
+
+**The two that remain are the stages that are not built, not new mysteries.** `SCL` fails at a TSSOP-8 pad after
+2 of 3 pads and `GND` at a SOT-563 pad after 8 of 9: both are the last pad of a net routed into a board the
+earlier nets have filled, which is what rip-up and the global stage are for. `GND` is also a supply net, which
+stage D routes as a pour rather than as track, so it should not be a track-routed net at all.
+
+**Three of the six class A boards cannot be attempted**, and now say so in one line instead of filling memory:
+at a step fine enough for their pads they need 2.1, 3.3 and 5.4 million grid nodes against a 400,000 ceiling.
+`olimex-rp2040-pico-pc`, `crkbd-corne-cherry` and `libresolar-mppt-2420` need the global stage of the spec
+before they can be routed at all. `olimex-esp32c3-devkit` (295,200) and `open-book-c1` (268,156) fit.
+
+**Method note.** Three defects in four runs, none of which reading the code had found: a one-way graph, copper
+left behind by a failed net, and an escape that could not leave a pad. D51's first version of this entry
+asserted a fix that measurement then refuted. Run it.

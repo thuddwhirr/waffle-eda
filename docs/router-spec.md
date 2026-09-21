@@ -341,15 +341,18 @@ is a number to beat rather than a destination, and nobody has yet tested whether
 
 `waffle_eda/route/board_router.py`, committed unrun:
 
-Measured once, on `tinkerforge-temperature` (D51): **2 of 6 nets, 32 tracks, zero electrical violations, score
-0.333, 1.5 s.** FAIL. The four failures are all the missing C1.
+Measured on `tinkerforge-temperature` (D51, D52): **4 of 6 nets, 196 tracks, zero electrical violations, score
+0.667, 8 s.** FAIL. The two that remain are the missing stages, not new faults: one is a last pad reached into a
+board earlier nets have filled, which is rip-up and stage B, and the other is a supply net that stage D should
+pour rather than route. Three of the six class A boards cannot be attempted at all and say so in one line: they
+need 2.1 to 5.4 million grid nodes against a 400,000 ceiling, which is stage B's job.
 
 | Stage | In the code |
 |---|---|
 | A. rules and net classes | **no.** One board-wide minimum width for every net |
 | B. global route | **no.** No coarse stage at all; A\* runs over the whole board |
-| C1. pad escape | **no.** This is what the four failures are |
-| C2. detailed route | partly: grid, exact feasibility, greedy Steiner growth, no guides, step too coarse |
+| C1. pad escape | **yes**, as stubs that end off-lattice and become nodes (D52) |
+| C2. detailed route | partly: grid, exact feasibility, greedy Steiner growth, no guides |
 | D. planes and rails | **no.** Supply nets are routed as ordinary tracks |
 | Rip-up and reroute | **no.** Sequential; a blocked net fails |
 | Fixed copper | argument exists, never exercised |

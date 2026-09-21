@@ -99,8 +99,14 @@ class _Grid:
         return node
 
 
+class RoutingTooLarge(RuntimeError):
+    """The board needs a finer grid than this router can hold without the global stage."""
+
+
 class BoardRouter:
     """Routes every net of a board under `bench.rebuild.BoardRules`."""
+
+    MAX_NODES = 400_000
 
     def __init__(self, board, rules, fixed_nets: set[str] | None = None, step_mm: float | None = None,
                  say=lambda _m: None):
@@ -113,10 +119,23 @@ class BoardRouter:
         self.hole_clearance_mm = rules.hole_to_copper_mm
         self.via_mm = rules.min_via_mm
         self.via_drill_mm = rules.min_drill_mm
-        # a step that fits a track and its clearance, so two parallel runs can take neighbouring lines
-        self.step = step_mm or max(self.track_mm + self.clearance_mm, 0.2)
+        # The step has to resolve the finest pad row on the board, not just fit a track. Derived from the track
+        # it lands on 0.4969 mm against `tinkerforge-temperature`'s 0.498 mm pad pitch (D51): a point beside a
+        # pad then snaps to a lattice line up to half a step away, which is sideways into the neighbouring pad,
+        # and such a pad ends with no reachable node at all.
+        self.pad_pitch = self._finest_pad_pitch()
+        self.step = step_mm or min(max(self.track_mm + self.clearance_mm, 0.1), max(self.pad_pitch / 3, 0.05))
         region = self._region()
         self.grid = _Grid(board, rules, region, self.step)
+        # A grid fine enough for the pads is too big for a large board, which is what stage B of
+        # `docs/router-spec.md` exists to fix: restricting the detailed search to a coarse guide. Until it
+        # exists, say so and stop rather than filling memory and appearing to work.
+        nodes = self.grid.nx * self.grid.ny * len(self.grid.layers)
+        if nodes > self.MAX_NODES:
+            raise RoutingTooLarge(
+                f"{nodes:,} grid nodes at a {self.step:.4f} mm step (the finest pad pitch is "
+                f"{self.pad_pitch:.3f} mm) exceeds the {self.MAX_NODES:,} this router can hold. A board this "
+                f"size needs the global stage of docs/router-spec.md section 6, which is not built.")
         self.obs = Obstacles(board)
         self.net_by_name = {n.GetNetname(): n for n in board.GetNetsByName().values()}
         self._placed: set[str] = set()
@@ -124,6 +143,19 @@ class BoardRouter:
         # one-way: a pad has edges out to the grid and the grid has none back, so every target pad is
         # unreachable and every net fails with no copper laid at all.
         self._pad_near: dict[int, list[int]] = {}
+        self._free_adj: dict[int, list[int]] = {}   # off-lattice node -> what it connects to
+
+    def _finest_pad_pitch(self) -> float:
+        """The smallest centre-to-centre spacing between two pads of one footprint, over the whole board."""
+        finest = math.inf
+        for fp in self.board.GetFootprints():
+            pts = [(kb.mm(p.GetPosition().x), kb.mm(p.GetPosition().y)) for p in fp.Pads()]
+            for i, a in enumerate(pts):
+                for b in pts[i + 1:]:
+                    d = math.dist(a, b)
+                    if 1e-6 < d < finest:
+                        finest = d
+        return finest if finest < math.inf else 1.0
 
     def _region(self) -> tuple[float, float, float, float]:
         x0, y0, x1, y1 = kb.outline_bbox_mm(self.board)
@@ -155,20 +187,68 @@ class BoardRouter:
         net's own tree is joined."""
         return self.obs.clear(item, self.clearance_mm, hole_clearance_mm=self.hole_clearance_mm) is None
 
-    def _around(self, x: float, y: float, layer: int) -> list[int]:
-        """The grid nodes of ``layer`` in the nine positions around (x, y)."""
+    STUB_LENGTHS = (0.3, 0.4, 0.5, 0.7, 1.0, 1.4, 2.0)
+    STUB_DIRECTIONS = ((0, -1), (0, 1), (1, 0), (-1, 0),
+                       (0.7071, 0.7071), (0.7071, -0.7071), (-0.7071, 0.7071), (-0.7071, -0.7071))
+
+    def _stubs(self, x: float, y: float, layer: int, net_name: str, net) -> list[tuple[float, float]]:
+        """Points a straight track can reach from (x, y), one per direction, shortest that clears.
+
+        This is the escape, and it has to end where the geometry allows rather than on a lattice line. Measured
+        on `tinkerforge-temperature` (D51): a stub leaves the middle pad of its SOT-563 cleanly at 0.4 mm north
+        or south, while **no lattice node is reachable from that pad at all**, at either step tried, because the
+        nearest node to the clear direction sits sideways of it and the track to it runs into the neighbouring
+        pad. A pad row at 0.498 mm pitch is finer than any grid this router can afford over a whole board.
+        """
+        out = []
+        for ux, uy in self.STUB_DIRECTIONS:
+            for length in self.STUB_LENGTHS:
+                end = (x + ux * length, y + uy * length)
+                if self._clear(self._track(layer, (x, y), end, net), net_name):
+                    out.append(end)
+                    break
+        return out
+
+    def _node_at(self, x: float, y: float, layer_index: int) -> int | None:
+        grid = self.grid
+        ix = int(round((x - grid.x0) / grid.step))
+        iy = int(round((y - grid.y0) / grid.step))
+        if 0 <= ix < grid.nx and 0 <= iy < grid.ny:
+            return grid.gid(layer_index, ix, iy)
+        return None
+
+    def _lattice_near(self, x: float, y: float, layer: int, net_name: str, net, reach: float = 2.0,
+                      keep: int = 12) -> list[int]:
+        """The grid nodes (x, y) can reach by one straight track, nearest first.
+
+        A fine-pitch pad has no usable node in the cell around it. A track of this board's own width needs
+        0.694 mm to pass between two pads of `tinkerforge-temperature`, whose TSSOP-8 leaves 0.245 mm and whose
+        SOT-563 leaves 0.198 mm (D51), so such a pad must reach out of its own pad row before it is on the grid
+        at all. Walking outward in eight directions finds that, and leaving it as edges of the same search means
+        the route picks its escape rather than having one picked for it in advance, which is D36's lesson.
+        """
         grid = self.grid
         if layer not in grid.layers:
             return []
         li = grid.layers.index(layer)
+        span = max(1, int(reach / grid.step))
         ix = int(round((x - grid.x0) / grid.step))
         iy = int(round((y - grid.y0) / grid.step))
-        out = []
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
+        candidates = []
+        for dx in range(-span, span + 1):
+            for dy in range(-span, span + 1):
                 jx, jy = ix + dx, iy + dy
-                if 0 <= jx < grid.nx and 0 <= jy < grid.ny:
-                    out.append(grid.gid(li, jx, jy))
+                if not (0 <= jx < grid.nx and 0 <= jy < grid.ny) or (dx == 0 and dy == 0):
+                    continue
+                node = grid.gid(li, jx, jy)
+                candidates.append((math.dist((x, y), grid.xy(node)), node))
+        candidates.sort()
+        out: list[int] = []
+        for _d, node in candidates:
+            if self._clear(self._track(layer, (x, y), grid.xy(node), net), net_name):
+                out.append(node)
+                if len(out) >= keep:
+                    break
         return out
 
     # --- search -------------------------------------------------------------------------------------------
@@ -178,8 +258,8 @@ class BoardRouter:
         here = grid.xy(node)
         layer = grid.layer_of(node)
         out = []
-        if node < 0:  # a pad node joins the grid nodes around it
-            for other in self._around(here[0], here[1], layer):
+        if node < 0:  # a pad or an escape point: its edges were found when the net's pads were built
+            for other in self._free_adj.get(node, ()):
                 there = grid.xy(other)
                 item = self._track(layer, here, there, net)
                 if self._clear(item, net_name):
@@ -263,18 +343,33 @@ class BoardRouter:
                 if not layers:
                     continue
                 nodes = [self.grid.add_pad_node(x, y, L) for L in layers]
+                net = self.net_by_name.get(net_name)
                 for node, layer in zip(nodes, layers):
-                    for grid_node in self._around(x, y, layer):
-                        self._pad_near.setdefault(grid_node, []).append(node)
+                    self._wire_free_node(node, x, y, layer, net_name, net, stubs=True)
                 out.append(nodes)
         return out
+
+    def _wire_free_node(self, node: int, x: float, y: float, layer: int, net_name: str, net,
+                        stubs: bool) -> None:
+        """Give an off-lattice node its edges: the lattice nodes it can reach, and, for a pad, an escape stub
+        in each direction that clears, each stub's end being a free node wired the same way."""
+        adj = list(self._lattice_near(x, y, layer, net_name, net))
+        for lattice_node in adj:
+            self._pad_near.setdefault(lattice_node, []).append(node)
+        if stubs:
+            for ex, ey in self._stubs(x, y, layer, net_name, net):
+                end = self.grid.add_pad_node(ex, ey, layer)
+                adj.append(end)
+                self._free_adj.setdefault(end, []).append(node)
+                self._wire_free_node(end, ex, ey, layer, net_name, net, stubs=False)
+        self._free_adj.setdefault(node, []).extend(adj)
 
     def route_net(self, net_name: str, budget: int = 60000) -> str | None:
         """Grow one net's tree over its pads. Returns None on success, or why it failed."""
         net = self.net_by_name.get(net_name)
         if net is None:
             return "no such net on the board"
-        self._pad_near = {}  # only this net's pads: another net's pad is copper to clear, not a place to go
+        self._pad_near, self._free_adj = {}, {}  # this net's pads only: another net's pad is copper, not a stop
         pads = self._pad_nodes(net_name)
         if len(pads) < 2:
             return None
