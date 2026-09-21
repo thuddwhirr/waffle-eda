@@ -9,21 +9,34 @@ picosecond. A companion deep-research run (verified, multi-agent) is appended wh
 
 ## Summary: the three answers
 
-**1. Length criteria for the benchmark, per signal group.** Use the FPGA vendor's own rules (Lattice ECP5, the part
-both references carry), which agree with ISSI's memory-side guidance, and judge them as propagation delay
-(equivalent stripline length), not raw copper length, because the references mix microstrip data with stripline
-strobes:
+**1. Length criteria for the benchmark, per signal group.**
 
-| group | criterion | in mm (FR4) | references measured |
-| --- | --- | --- | --- |
-| DQ and DM to their DQS, one byte lane | within ±10 ps, no two nets more than 50 mil apart | window 1.27 mm | ButterStick 0.73 and 0.84; LogicBone bits 0.11 and 0.38 but strobes 3.5 to 4 mm shorter in copper, 5 ps in delay |
-| DQS pair (P to N) | ±10 mil (Lattice), ±2 ps (ISSI) | 0.25 mm | 0.00 to 0.15 mm |
-| CK pair | ±10 mil | 0.25 mm | 0.00 to 0.15 mm |
-| byte lane to byte lane (LDQS to UDQS) | ±100 mil | 2.54 mm | about 2 mm on both boards |
-| CK to each DQS (T topology, point-to-point) | ±5 ps | ±0.75 mm | ButterStick 2.3 mm |
-| address, command, control to CK | ±10 ps (ISSI), ±8 ps (Xilinx), ±20 mil per fly-by segment (TI) | ±0.5 to ±1.3 mm | 6 to 12 mm |
-| stubs on fly-by nets | under 80 mil address, 40 mil clock; stub skew ±10 mil | 2.0 and 1.0 mm | not measured |
-| vias per data net | at most 2 (TI), same count within a lane | | ButterStick 3, LogicBone 0 |
+> **Corrected 2026-09-21 (D45).** The sentence that stood here said the Lattice rules "agree with ISSI's
+> memory-side guidance" and the table blended the two without attribution. A verified round reading the primary
+> PDF in full established that they do not agree in kind: **Lattice's checklist is length-only, in mils, with no
+> picosecond figure anywhere in its 36 pages and no strobe-to-clock tolerance at all.** Every picosecond number
+> below is ISSI's or TI's, never Lattice's. The rows are re-attributed accordingly. ISSI's own text calls its
+> figures a simulation-confirmable baseline subordinate to the controller vendor's rules and scopes them to
+> point-to-point; TI's are KeyStone-PHY specific and must not be transplanted to an ECP5.
+
+| group | Lattice ECP5 (FPGA-TN-02038-2.1 §9, length only) | memory/other vendor | in mm | references measured |
+| --- | --- | --- | --- | --- |
+| DQ and DM to their DQS, one byte lane | **±50 mil** (§9.2) | ±10 ps (ISSI) | window 2.54 mm | ButterStick 0.73 and 0.84; OrangeCrab 0.5 and 0.6; LogicBone 4.15 and 7.1 |
+| DQS pair (P to N) | **±10 mil** (§9.7) | ±2 ps (ISSI) | 0.51 mm | 0.00 to 0.15 mm |
+| CK pair | **±10 mil** (§9.11) | — | 0.51 mm | 0.00 to 0.15 mm |
+| byte lane to byte lane (LDQS to UDQS) | **±100 mil** (§9.9) | — | 5.08 mm | about 2 mm on both boards |
+| CK to each DQS | **no rule at all** | ±5 ps (ISSI) | ±0.75 mm | ButterStick 2.3 mm |
+| address, command, control to CK | **±100 mil** (§9.10) | ±10 ps (ISSI), ±8 ps (Xilinx, excerpt), ±20 mil per segment (TI) | 5.08 mm (Lattice) | OrangeCrab 6.7, ButterStick 8.0, LogicBone 11.4 on total net length |
+| stubs on fly-by nets | — | under 80 mil address, 40 mil clock; stub skew ±10 mil (TI) | 2.0 and 1.0 mm | not measured |
+| vias per data net | — | at most 2 (TI), same count within a lane | | ButterStick 3, LogicBone 0 |
+
+Two things the corrected table makes visible. **Lattice attaches no data rate, clock frequency or speed grade to
+any of these**, so there is no DDR3-800-versus-1600 scaling to read off it; and its section heading is "LPDDR3 and
+DDR3", so the numbers are not DDR3-specific. **Lattice does not say whether its tolerance is on total net length
+or per segment**, and TI, the only vendor that states the convention unambiguously, measures address and command
+from the controller to each SDRAM separately. On total net length, all three class C references exceed Lattice's
+±100 mil address and command rule -- boards that were manufactured and work -- which is evidence that the
+convention matters more than the number.
 
 The lane, pair and lane-to-lane rows are what D27 already asks, restated in the vendor's numbers; the tool should
 measure delay per layer. The CK-to-DQS and address-to-CK rows are where the references are far outside every

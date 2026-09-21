@@ -993,3 +993,66 @@ capabilities with no surcharge designation. Neither reading is established; it i
 What should happen next is not another identical round. Fetching each vendor's capability page by its known URL
 avoids the exhausted search budget entirely, and that is the retry worth making; JLCPCB will still be
 unreachable from here. Prices need quotes either way.
+
+**D45. What the silicon vendors actually specify for DDR3 length matching, and the convention problem underneath
+D30.** Research round, 2026-09-20 to 21, asked by the owner. 103 agents, 6.7 M tokens; the vendor-published half
+is established for three vendors and nothing else.
+
+**What came back, and what did not.** Lattice (ECP5 and ECP5-5G), ISSI and TI KeyStone are established from
+primary documents read in full. **No Micron, AMD/Xilinx, Intel/Altera or JEDEC claim survived verification, and
+no designer-practice claim survived at all**, so the requirement-against-practice comparison the round was asked
+for cannot be made from this evidence. On speed scaling the answer is a negative: not one of the three vendors
+attaches a clock rate or speed bin to a length tolerance, and a claim that TI affirmatively states its tolerances
+are rate-independent was refuted 3-0. That is an absence in the documents, not a vendor statement.
+
+**Lattice, FPGA-TN-02038-2.1, ECP5 and ECP5-5G Hardware Checklist, September 2025, section 9** (verified by full
+text extraction of the live PDF, not by search excerpt; the same text is in revisions 2.0 and 1.4, so it is
+revision-stable):
+
+| item | rule |
+| --- | --- |
+| 9.2 | DQ or DM to its associated DQS within a DQ group: **±50 mil**, "use careful serpentine routing to meet this requirement" |
+| 9.7 | DQS to DQS_N: **±10 mil** |
+| 9.11 | CK to CK_N: **±10 mil** |
+| 9.9 | LDQS/LDQS_N to UDQS/UDQS_N: **±100 mil** |
+| 9.10 | address and control to CK/CK_N: **±100 mil** |
+
+Everything Lattice states is a **physical length in mils**. A grep over all 36 pages returns zero occurrences of
+ps, picosecond, propagation delay or skew, and zero occurrences of Mbps, MT/s, any DDR3 speed bin, "data rate" or
+"speed grade". **There is no strobe-to-clock (DQS to CK) tolerance in the document at all.** Three qualifications
+travel with these numbers: the section heading is "LPDDR3 and DDR3", so they are not DDR3-specific; the checklist
+self-describes as "a high-level summary checklist" and defers detail to documents that turn out not to cover the
+subject; and section 15 item 7 gives a general ±5 mil differential rule of thumb, twice as tight as 9.7 and 9.11.
+
+**ISSI** publishes both a picosecond and a length column (CK to DQS ±5 ps, DQ to DQS ±10 ps or 50 mil) but calls
+it a simulation-confirmable baseline subordinate to the controller vendor's rules, and scopes it to
+point-to-point. **TI KeyStone** is the tightest and the only vendor stating the measurement convention
+unambiguously: address, command and control matched to the clock within ±20 mil **measured controller-to-each-
+SDRAM separately**, data ±10 mil within a byte lane, DQS pairs ±1 mil. Those are KeyStone-PHY figures and must
+not be transplanted to an ECP5.
+
+**A correction to our own material.** `docs/research/ddr3-bus-routing.md` stated that the Lattice rules "agree
+with ISSI's memory-side guidance" and gave a table blending the two without attribution, so ISSI's ±10 ps
+data-to-strobe and ±5 ps clock-to-strobe figures read as Lattice's. They are not; Lattice states no picosecond
+figure and no clock-to-strobe rule whatever. The table is corrected and re-attributed in place. This did not
+affect any gate: the benchmark's criteria come from D27, which uses the references' own measured spreads, not
+from that table. It would have affected D30's second option, which is exactly the option that draws on it.
+
+**The finding that bears on D30.** Lattice's ±100 mil address-and-command rule is a 5.08 mm window. On total net
+length the three class C references measure 6.7 mm (OrangeCrab), 8.0 mm (ButterStick) and 11.4 mm (LogicBone);
+measured at each memory's pins as D27 does, ButterStick is 11.9 and 7.5 mm and LogicBone 6.6 and 6.1 mm. **Every
+reference exceeds the rule on either measure.** These are manufactured, working boards, so one of two things is
+true: the published guidance is conservative by a factor of two or more, or the tolerance is not measured the way
+we are measuring it. Lattice does not say which convention it means, and TI, the only vendor that does say,
+measures per segment from the controller to each memory rather than on total net length. A fly-by or dual-rank
+net's total length is the sum of segments, so the spread of totals can be far wider than the spread of segments
+and the two measures are not comparable.
+
+Adopting Lattice's numbers against our present measurement would therefore fail all three references by
+construction -- the same trap that D44's companion decision split out for the fab tier. The recommendation to the
+owner is D30's third option: measure both references per segment against the clock first, then decide. The
+numbers to decide against now exist; the convention does not yet.
+
+One correction to plan.md carried here: its summary of D30 said "D27 is the stricter test on lanes and pairs".
+That holds for ButterStick (0.73 and 0.84 mm against Lattice's 2.54 mm window) and OrangeCrab (0.5 and 0.6), but
+not for LogicBone, whose lanes measure 4.15 and 7.1 mm on total length and are **looser** than Lattice's rule.

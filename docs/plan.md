@@ -110,12 +110,18 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
   milestone chasing something the board's own designer did not achieve either. The recommendation is to keep the
   per-board demonstrated rules as the benchmark's criterion and to hold the fab tier where it belongs, on the
   target board of M6.
-* **The length criterion of M3b** (D30): stay with the reference's own spreads as D27 wrote them, move to the
-  vendor's numbers for the part (Lattice's ECP5 checklist is tighter than D27 on address and command while D27 is
-  the stricter test on lanes and pairs), or measure both references per segment against the clock first and decide
-  after. M3b's gate depends on this, and so now does M3a: D40 had to decide what a net's length deficit is
-  measured against and took D27's answer, the spread the board itself achieves. If D30 goes the vendor's way, the
-  windows tighten, every deficit grows and M3a has to be re-run against the new criterion.
+* **The length criterion of M3b** (D30), now with the vendor's numbers verified (D45): stay with the references'
+  own spreads as D27 wrote them, move to Lattice's published rules for the part, or measure both references per
+  segment against the clock first and decide after. **The recommendation is the third.** Lattice's checklist is
+  length-only in mils, with no picosecond figure and no clock-to-strobe rule anywhere in it: ±50 mil DQ to its
+  DQS, ±10 mil on each pair, ±100 mil lane-to-lane and address-and-command to CK. Its address-and-command rule is
+  a 5.08 mm window, and **all three class C references exceed it** -- 6.7 mm, 8.0 mm and 11.4 mm on total net
+  length, 6.1 to 11.9 mm measured at each memory's pins. Since those boards were manufactured and work, either
+  the guidance is conservative or the tolerance is not measured the way we measure it, and Lattice does not say
+  which convention it means; TI, the only vendor that does say, measures per segment from the controller to each
+  memory. Adopting the numbers against our present measurement would fail every reference by construction.
+  M3b's gate depends on this, and so does M3a: D40 took D27's answer for what a deficit is measured against, so
+  a change tightens every window, grows every deficit and forces M3a to be re-run.
 * ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is
   not bisected. Those runs were completing boards with no plan behind them, so neither figure is one M3b can be
   compared against.
