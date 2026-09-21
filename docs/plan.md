@@ -22,16 +22,19 @@ them. Measured on 2026-09-21: **180 passed, 3 skipped, 0 failed** with the const
 skip without them. Run those two scripts first if you want the full count. Do not read a skip as a pass, and do
 not add one.
 
-**The next action is a pad-escape stage (C1 in the spec).** The router has now been run (D51): on
-`tinkerforge-temperature` it routes **2 of 6 nets, 32 tracks, zero electrical violations, score 0.333, in
-1.5 s.** FAIL. All four failures are the same thing: a track of that board's own width needs 0.694 mm to pass
-between two pads, its TSSOP-8 leaves 0.245 and its SOT-563 leaves 0.198, so every pad must be escaped outward
-before anything can route between parts. `route.escape` does this for ball grids already. A fine-pitch TSSOP
-needs it too, which is D36's lesson met from the other end of the ladder.
+**The next action is the global stage (B in the spec), and it is now the thing blocking everything.** The
+router runs and the pad escape is built (D51, D52). On `tinkerforge-temperature` it reaches **4 of 6 nets, 196
+tracks, zero electrical violations, score 0.667, 8 s.** FAIL.
 
-The grid step needs fixing in the same change: it is derived from track width and lands on 0.4969 mm against
-that board's 0.498 mm pad pitch, so no lattice line lies between two pads. Derive it from the finest pad pitch
-on the board instead.
+Three of the six class A boards cannot be attempted at all: at a grid step fine enough for their pads they need
+2.1, 3.3 and 5.4 million nodes against the 400,000 the router will hold, and they stop with that message rather
+than filling memory. Only `olimex-esp32c3-devkit` and `open-book-c1` join the smoke test in fitting. So the
+global stage is not an optimisation any more, it is the difference between half the ladder being attemptable
+and not.
+
+The two remaining failures on the smoke test are the other unbuilt stages, not new faults: `SCL` is a last pad
+reached into a board the earlier nets have filled, which is rip-up, and `GND` is a supply net that stage D
+should pour rather than route as track.
 
 **Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
 coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no
