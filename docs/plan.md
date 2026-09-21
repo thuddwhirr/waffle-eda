@@ -35,12 +35,13 @@ is unknown, and the gate may now fail with an exception instead of a stated reas
 `tinkerforge-temperature` first, the registry's own smoke test, and believe the score rather than this
 paragraph.
 
-**Read [`router-spec.md`](router-spec.md) before changing it.** It states what the router must do, the
-measured numbers the design rests on, and section 13 is an honest table of which parts of it the code actually
-contains: the search space, exact feasibility and tree growth, and nothing else. It has no rip-up, no
-negotiation, no planes, and no caching of edge feasibility, and on the last of those alone it is not expected to
-finish the two largest boards. Section 12 lists four questions that are the owner's, one of which
-(track width on a power board) is a gap in the benchmark's criterion and not only in the router.
+**Read [`router-spec.md`](router-spec.md) before changing it.** It is the second version: the first was
+written from the code and missed the research reports and the carried lessons entirely, and proposed a
+single-stage router, which is the architecture D29 to D33 already showed does not work and which M3a exists to
+replace. The spec now stages the router as this project staged the bus -- rules, a coarse global route, exact
+copper inside its guides, then planes -- and section 14 is an honest table showing the committed code is a
+fragment of the third stage only. Section 13 puts four questions to the owner, the first of which is a gap in
+the benchmark's criterion rather than in the router.
 
 **M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
 session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
