@@ -59,6 +59,7 @@ python3 scripts/plan_bus.py butterstick --reference # read the board's own routi
 python3 scripts/bus_bench.py butterstick            # route the bus and score it (M3b)
 python3 scripts/compare_net.py butterstick --failed # our copper under the reference's route, net by net
 python3 scripts/fab_attribution.py butterstick logicbone   # what each board asks of a fab, and where
+python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick  # each leg as length and as delay
 python3 -m pytest -q
 ```
 

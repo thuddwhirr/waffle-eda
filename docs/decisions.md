@@ -1135,3 +1135,85 @@ equal delay and the gap on address and command could be partly an artifact of me
 `NetDesign.paths` records the layer sequence of each path but not the length on each layer, so this needs a small
 extension before it can be measured. It is the one remaining thing that could change the answer to D30, and it
 does not need research either.
+
+**D48. Measured as delay, not copper: the address-and-command verdict does not move, and the data-lane verdict
+reverses.** Measurement, 2026-09-21, in `waffle_eda/bench/delay.py` and `scripts/segment_lengths.py`, answering
+the one question D47 left open and closing it.
+
+D47 ended by naming a measurement that could still change the answer to D30: every figure to that point was
+copper length, the references mix microstrip and stripline, and equal copper is not equal delay. `NetDesign.paths`
+recorded each path's layer sequence but not its length on each layer, so the quantity could not be computed. It
+can now: each path carries `per_layer_mm`, and `delay.Stackup` turns that into picoseconds.
+
+**The model.** IPC-2141's effective permittivity, one formula for both layer kinds rather than two rules of thumb:
+`t_pd = sqrt(er_eff)/c`, with `er_eff = er` for an inner layer and `0.475 er + 0.67` for an outer one. At er 4.5
+that is 5.59 ps/mm outer and 7.08 ps/mm inner; the 5.59 is the 5.6 ps/mm the research note converts with, and the
+7.08 replaces its 6.7, which came from a rule of thumb assuming er 4.0. ButterStick's file records its own
+stackup (FR-4, er 4.5, seven dielectrics); OrangeCrab's and LogicBone's record none, so those two use the FR-4
+default and every report prints which. Outer is decided by position in the copper stack, not by layer name,
+because LogicBone renames its inner layers. The standing assumption, stated so it can be rejected: every inner
+layer is treated as stripline. On LogicBone that is checkable and true -- its bus runs on `Sig2.Cu`, between
+`Gnd2.Cu` and `Gnd3.Cu`.
+
+**Address and command against CK, worst deviation at each memory.** D47's verdict stands, in every unit.
+
+| board | memory | copper | as delay | equivalent | Lattice 2.54 mm | ISSI 10 ps |
+| --- | --- | --- | --- | --- | --- | --- |
+| OrangeCrab | U4 | 4.46 mm | 30.7 ps | 4.34 mm | OUTSIDE | OUTSIDE |
+| LogicBone | IC2 | 4.08 mm | 23.8 ps | 3.37 mm | OUTSIDE | OUTSIDE |
+| LogicBone | IC3 | 3.54 mm | 21.9 ps | 3.09 mm | OUTSIDE | OUTSIDE |
+| ButterStick | U11 | 9.82 mm | 49.5 ps | 6.99 mm | OUTSIDE | OUTSIDE |
+| ButterStick | U12 | 6.05 mm | 82.4 ps | 11.64 mm | OUTSIDE | OUTSIDE |
+
+Delay narrows the gap at four of the five memories and widens it at the fifth, and no memory of any board comes
+inside. **The delay measurement was the last thing that could have changed the answer to D30 and it does not.**
+
+**Data against its own strobe, worst deviation.** Here the two units disagree, in both directions.
+
+| board | memory | lane | copper (tol 1.27 mm) | delay (tol 10 ps) | verdict |
+| --- | --- | --- | --- | --- | --- |
+| OrangeCrab | U4 | 0 | 0.98 mm within | 27.2 ps OUTSIDE | **within becomes OUTSIDE** |
+| OrangeCrab | U4 | 1 | 0.54 mm within | 25.2 ps OUTSIDE | **within becomes OUTSIDE** |
+| LogicBone | IC2 | 0 | 4.07 mm OUTSIDE | 4.3 ps within | **OUTSIDE becomes within** |
+| LogicBone | IC3 | 1 | 3.68 mm OUTSIDE | 27.2 ps OUTSIDE | unchanged |
+| ButterStick | U11 | 0 | 2.23 mm OUTSIDE | 40.5 ps OUTSIDE | unchanged |
+| ButterStick | U11 | 1 | 4.05 mm OUTSIDE | 32.9 ps OUTSIDE | unchanged |
+| ButterStick | U12 | 0 | 1.88 mm OUTSIDE | 20.4 ps OUTSIDE | unchanged |
+| ButterStick | U12 | 1 | 3.69 mm OUTSIDE | 24.1 ps OUTSIDE | unchanged |
+
+**This overturns the topology reading of D47.** D47 found OrangeCrab, the only point-to-point board, the only one
+whose data lanes meet Lattice's rule, and read that as the rule being written for a one-memory topology. Measured
+as delay, OrangeCrab's lanes are the furthest outside of the three, and LogicBone's lane 0 is the only lane of
+any board that meets the rule. The topology split was an artifact of the unit.
+
+**The cause is visible in the copper, and the two boards did opposite things.** In OrangeCrab's lane 0 the eight
+data bits run on `B.Cu` and the strobe pair and mask on `In2.Cu`, every leg cut to about 15 mm: matched in
+copper, and 79.6 to 88.6 ps against the strobes' 103.1 to 110.7 ps, a 27.2 ps skew between a byte lane and the
+strobe that clocks it. In LogicBone's lane 0 at IC2 the eight data bits run 17.2 mm on `F.Cu` and the strobes
+12.7 to 13.8 mm on `Sig2.Cu` -- 3.5 to 4.6 mm apart in copper and 89.0 to 96.8 ps, within 8 ps. LogicBone made
+the inner-layer strobe shorter because inner copper is slower. **LogicBone matched delay; OrangeCrab matched
+length.** Two of the three answer keys were built to different conventions, which is why no single unit grades
+all three the same way. The research note predicted the LogicBone half of this from the totals
+(`docs/research/ddr3-bus-routing.md`, "the strongest argument for judging delay, not length"); it is now measured
+per leg from the board, and the OrangeCrab half is new.
+
+**Recommendation for D30, revised from D47's.** D47 recommended gating on D27 and reporting Lattice beside it.
+That still holds for address and command, where every reference is outside in every unit. For the byte lanes it
+is no longer enough, because a length criterion and a delay criterion disagree about two of our three answer
+keys, and D27's criterion is a length one:
+
+1. **Keep D27's spreads as the gate's tolerance** -- the recommendation is unchanged, and M3a's PASS stands
+   untouched, since nothing here changes what a deficit is measured against.
+2. **Measure the byte lanes in delay rather than copper, at D27's numbers converted per board.** A router graded
+   on copper length can reproduce OrangeCrab's own mistake: match a group across two kinds of layer, pass the
+   gate, and leave 27 ps of skew between a lane and its strobe. That is a criterion a tool can satisfy while
+   producing a worse board, which is the defect D41 named in another form.
+3. **Report Lattice's millimetres and ISSI's picoseconds beside the gate, as now.** ISSI's figures need no
+   conversion, so they are the honest column: against them, one lane of one reference passes.
+
+Both parts are the owner's to settle, and the pending-decisions list in the plan carries them.
+
+**What was tried and dropped.** Converting Lattice's mils to picoseconds at a single velocity, to give one number
+per rule. It cannot be done honestly: the conversion depends on the layer, which is what the rule fails to say,
+and 2.54 mm is 14.2 ps of outer copper or 18.0 ps of inner. The report prints the stripline-equivalent length
+instead, which is TI's stated convention, and ISSI's picoseconds alongside, which assume nothing at all.

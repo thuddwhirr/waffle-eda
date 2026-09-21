@@ -5,7 +5,8 @@ a primary document (AMD, Intel, arXiv, ACM, researchgate, the Lattice checklist 
 excerpts of that document and are marked "(excerpt)". Two vendor notes were read in full: TI's KeyStone DDR3 design
 requirements (SPRABI1D, 2022) and ISSI's DDR3 SDRAM layout guidelines. Conversions use FR4 propagation of about
 5.6 ps/mm for microstrip (140 to 150 ps/in) and 6.7 ps/mm for stripline (170 ps/in); the rule of thumb is 6 mils per
-picosecond. A companion deep-research run (verified, multi-agent) is appended when it completes.
+picosecond. (The tool now derives both from one formula and the board's own permittivity rather than quoting two
+rules of thumb, which keeps 5.59 for microstrip and puts stripline at 7.08: D48, `waffle_eda/bench/delay.py`.) A companion deep-research run (verified, multi-agent) is appended when it completes.
 
 ## Summary: the three answers
 
@@ -18,6 +19,15 @@ picosecond. A companion deep-research run (verified, multi-agent) is appended wh
 > below is ISSI's or TI's, never Lattice's. The rows are re-attributed accordingly. ISSI's own text calls its
 > figures a simulation-confirmable baseline subordinate to the controller vendor's rules and scopes them to
 > point-to-point; TI's are KeyStone-PHY specific and must not be transplanted to an ECP5.
+
+> **Measured 2026-09-21 (D48).** The "references measured" column below is copper length, which this report
+> already warned is a proxy ("the tool should measure delay per layer", section 2). It has now been measured as
+> delay, per leg, in `scripts/segment_lengths.py`. The byte-lane row is the one that moves: OrangeCrab's 0.5 and
+> 0.6 mm become 27.2 and 25.2 ps, the furthest outside ISSI's ±10 ps of any board, while LogicBone's lane 0 at
+> IC2 becomes 4.3 ps and is the only lane of any reference that meets the rule. The prediction made below about
+> LogicBone's strobes is confirmed from the board; what was not predicted is that OrangeCrab has the opposite
+> defect. The address-and-command row does not move: every reference is outside in every unit. Read that row's
+> figures as copper length, and D48 for the same legs as delay.
 
 | group | Lattice ECP5 (FPGA-TN-02038-2.1 §9, length only) | memory/other vendor | in mm | references measured |
 | --- | --- | --- | --- | --- |
@@ -39,7 +49,8 @@ from the controller to each SDRAM separately. On total net length, all three cla
 convention matters more than the number.
 
 The lane, pair and lane-to-lane rows are what D27 already asks, restated in the vendor's numbers; the tool should
-measure delay per layer. The CK-to-DQS and address-to-CK rows are where the references are far outside every
+measure delay per layer (done, D48: `waffle_eda/bench/delay.py`, and it changes the lane row's verdict on two of
+the three references). The CK-to-DQS and address-to-CK rows are where the references are far outside every
 published rule (see the contradictions below); the benchmark should carry the published number and record the
 references' actual figures as a known deviation, not adopt them.
 

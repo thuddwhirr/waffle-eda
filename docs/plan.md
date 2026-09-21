@@ -10,19 +10,37 @@ anyone's memory):
 
 ```
 python3 scripts/gate.py m3a     # expect PASS, 3 of 3 class C references
-python3 -m pytest -q            # expect 150 passed, about 15 minutes
+python3 -m pytest -q            # 166 tests; expect 0 failed, about 21 minutes
+python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick   # the D48 evidence for D30
 ```
 
-**The next action** is the delay measurement that D47 named, then M3b. `NetDesign.paths` records each path's
-layer sequence but not its length on each layer; the references mix microstrip and stripline, whose propagation
-differs by roughly 5.6 against 6.7 ps/mm, so equal copper length is not equal delay and part of the gap between
-the references and Lattice's published rule may be an artifact of measuring length rather than delay. It is the
-last thing that could change the answer to D30, it is half a day, and it needs no research.
+On a container that has only fetched the references, that run is **161 passed, 5 skipped, 0 failed**. The skips
+are the guards the tests already carry for build artifacts rather than anything disabled: three escape cases want
+the stripped boards `scripts/fanout_bench.py` writes, and two want the constraints files
+`python3 -m waffle_eda.bench.constraints` writes. Run those two first and the count rises; a *failure* is a
+different thing and there are none. Do not read a skip as a pass, and do not add one.
 
-**What is blocked, and by what.** M3b's gate is graded by the length criterion of D30, which is undecided; the
-recommendation is on record in D47 (gate on what the references demonstrate, report Lattice's numbers beside it)
-and so is the recommendation on the benchmark's DRC criterion (keep the per-board measured rules). Both are the
-owner's to settle. Do not build M3b against a criterion that has not been fixed.
+**The next action is the owner's, not the tool's.** The delay measurement D47 named is **done** (D48): each path
+now records its copper on each layer, `delay.Stackup` turns that into picoseconds, and all three references were
+re-measured per leg in both units. Nothing measurable is left that bears on D30. Every question below is a
+judgement the owner makes; none of them is answered by more measurement, and a session that starts here should
+ask rather than build.
+
+**What D48 found, in two lines.** Address and command: every reference is outside Lattice's rule at every
+memory, in copper, in delay and in ISSI's picoseconds alike, so D47's verdict stands and the unit was not the
+explanation. Byte lanes: the two units disagree about two of the three answer keys, because LogicBone matched
+its lanes in delay and OrangeCrab matched them in length, and OrangeCrab's lanes -- the ones D47 called the only
+ones that met the rule -- carry 27 ps of skew against their own strobe.
+
+**What is blocked, and by what.** M3b's gate is graded by the length criterion of D30, which is undecided. The
+recommendation is now in D48 and has two parts: keep D27's spreads as the tolerance, and grade the byte lanes in
+delay rather than copper, because a router graded on copper can pass the gate by reproducing OrangeCrab's own
+mistake. The recommendation on the benchmark's DRC criterion (keep the per-board measured rules) is unchanged.
+Both are the owner's to settle. Do not build M3b against a criterion that has not been fixed.
+
+**If the owner settles D30 as recommended**, M3a's PASS stands untouched -- nothing in D48 changes what a length
+deficit is measured against -- and M3b starts on its ladder below. Only a move to Lattice's numbers would force
+M3a to be re-run, and D48 is the second measurement in a row arguing against that move.
 
 **Discipline for M3b.** Its ladder is OrangeCrab, then LogicBone, then ButterStick. If OrangeCrab passes and the
 other two turn expensive, stop and go to M4 rather than grind: see the standing observation below.
@@ -156,10 +174,17 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
   memory. Adopting the numbers against our present measurement would fail every reference by construction.
   **D47 has since measured it per leg and the convention is not the explanation**: every reference is still
   outside on address and command at every memory, while OrangeCrab, the only point-to-point board, is the only
-  one whose data lanes meet the rule. The recommendation is now to gate on D27 and report Lattice beside it, and
-  to aim at Lattice's numbers for the target board of M6, whose one-memory topology is OrangeCrab's.
-  M3b's gate depends on this, and so does M3a: D40 took D27's answer for what a deficit is measured against, so
-  a change tightens every window, grows every deficit and forces M3a to be re-run.
+  one whose data lanes meet the rule. **D48 has since measured it as delay and closed the question**: on address
+  and command every reference is outside in copper, in delay and in ISSI's picoseconds alike, so nothing
+  measurable is left to change this; on the byte lanes the two units disagree, OrangeCrab's lanes are the
+  furthest outside once velocity is applied rather than the only ones inside, and the topology split D47 read
+  off them was an artifact of the unit. The recommendation is now in two parts: gate on D27 and report Lattice's
+  millimetres and ISSI's picoseconds beside it, **and grade the byte lanes in delay rather than copper**, since
+  LogicBone matched its lanes in delay and OrangeCrab in length, and a router graded on copper can pass the gate
+  while leaving 27 ps between a lane and its strobe. Aim at Lattice's numbers for the target board of M6, whose
+  one-memory topology is OrangeCrab's. M3b's gate depends on this. M3a does not, under the recommendation as
+  written: D40 took D27's answer for what a deficit is measured against and part 1 leaves it alone, but a move
+  to Lattice's numbers instead would tighten every window, grow every deficit and force M3a to be re-run.
 * ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is
   not bisected. Those runs were completing boards with no plan behind them, so neither figure is one M3b can be
   compared against.

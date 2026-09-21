@@ -265,7 +265,16 @@ def measure_board(board, ref) -> dict:
             for L_ in layers[1:]:
                 if L_ != seq[-1]:
                     seq.append(L_)
+            # length on each layer, not only the sequence of them: outer copper and inner copper carry a signal
+            # at different speeds, so a path's delay needs the split and its total length cannot give it (D47)
+            path_layer_mm: dict = defaultdict(float)
+            for p in poly:
+                if p[4] in ("pad", "via"):
+                    continue
+                path_layer_mm[p[4]] += p[5]
             nd.paths[f"{r}.{num}"] = {"length_mm": round(dist[target], 2), "layers": seq,
+                                       "per_layer_mm": {k: round(v, 3) for k, v in
+                                                        sorted(path_layer_mm.items(), key=lambda kv: -kv[1])},
                                        "vias": max(0, len(seq) - 1)}
             # meanders: windows of the path that make little headway
             pts = [(p[0], p[1]) for p in poly] + ([(poly[-1][2], poly[-1][3])] if poly else [])
