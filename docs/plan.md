@@ -20,11 +20,15 @@ the stripped boards `scripts/fanout_bench.py` writes, and two want the constrain
 `python3 -m waffle_eda.bench.constraints` writes. Run those two first and the count rises; a *failure* is a
 different thing and there are none. Do not read a skip as a pass, and do not add one.
 
-**The next action is the owner's, not the tool's.** The delay measurement D47 named is **done** (D48): each path
-now records its copper on each layer, `delay.Stackup` turns that into picoseconds, and all three references were
-re-measured per leg in both units. Nothing measurable is left that bears on D30. Every question below is a
-judgement the owner makes; none of them is answered by more measurement, and a session that starts here should
-ask rather than build.
+**The next action is M4, and its gate before its router.** The owner took M4 ahead of M3b on 2026-09-21 (D49).
+Build the strip-and-score that M4's criterion needs, on the class A ladder starting at
+`tinkerforge-temperature`, and only then the router. M1 came before M2 for this reason: a milestone whose
+criterion is written after its tool is a milestone that grades itself.
+
+**M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
+session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
+so nothing measurable is left that bears on D30, but D30 itself is not decided and does not need to be until
+M3b is picked up again.
 
 **What D48 found, in two lines.** Address and command: every reference is outside Lattice's rule at every
 memory, in copper, in delay and in ISSI's picoseconds alike, so D47's verdict stands and the unit was not the
@@ -32,11 +36,12 @@ explanation. Byte lanes: the two units disagree about two of the three answer ke
 its lanes in delay and OrangeCrab matched them in length, and OrangeCrab's lanes -- the ones D47 called the only
 ones that met the rule -- carry 27 ps of skew against their own strobe.
 
-**What is blocked, and by what.** M3b's gate is graded by the length criterion of D30, which is undecided. The
-recommendation is now in D48 and has two parts: keep D27's spreads as the tolerance, and grade the byte lanes in
-delay rather than copper, because a router graded on copper can pass the gate by reproducing OrangeCrab's own
-mistake. The recommendation on the benchmark's DRC criterion (keep the per-board measured rules) is unchanged.
-Both are the owner's to settle. Do not build M3b against a criterion that has not been fixed.
+**What blocks M3b when it is picked up again.** Its gate is graded by the length criterion of D30, which is
+undecided. The recommendation is in D48 and has two parts: keep D27's spreads as the tolerance, and grade the
+byte lanes in delay rather than copper, because a router graded on copper can pass the gate by reproducing
+OrangeCrab's own mistake. The recommendation on the benchmark's DRC criterion (keep the per-board measured
+rules) is unchanged. Both are the owner's to settle. Do not build M3b against a criterion that has not been
+fixed.
 
 **What settling D30 costs, by option.** Part 1 alone (keep D27's spreads) leaves M3a untouched and M3b starts on
 its ladder below. Part 2 as well (grade the byte lanes in delay) is a change to M3a and a re-gate: the planner's

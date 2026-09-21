@@ -1228,3 +1228,37 @@ Both parts are the owner's to settle, and the pending-decisions list in the plan
 per rule. It cannot be done honestly: the conversion depends on the layer, which is what the rule fails to say,
 and 2.54 mm is 14.2 ps of outer copper or 18.0 ps of inner. The report prints the stripline-equivalent length
 instead, which is TI's stated convention, and ISSI's picoseconds alongside, which assume nothing at all.
+
+**D49. M4 is taken ahead of M3b. The bus routing is deferred, not descoped.** Owner's decision, 2026-09-21,
+after D48 closed the last measurable input to D30.
+
+**What was weighed.** M3b is not on the path to the first manufacturable board: M4 feeds M5, and M5's target is a
+class A or B board, while M3b feeds M6, the FPGA board. So the cost of taking M4 first is the deferral of M6 and
+nothing else. Against that, M4 is where the general-purpose claim is first tested, on the fifteen class A and
+class B boards that were surveyed, fetched, and never touched by a gate (the standing observation in the plan).
+Taking M4 first also defers D30 in its entirety, which has now consumed D27, D30, D35, D45, D47 and D48 and
+gates only M3b.
+
+**What it costs, stated plainly so nobody discovers it later.** Of about 7,700 lines, roughly 5,500 are bus and
+BGA machinery and about 2,200 are general infrastructure that M4 reuses (the clearance index, the board helpers,
+the constraints measurement, the DRC runner, the reference registry). M2 and M3a both pass their gates, but
+neither has put copper on a board: the bus half is proven as a *plan* and never as copper, and the last
+reproducible routed bus result remains 42 of 55 nets on ButterStick from before the plan existed (D33). If the
+M3a plan turns out to be unbuildable, that is now learned later rather than sooner. M3a's gate was built to
+catch plan mistakes in the session that makes them, which bounds the risk without removing it.
+
+**What is *not* decided here.** M3b keeps its scope and its place in the plan; it is not narrowed, and M6 still
+requires it. D30 and the benchmark's DRC criterion stay open and stay the owner's. Nothing in this entry lets a
+later session call M3b finished, optional, or a known limitation.
+
+**The first task is M4's gate, not M4's router**, in the order M1 took before M2: a milestone whose criterion is
+written after its tool is a milestone that grades itself. M4's criterion in the plan is a full re-route of a
+class A or B reference from placement, DRC clean, with planes and power rails on continuous copper. The
+benchmark it needs does not exist: `bench/harness.py` strips and scores *bus* copper throughout, though its DRC
+half (`run_drc`, `rules_file`, `drc_with_rules`) is general and is reused.
+
+**The class A ladder, rising as the class C one does (D35, D38).** `tinkerforge-temperature` first: the registry
+already calls it "the smallest board in the ladder, a smoke test for every stage" at 14 footprints, 12 nets, two
+layers and 0.3 mm tracks. Then the rest of class A, with `libresolar-mppt-2420` last of them, the board whose own
+registry note says power on continuous copper matters there, which is the part of M4's criterion nothing else in
+the ladder exercises.
