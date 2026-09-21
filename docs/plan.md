@@ -120,6 +120,10 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
   the guidance is conservative or the tolerance is not measured the way we measure it, and Lattice does not say
   which convention it means; TI, the only vendor that does say, measures per segment from the controller to each
   memory. Adopting the numbers against our present measurement would fail every reference by construction.
+  **D47 has since measured it per leg and the convention is not the explanation**: every reference is still
+  outside on address and command at every memory, while OrangeCrab, the only point-to-point board, is the only
+  one whose data lanes meet the rule. The recommendation is now to gate on D27 and report Lattice beside it, and
+  to aim at Lattice's numbers for the target board of M6, whose one-memory topology is OrangeCrab's.
   M3b's gate depends on this, and so does M3a: D40 took D27's answer for what a deficit is measured against, so
   a change tightens every window, grows every deficit and forces M3a to be re-run.
 * ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is

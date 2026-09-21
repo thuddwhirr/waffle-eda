@@ -1091,3 +1091,47 @@ minute, and saying so then costs nothing.
 This is D33's lesson in another costume. There, a bench setting made every measurement meaningless and nobody
 looked at the setting; here, an egress policy made a round's sources unreachable and nobody looked at the policy.
 Both were one cheap check away, and in both cases the expensive artifact looked healthy while it was running.
+
+**D47. Measured per leg against the signal each rule names: the convention is not what puts the references
+outside Lattice's numbers.** Measurement, 2026-09-21, in `scripts/segment_lengths.py`, answering the question D45
+left open and refuting the reading D45 recommended.
+
+D45 found every class C reference outside Lattice's address-and-command rule on total net length, and proposed
+that the convention was to blame: Lattice does not say whether its tolerance is on the whole net or on one leg,
+and TI, the only vendor that does say, measures from the controller to each memory separately. Measuring it that
+way, and comparing each group against the signal its own rule names -- a data bit against its byte lane's strobe,
+address and command against the clock, both at the same memory -- does not reconcile them.
+
+| board | memories | address/command against CK | data against its DQS |
+| --- | --- | --- | --- |
+| ButterStick | two, dual rank | 9.82 mm at U11, 6.05 at U12 | 1.88 to 4.05 mm |
+| LogicBone | two, fly-by | 4.08 mm at IC2, 3.54 at IC3 | 3.68 to 4.07 mm |
+| OrangeCrab | one, point to point | 4.46 mm | **0.98 and 0.54 mm** |
+| Lattice's tolerance (D45) | | 2.54 mm | 1.27 mm |
+
+Every board is outside on address and command at every memory. The convention change moves the numbers and does
+not change the verdict: on ButterStick it makes address and command worse (11.92 mm spread on legs against 6.76
+on totals) and on LogicBone better (6.07 against 11.38), because the total of a fly-by net is the sum of its legs
+and the two quantities are simply different, not one a proxy for the other.
+
+**What the measurement did find is a topology split.** OrangeCrab, the only point-to-point board of the three, is
+the only one whose data lanes meet Lattice's rule, and it meets it comfortably at 0.98 and 0.54 mm against 1.27.
+Both two-memory boards miss it. That is consistent with the scope ISSI states for its own figures, point to
+point, and with DDR3 carrying write levelling and read training precisely to absorb the flight-time differences a
+multi-memory topology creates (`docs/research/ddr3-bus-routing.md`, JESD79-3). It bears directly on M6, whose
+target board is one memory: that is the topology Lattice's numbers appear to be written for, and the reference
+where they nearly hold.
+
+**Recommendation for D30**, unchanged in shape from the one D44's companion gave for the fab tier, and for the
+same reason: **gate on what the references demonstrate (D27) and report against the published specification
+beside it.** A gate set to Lattice's numbers would fail all three answer keys on address and command and two of
+three on data, which is a criterion no manufactured working board in our set meets. Printing both columns costs
+nothing, shows how near the published rule the tool gets, and leaves the owner able to tighten later. For the
+target board of M6, aim at Lattice's numbers directly, since its topology is OrangeCrab's.
+
+**One measurement not yet made that could still move this.** These are copper lengths. The references mix
+microstrip and stripline, whose propagation differs by roughly 5.6 against 6.7 ps/mm, so equal length is not
+equal delay and the gap on address and command could be partly an artifact of measuring the wrong quantity.
+`NetDesign.paths` records the layer sequence of each path but not the length on each layer, so this needs a small
+extension before it can be measured. It is the one remaining thing that could change the answer to D30, and it
+does not need research either.
