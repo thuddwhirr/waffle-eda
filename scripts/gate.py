@@ -124,17 +124,22 @@ def gate_m4() -> list[tuple[str, bool, str]]:
         try:
             bare, _info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
-            routed = board_router.route_board(kb.load_board(bare), rules)
-        except NotImplementedError as why:
-            rows.append((ref.key, False, str(why).split(".")[0]))
+            board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
+            result = board_router.route_board(board, rules)
+        except board_router.RoutingTooLarge as why:
+            rows.append((ref.key, False, str(why).split(". ")[0]))
             continue
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
         out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
-        kb.save_board(routed, out)
+        kb.refill_zones(board)
+        kb.save_board(board, out)
         s = rebuild.score(ref, out)
-        rows.append((ref.key, s.passed, s.summary()))
+        detail = s.summary()
+        if result.failed:
+            detail += f" | first failure: {sorted(result.failed.items())[0][1]}"
+        rows.append((ref.key, s.passed, detail))
     return rows
 
 

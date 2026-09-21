@@ -136,7 +136,7 @@ class BoardRouter:
                 f"{nodes:,} grid nodes at a {self.step:.4f} mm step (the finest pad pitch is "
                 f"{self.pad_pitch:.3f} mm) exceeds the {self.MAX_NODES:,} this router can hold. A board this "
                 f"size needs the global stage of docs/router-spec.md section 6, which is not built.")
-        self.obs = Obstacles(board)
+        self.obs = Obstacles(board, local_clearance=True)
         self.net_by_name = {n.GetNetname(): n for n in board.GetNetsByName().values()}
         self._placed: set[str] = set()
         # grid node -> the pad nodes of the net being routed that sit beside it. Without this the graph is
@@ -146,13 +146,21 @@ class BoardRouter:
         self._free_adj: dict[int, list[int]] = {}   # off-lattice node -> what it connects to
 
     def _finest_pad_pitch(self) -> float:
-        """The smallest centre-to-centre spacing between two pads of one footprint, over the whole board."""
+        """The smallest centre-to-centre spacing between two pads of one footprint that do not overlap.
+
+        Overlapping pads are one pad electrically and are not a row: `olimex-rp2040-pico-pc` has a USB shield
+        pad lying across a signal pad 0.025 mm away, and `libresolar-mppt-2420` draws a MOSFET drain as a large
+        and a small pad 0.150 mm apart. Counting those as a pitch drove the grid step to its floor and asked for
+        2.1 and 5.4 million nodes on boards whose real pad rows are far coarser.
+        """
         finest = math.inf
         for fp in self.board.GetFootprints():
-            pts = [(kb.mm(p.GetPosition().x), kb.mm(p.GetPosition().y)) for p in fp.Pads()]
-            for i, a in enumerate(pts):
-                for b in pts[i + 1:]:
-                    d = math.dist(a, b)
+            pads = [(kb.mm(p.GetPosition().x), kb.mm(p.GetPosition().y), p.GetBoundingBox()) for p in fp.Pads()]
+            for i, (ax, ay, abb) in enumerate(pads):
+                for bx, by, bbb in pads[i + 1:]:
+                    if abb.Intersects(bbb):
+                        continue  # one pad drawn as two shapes, not two pads in a row
+                    d = math.dist((ax, ay), (bx, by))
                     if 1e-6 < d < finest:
                         finest = d
         return finest if finest < math.inf else 1.0

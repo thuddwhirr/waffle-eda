@@ -15,11 +15,19 @@ CELL_NM = 1_000_000  # 1 mm buckets
 
 class Obstacles:
     def __init__(self, board: pcbnew.BOARD, region_mm: tuple[float, float, float, float] | None = None,
-                 items=None):
-        """The board's copper inside ``region_mm``; with ``items`` (possibly empty) only those items."""
+                 items=None, local_clearance: bool = False):
+        """The board's copper inside ``region_mm``; with ``items`` (possibly empty) only those items.
+
+        With ``local_clearance`` an item that carries its own clearance is honoured at that value rather than
+        at the caller's rule. `olimex-esp32c3-devkit` gives its mounting holes 1.85 mm, and a router that knows
+        only the board's measured rule routes 1.27 mm away and produces copper KiCad then rejects. Off by
+        default so the bus routers, whose gates pass under the measured rules alone, are unchanged.
+        """
         self.board = board
+        self.local_clearance = local_clearance
         self.cells: dict[tuple[int, int], list] = defaultdict(list)
         self.count = 0
+        self.widest_local = 0  # the largest own-clearance on the board, so a query's window reaches it
         try:
             self.edge_clearance_nm = int(board.GetDesignSettings().m_CopperEdgeClearance)
         except Exception:
@@ -65,8 +73,17 @@ class Obstacles:
             for cy in range(cy0, cy1 + 1):
                 yield (cx, cy)
 
+    @staticmethod
+    def _own_clearance(item) -> int:
+        try:
+            return int(item.GetOwnClearance(pcbnew.F_Cu))
+        except Exception:
+            return 0
+
     def _insert(self, net: str, bb: pcbnew.BOX2I, item, kind: str) -> None:
         # identity by UUID: every iteration of a board yields new proxy objects for the same items (board.py)
+        if self.local_clearance:
+            self.widest_local = max(self.widest_local, self._own_clearance(item))
         entry = (net, bb, item, kind, item.m_Uuid.AsString())
         for cell in self._cells(bb):
             self.cells[cell].append(entry)
@@ -127,7 +144,7 @@ class Obstacles:
         is_via = item.GetClass() == "PCB_VIA"
         layer = None if is_via else item.GetLayer()
         bb = item.GetBoundingBox()  # returned by value: inflating it does not touch the item
-        bb.Inflate(max(clr, hole_clr))
+        bb.Inflate(max(clr, hole_clr, self.widest_local if self.local_clearance else 0))
         shape = item.GetEffectiveShape()
         own_hole = pcbnew.SHAPE_CIRCLE(item.GetPosition(), item.GetDrillValue() // 2) if (is_via and hole_clr) else None
         seen = set()
@@ -140,7 +157,11 @@ class Obstacles:
                 seen.add(uid)
                 if uid == own_uid:
                     continue
-                if self._collides(other, kind, shape, clr, layer, is_via, own_hole, hole_clr):
+                # an item with its own clearance is held to it, not to the caller's rule, and KiCad applies
+                # that value to the hole-to-copper check as well as to copper-to-copper
+                own = self._own_clearance(other) if self.local_clearance else 0
+                eff, eff_hole = max(clr, own), max(hole_clr, own) if hole_clr or own else 0
+                if self._collides(other, kind, shape, eff, layer, is_via, own_hole, eff_hole):
                     yield other
 
     def _collides(self, other, kind, shape, clr, layer, is_via, own_hole, hole_clr) -> bool:
