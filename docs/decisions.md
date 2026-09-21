@@ -1388,3 +1388,29 @@ before they can be routed at all. `olimex-esp32c3-devkit` (295,200) and `open-bo
 **Method note.** Three defects in four runs, none of which reading the code had found: a one-way graph, copper
 left behind by a failed net, and an escape that could not leave a pad. D51's first version of this entry
 asserted a fix that measurement then refuted. Run it.
+
+**D53. The reference boards are proof of their own manufacturability. Vendor limits are deferred, and the
+benchmark's DRC criterion is settled.** Owner's decision, 2026-09-21.
+
+**The decision, in the owner's terms.** Assume every reference board was manufactured by someone. Specify
+vendor limits later.
+
+**What follows, and what each session must stop doing.**
+
+1. **No vendor tier is applied to a reference board.** A board that exists was fabricated. The rules it
+   demonstrates are therefore achievable. `waffle_eda/bench/constraints.py` and `waffle_eda/bench/rebuild.py`
+   already work this way, measuring each board's own rules and refusing to proceed if the original fails them.
+   That is now the decided criterion and not a recommendation.
+2. **The benchmark's DRC criterion is closed.** It is the per-board measured rules. Do not reopen it. Applying a
+   fab tier instead would fail every class C reference by construction: D42 measured that OrangeCrab's 0.089 mm
+   tracks and 0.065 mm rings are what its 0.5 mm pitch leaves.
+3. **The target board's via size and fab tier are deferred**, not open. They belong to M6 and are answered when
+   the owner specifies limits. They are removed from the pending-decisions list. A session that reaches M6
+   without those limits asks once and stops; it does not research them.
+4. **No further vendor research.** The round of 2026-09-20 (D44) returned evidence for one vendor and nothing on
+   price, lead time or reputation for any other, because this environment's egress blocks the sources. The retry
+   proposed in D44 is cancelled. Prices come from the owner's quotes.
+
+**Why this was recorded rather than discussed again.** The via and the tier sat in the plan's pending-decisions
+list, so every session read them, raised them, and proposed the same vendor research. The loop was in the
+document, not in anyone's memory. Removing the entries is the fix.

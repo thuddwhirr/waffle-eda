@@ -13,6 +13,11 @@ reference ladder) before changing anything. Decisions and numbers go in `docs/de
   "remaining", "pending" or "a known limitation".
 - Tests assert the target, never the level reached. A failing test stays red. Never lower an expected value, and
   never skip, disable or quarantine a test.
+- A decision recorded in `docs/decisions.md` is settled. Do not re-raise it, re-research it, or ask the owner
+  about it again, unless a new measurement contradicts it. Say what the measurement is.
+- Deferred is not open. An item marked deferred is answered at the milestone that needs it and not before.
+- Do not research vendor capability, price, lead time or reputation. This environment cannot reach the sources
+  (D44), and the attempt has already failed once. Those numbers come from the owner.
 
 ## Reporting
 

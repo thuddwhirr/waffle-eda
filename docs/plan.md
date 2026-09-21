@@ -80,9 +80,8 @@ ones that met the rule -- carry 27 ps of skew against their own strobe.
 **What blocks M3b when it is picked up again.** Its gate is graded by the length criterion of D30, which is
 undecided. The recommendation is in D48 and has two parts: keep D27's spreads as the tolerance, and grade the
 byte lanes in delay rather than copper, because a router graded on copper can pass the gate by reproducing
-OrangeCrab's own mistake. The recommendation on the benchmark's DRC criterion (keep the per-board measured
-rules) is unchanged. Both are the owner's to settle. Do not build M3b against a criterion that has not been
-fixed.
+OrangeCrab's own mistake. The benchmark's DRC criterion is no longer open: D53 settled it as the per-board
+measured rules. Do not build M3b against a criterion that has not been fixed.
 
 **What settling D30 costs, by option.** Part 1 alone (keep D27's spreads) leaves M3a untouched and M3b starts on
 its ladder below. Part 2 as well (grade the byte lanes in delay) is a change to M3a and a re-gate: the planner's
@@ -198,30 +197,14 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## Pending owner decisions
 
-* **The target board's via, which is recorded two ways and decides the answer to the tier question.** D16 and
-  the table above plan 0.45/0.15, a ring of 0.150 mm, which meets PCBWay's published standard 6 mil; the carried
-  project's own rules (`docs/lessons/stackup.md`, `tooling-project-brief.md`, and D45 of
-  `docs/lessons/waffle-fpga-decisions.md`) use 0.45/0.20, a ring of 0.125 mm, which does not. D44 found the
-  discrepancy. So "outside the standard tier on: nothing, by intent" is true of the first number and false of the
-  second, and which one the target uses has not been decided. The 0.15 mm drill carries a surcharge and sits at
-  10.67:1 on a 1.6 mm board, which D44 found PCBWay's own pages disagree about.
-* **The fab tier for the target board**: see D16. M6 and the cost model depend on it; M3a and M3b do not. D42
-  measured what a board of this shape actually needs: a 0.8 mm caBGA381 does not require a finer process than
-  the standard tier for its escape if it is dog-boned rather than via-in-pad, which is what LogicBone does with
-  the same part; OrangeCrab's 0.5 mm pitch is the one case where the part itself rules the standard tier out.
-  The vendor landscape asked for on 2026-09-20 **did not come back** (D44): the search budget and this
-  environment's egress blocks left evidence for one vendor, the incumbent, and none at all for price, lead time
-  or reputation at any vendor. Fetching each vendor's capability page by its known URL is the retry worth making;
-  prices need quotes from the owner either way, since PCBWay defers every price to a representative.
-* **The benchmark's DRC criterion**, which D16 raised alongside the fab tier and which must be decided apart
-  from it. The benchmark holds each reference to the rules measured off that board
-  (`waffle_eda/bench/constraints.py`, which refuses to proceed if the original would fail its own measured
-  rules), never to a fab's tier. Answering this one with a fab tier instead would fail every class C reference by
-  construction: D42 measured that OrangeCrab's 0.089 mm tracks and 0.065 mm rings are what its 0.5 mm pitch
-  leaves, so no tier that rules them out can be met on that board by anyone, and the tool would spend the
-  milestone chasing something the board's own designer did not achieve either. The recommendation is to keep the
-  per-board demonstrated rules as the benchmark's criterion and to hold the fab tier where it belongs, on the
-  target board of M6.
+* ~~The target board's via~~ and ~~the fab tier for the target board~~ **Deferred (D53)**: assume every
+  reference board was manufactured by someone; vendor limits are specified later. Both belong to M6. They are
+  not open questions and must not be raised again each session. No further vendor research; the round of
+  2026-09-20 returned evidence for one vendor only and its retry is cancelled (D44, D53).
+* ~~The benchmark's DRC criterion~~ **Decided (D53)**: the per-board measured rules, which
+  `waffle_eda/bench/constraints.py` and `waffle_eda/bench/rebuild.py` already apply. A board that exists was
+  fabricated, so the rules it demonstrates are achievable. Applying a fab tier instead would fail every class C
+  reference by construction (D42).
 * **The length criterion of M3b** (D30), now with the vendor's numbers verified (D45): stay with the references'
   own spreads as D27 wrote them, move to Lattice's published rules for the part, or measure both references per
   segment against the clock first and decide after. **The recommendation is the third.** Lattice's checklist is
