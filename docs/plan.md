@@ -86,13 +86,21 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
 
 ## Pending owner decisions
 
-* **The fab tier for the target board**: see D16. M6 and the cost model depend on it; M3a and M3b do not. A
-  vendor landscape is being researched (all regions, prototype quantities of 5 to 20, vendors that also assemble
-  fine-pitch BGAs), because D16 could only speak for one fab.
-  D42 has since measured what a board of this shape actually needs: a 0.8 mm caBGA381 does not require a finer
-  process than the standard tier for its escape if it is dog-boned rather than via-in-pad, which is what
-  LogicBone does with the same part; OrangeCrab's 0.5 mm pitch is the one case where the part itself rules the
-  standard tier out.
+* **The target board's via, which is recorded two ways and decides the answer to the tier question.** D16 and
+  the table above plan 0.45/0.15, a ring of 0.150 mm, which meets PCBWay's published standard 6 mil; the carried
+  project's own rules (`docs/lessons/stackup.md`, `tooling-project-brief.md`, and D45 of
+  `docs/lessons/waffle-fpga-decisions.md`) use 0.45/0.20, a ring of 0.125 mm, which does not. D44 found the
+  discrepancy. So "outside the standard tier on: nothing, by intent" is true of the first number and false of the
+  second, and which one the target uses has not been decided. The 0.15 mm drill carries a surcharge and sits at
+  10.67:1 on a 1.6 mm board, which D44 found PCBWay's own pages disagree about.
+* **The fab tier for the target board**: see D16. M6 and the cost model depend on it; M3a and M3b do not. D42
+  measured what a board of this shape actually needs: a 0.8 mm caBGA381 does not require a finer process than
+  the standard tier for its escape if it is dog-boned rather than via-in-pad, which is what LogicBone does with
+  the same part; OrangeCrab's 0.5 mm pitch is the one case where the part itself rules the standard tier out.
+  The vendor landscape asked for on 2026-09-20 **did not come back** (D44): the search budget and this
+  environment's egress blocks left evidence for one vendor, the incumbent, and none at all for price, lead time
+  or reputation at any vendor. Fetching each vendor's capability page by its known URL is the retry worth making;
+  prices need quotes from the owner either way, since PCBWay defers every price to a representative.
 * **The benchmark's DRC criterion**, which D16 raised alongside the fab tier and which must be decided apart
   from it. The benchmark holds each reference to the rules measured off that board
   (`waffle_eda/bench/constraints.py`, which refuses to proceed if the original would fail its own measured

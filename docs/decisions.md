@@ -936,3 +936,60 @@ nothing.
 
 This closes the third of the three questions the plan listed as pending. It does not reopen D33's substance: the
 measurement-provenance rule stands, and no figure from before the provenance mechanism is quotable.
+
+**D44. The vendor landscape research failed, and what it did and did not establish.** Research round, 2026-09-20
+to 21, asked by the owner (all regions, prototype quantities of 5 to 20, vendors that also assemble fine-pitch
+BGAs). Full result in the session's workflow journal; 6 angles, 27 sources fetched, 35 claims extracted, 25
+verified, 10 confirmed, 15 refuted, 8 dropped.
+
+**It did not answer the question.** Of roughly twenty vendors named across China, the US and Europe, surviving
+evidence covers exactly one: PCBWay, which is the vendor already chosen in `docs/lessons/vendor-notes.md`. Every
+verifier gave the same cause -- the session's web-search budget was exhausted at 200 of 200, `jlcpcb.com` is
+blocked by this environment's egress proxy, search-engine fetches (duckduckgo, bing) are blocked, and
+`web.archive.org` and `curl` are refused at the proxy. So the round was structurally unable to compare vendors:
+it could only re-read the one domain that answered, and it deepened the incumbent rather than surveying the
+alternatives. Fifteen of its twenty-five verified claims were refuted, so the round was policing itself; it could
+not reach the material.
+
+Two sub-questions came back empty for every vendor including PCBWay. **Price and lead time**: every pricing claim
+in the round was refuted, and the capability pages publish no price delta for any tier. **Reliability and quality
+reputation**: no user-reported experience of any kind was collected. The first of those is probably not
+answerable by research at all -- PCBWay defers every price to a sales representative or to post-file-review
+quoting -- so the cost half of the fab-tier decision needs the owner to request quotes, not another round.
+
+What it did establish, all of it PCBWay's own published claims read 2026-09-20 and 21, none corroborated by a
+third party, an audit or a realised order:
+
+* **The package is not what pushes a board of this class into an advanced tier.** PCBWay's floors are 0.4 mm BGA
+  pitch in fabrication and 0.3 mm in assembly, with a minimum BGA land of 8 mil; the caBGA381's 0.8 mm pitch and
+  15.75 mil pads clear all three comfortably. Annular ring and trace width decide the tier, which is what D42
+  measured from the boards.
+* **The headline 2/2 mil is a localised escape figure**, said so in the specification cell itself, and 3.5/3.5
+  mil is granted only "from the BGA chip area line to the pad". ButterStick's 0.089 mm used board-wide (D42:
+  1133 of 1437 segments in margins or open board) is precisely the use PCBWay declines to grant.
+* **Assembly does not exclude this build**: 0.3 mm BGA pitch placement, a stated five-piece minimum, turnkey,
+  consigned or combined part sourcing, X-ray named for BGAs with no published price basis.
+* **No HDI is needed** -- both shipped references are all through-hole -- but no-HDI does not mean standard tier.
+* **PCBWay's pages contradict each other in two places that matter**: outer trace and space (2/2 mil on the
+  advanced page against "local 3.5/3.5 mil" on the capabilities page) and board-thickness-to-hole aspect ratio
+  (tiered 8 / 10 / above 12 on one page, a flat 20:1 on the other). The target's planned 0.15 mm drill on a
+  1.6 mm board sits at 10.67:1, on the wrong side of one of those readings. The advanced page also carries a
+  technical roadmap whose columns end in 2018, so it may be years old; that direction of error is conservative
+  for capability floors but says nothing about prices.
+
+**It corroborated D42 from a stronger angle than D42 used.** Re-parsing ButterStick's design file independently:
+333 of 381 ball pads carry a 0.40/0.20 through via at the pad centre (331 within 10 um, 333 within 50 um -- not
+"exact"), and all 1163 vias on the board span F.Cu to B.Cu with no blind, buried or microvia anywhere. The
+control is better than D42's: the DDR3 BGA-96 parts **on the same board at the same 0.8 mm pitch** are dog-boned,
+median nearest-via distance 0.566 mm, which is exactly the diagonal half pitch 0.8/sqrt(2). Same board, same
+designer, same pitch, the opposite choice. D42's conclusion stands and is better supported than when it was
+written. (Scope note, not a conflict: D42 counts 46 in-ball escapes because it holds only the bus nets; 333
+counts all 381 balls.)
+
+One claim it could not settle, recorded because our own notes assert it: `vendor-notes.md` records via-in-pad as
+"advanced (extra cost)", while PCBWay's page lists via-in-pad among ordinary drill and through-plating
+capabilities with no surcharge designation. Neither reading is established; it is a quote-time question.
+
+What should happen next is not another identical round. Fetching each vendor's capability page by its known URL
+avoids the exhausted search budget entirely, and that is the retry worth making; JLCPCB will still be
+unreachable from here. Prices need quotes either way.

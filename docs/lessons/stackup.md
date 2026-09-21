@@ -1,6 +1,6 @@
 # Stack-up and design rules
 
-Vendor: PCBWay (D39), **8 layers** (D55; was 6), 1.6 mm, 1 oz outer/inner copper, ENIG, FR-4 TG ≥ 150, controlled impedance ordered as PCBWay's "advanced" option. The numbers below are for PCBWay's published standard 8-layer 1.6 mm structure (#1 on their laminated-structure page, 1 oz/1 oz, ≥60 % inner residual copper, which our two full ground planes satisfy); PCBWay's field-solver check at quote time may nudge the widths by a few µm and `hw/tools/impedance.py` is the single place to change them (`gen_pcb.py` imports it for the net classes and stack-up block).
+Vendor: PCBWay (D39 of `waffle-fpga-decisions.md`, not of `docs/decisions.md`), **8 layers** (D55; was 6), 1.6 mm, 1 oz outer/inner copper, ENIG, FR-4 TG ≥ 150, controlled impedance ordered as PCBWay's "advanced" option. The numbers below are for PCBWay's published standard 8-layer 1.6 mm structure (#1 on their laminated-structure page, 1 oz/1 oz, ≥60 % inner residual copper, which our two full ground planes satisfy); PCBWay's field-solver check at quote time may nudge the widths by a few µm and `hw/tools/impedance.py` is the single place to change them (`gen_pcb.py` imports it for the net classes and stack-up block).
 
 ## Layer assignment
 

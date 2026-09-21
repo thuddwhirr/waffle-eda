@@ -1,4 +1,4 @@
-# Vendor notes — PCBWay (decision D39)
+# Vendor notes — PCBWay (decision D39 of `waffle-fpga-decisions.md`, the carried project's log, not D39 of `docs/decisions.md`)
 
 Board is 8 layers, 100 × 160 mm Eurocard (D55/D56). Fabrication and turnkey assembly at PCBWay (owner has prior experience with them). Numbers below are from PCBWay's published capability pages (fetched 2026-09-10); confirm on the instant-quote page when ordering, since impedance control and via-in-pad are quoted under "Advanced PCB".
 
