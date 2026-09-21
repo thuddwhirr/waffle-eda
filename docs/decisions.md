@@ -1309,3 +1309,47 @@ point 4 does. No class C reference has an escaped character in a bus net name to
 **M4's gate is red, for the stated reason.** `scripts/gate.py m4` runs the ladder of six class A references and
 reports `M4's general router is not built` against each; `waffle_eda/route/board_router.py` is the interface it
 calls and raises `NotImplementedError`. A milestone with no tool is a failing milestone, not a pending one.
+
+**D51. The router runs, and the first measurement names the missing stage: fine-pitch pads need an escape, and
+the grid cannot resolve one.** Measurement, 2026-09-21, `waffle_eda/route/board_router.py` on
+`tinkerforge-temperature`, the registry's smallest board and its designated smoke test.
+
+**Result: 2 of 6 nets routed, 32 tracks, zero electrical violations, score 0.333, 1.5 s.** FAIL, and the four
+failures share one cause.
+
+**Two bugs found by running it, both invisible to reading it.**
+
+1. **The graph was one-way.** A pad node had edges out to the grid and no grid node had an edge back, so every
+   target pad was unreachable by construction. The first run routed **0 of 6 nets and laid no copper at all**,
+   which read as congestion and was a missing edge set.
+2. **A failed net left its copper on the board**, where it blocked every net routed after it. `definition.md`
+   section 3 says a partially routed board is not a valid outcome; that has to hold inside a run too, not only
+   at its end. A failed net's copper is now taken back off, which dropped the laid track count from 111 to 32
+   and made the score honest.
+
+**What the four remaining failures have in common.** Every one is the net's *last* pad, and every one sits on a
+fine-pitch part:
+
+| part | package | pad pitch | pad width | gap between pad edges |
+| --- | --- | --- | --- | --- |
+| U1 | TSSOP8 | 0.645 mm | 0.40 mm | 0.245 mm |
+| U2 | SOT563 | 0.498 mm | 0.30 mm | 0.198 mm |
+
+A track of this board's own measured width needs `0.2997 + 2 x 0.1972 = 0.694 mm` to pass between two pads.
+U1 is short by 0.449 mm and U2 by 0.496 mm, so **nothing can pass between the pads of either part**, and every
+pad must be approached from outside its row. That is escape routing, and `route.escape` is the module that does
+it -- for ball grids only, because until now only ball grids were thought to need it. A TSSOP-8 needs it too.
+
+**And the grid cannot represent the answer even if the search found it.** The step is
+`max(track + clearance, 0.2) = 0.4969 mm`; U2's pad pitch is 0.498 mm. The lattice spacing and the pad spacing
+are the same to within a micrometre, so there is no lattice line between two pads and no way to describe a
+stub that leaves one.
+
+**What this changes in the spec** (`router-spec.md`, stage C): a pad-escape sub-stage before the board-level
+search, on a grid whose step is a fraction of the finest pad pitch on the board rather than a fraction of the
+track width. This is the same conclusion D13 to D20 reached for ball grids, arrived at again from the other end
+of the ladder, and it is the second time this project has found that the escape is not a special case of the
+route but a stage of its own (D36).
+
+**Not claimed.** The five larger class A boards have not been run. The two nets that did route are the two whose
+pads sit on the coarse connector, so 2 of 6 is not evidence that anything harder works.

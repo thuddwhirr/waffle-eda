@@ -22,18 +22,16 @@ them. Measured on 2026-09-21: **180 passed, 3 skipped, 0 failed** with the const
 skip without them. Run those two scripts first if you want the full count. Do not read a skip as a pass, and do
 not add one.
 
-**The next action is to run M4's router for the first time.** Its benchmark is **built** (D50):
-`waffle_eda/bench/rebuild.py` strips every net's copper from a board and scores a candidate that re-routes it,
-and the pair that makes the number trustworthy holds on all six class A references, the original copper scoring
-1.000 and the stripped board 0.000.
+**The next action is a pad-escape stage (C1 in the spec).** The router has now been run (D51): on
+`tinkerforge-temperature` it routes **2 of 6 nets, 32 tracks, zero electrical violations, score 0.333, in
+1.5 s.** FAIL. All four failures are the same thing: a track of that board's own width needs 0.694 mm to pass
+between two pads, its TSSOP-8 leaves 0.245 and its SOT-563 leaves 0.198, so every pad must be escaped outward
+before anything can route between parts. `route.escape` does this for ball grids already. A fine-pitch TSSOP
+needs it too, which is D36's lesson met from the other end of the ladder.
 
-**A first router is written and has never been run.** `waffle_eda/route/board_router.py` no longer raises
-`NotImplementedError`: it builds a uniform grid on every copper layer with a node at each pad, grows each net as
-a tree by A* from every node the tree holds, and checks every edge against `route.obstacles` rather than against
-a proxy. **No claim is made for it.** It has not been executed once, so the M4 gate's behaviour with it in place
-is unknown, and the gate may now fail with an exception instead of a stated reason. Run it on
-`tinkerforge-temperature` first, the registry's own smoke test, and believe the score rather than this
-paragraph.
+The grid step needs fixing in the same change: it is derived from track width and lands on 0.4969 mm against
+that board's 0.498 mm pad pitch, so no lattice line lies between two pads. Derive it from the finest pad pitch
+on the board instead.
 
 **Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
 coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no

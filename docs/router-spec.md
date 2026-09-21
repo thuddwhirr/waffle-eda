@@ -154,13 +154,28 @@ plane is discontinuous under it, costs more. This is where "hard/soft costs" fro
 rip-up tractable: ripping up a guide is cheap, ripping up exact copper is not.
 
 
-## 7. Stage C: detailed route inside the guides
+## 7. Stage C: pad escape, then detailed route inside the guides
 
-Inside each net's guide, exact copper.
+**C1. Escape every pad before routing anything** (D51, measured). A track of `tinkerforge-temperature`'s own
+width needs 0.694 mm to pass between two pads; its TSSOP-8 leaves 0.245 mm and its SOT-563 leaves 0.198 mm, so
+nothing passes between the pads of either part and every pad must be approached from outside its row. That is
+escape routing. `route.escape` already does it for ball grids, and the first run of this router failed four of
+six nets on exactly this, each on the net's last pad, each on a fine-pitch part.
 
-* **The search space** is a uniform grid on every copper layer, step `max(width + clearance, 0.2 mm)`, with a
-  node at each pad centre joined to the grid nodes around it, and a via edge joining layers at each position.
-  Restricted to the cells of the net's guide, which is what makes it affordable.
+The escape is a stage, not a step of the search. D36 reached the same conclusion for the bus from the other
+direction: an escape computed independently of what comes after it can only be lucky. So C1 produces, per pad, a
+stub to a point outside its pad row that the board-level search can start from, and C2 routes between those
+points.
+
+**C2. Detailed route.** Inside each net's guide, exact copper.
+
+* **The search space** is a uniform grid on every copper layer, with a node at each pad's escape point and a via
+  edge joining layers at each position, restricted to the cells of the net's guide.
+* **The step is a fraction of the finest pad pitch on the board, not of the track width.** The first
+  implementation used `max(width + clearance, 0.2 mm)`, which on this board is 0.4969 mm against a pad pitch of
+  0.498 mm: the lattice and the pad row have the same spacing to within a micrometre, so no lattice line lies
+  between two pads and no stub can be described. A step derived from track width describes copper it cannot
+  place.
 * **Feasibility is exact, never a proxy.** An edge is usable when the track or via it would become clears the
   board under the class's rules, asked of `route.obstacles`, which is KiCad's own shape collision. D33 is why:
   a bench setting once stood in for the real test and made every measurement meaningless. The grid decides
@@ -326,11 +341,15 @@ is a number to beat rather than a destination, and nobody has yet tested whether
 
 `waffle_eda/route/board_router.py`, committed unrun:
 
+Measured once, on `tinkerforge-temperature` (D51): **2 of 6 nets, 32 tracks, zero electrical violations, score
+0.333, 1.5 s.** FAIL. The four failures are all the missing C1.
+
 | Stage | In the code |
 |---|---|
 | A. rules and net classes | **no.** One board-wide minimum width for every net |
 | B. global route | **no.** No coarse stage at all; A\* runs over the whole board |
-| C. detailed route | partly: grid, exact feasibility, greedy Steiner growth, no guides |
+| C1. pad escape | **no.** This is what the four failures are |
+| C2. detailed route | partly: grid, exact feasibility, greedy Steiner growth, no guides, step too coarse |
 | D. planes and rails | **no.** Supply nets are routed as ordinary tracks |
 | Rip-up and reroute | **no.** Sequential; a blocked net fails |
 | Fixed copper | argument exists, never exercised |

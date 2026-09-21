@@ -120,6 +120,10 @@ class BoardRouter:
         self.obs = Obstacles(board)
         self.net_by_name = {n.GetNetname(): n for n in board.GetNetsByName().values()}
         self._placed: set[str] = set()
+        # grid node -> the pad nodes of the net being routed that sit beside it. Without this the graph is
+        # one-way: a pad has edges out to the grid and the grid has none back, so every target pad is
+        # unreachable and every net fails with no copper laid at all.
+        self._pad_near: dict[int, list[int]] = {}
 
     def _region(self) -> tuple[float, float, float, float]:
         x0, y0, x1, y1 = kb.outline_bbox_mm(self.board)
@@ -151,6 +155,22 @@ class BoardRouter:
         net's own tree is joined."""
         return self.obs.clear(item, self.clearance_mm, hole_clearance_mm=self.hole_clearance_mm) is None
 
+    def _around(self, x: float, y: float, layer: int) -> list[int]:
+        """The grid nodes of ``layer`` in the nine positions around (x, y)."""
+        grid = self.grid
+        if layer not in grid.layers:
+            return []
+        li = grid.layers.index(layer)
+        ix = int(round((x - grid.x0) / grid.step))
+        iy = int(round((y - grid.y0) / grid.step))
+        out = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                jx, jy = ix + dx, iy + dy
+                if 0 <= jx < grid.nx and 0 <= jy < grid.ny:
+                    out.append(grid.gid(li, jx, jy))
+        return out
+
     # --- search -------------------------------------------------------------------------------------------
     def _neighbours(self, node: int, net_name: str, net):
         """(neighbour, cost, item) for each edge out of ``node`` that clears the board."""
@@ -159,19 +179,11 @@ class BoardRouter:
         layer = grid.layer_of(node)
         out = []
         if node < 0:  # a pad node joins the grid nodes around it
-            ix = int(round((here[0] - grid.x0) / grid.step))
-            iy = int(round((here[1] - grid.y0) / grid.step))
-            li = grid.layers.index(layer)
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    jx, jy = ix + dx, iy + dy
-                    if not (0 <= jx < grid.nx and 0 <= jy < grid.ny):
-                        continue
-                    other = grid.gid(li, jx, jy)
-                    there = grid.xy(other)
-                    item = self._track(layer, here, there, net)
-                    if self._clear(item, net_name):
-                        out.append((other, math.dist(here, there), item))
+            for other in self._around(here[0], here[1], layer):
+                there = grid.xy(other)
+                item = self._track(layer, here, there, net)
+                if self._clear(item, net_name):
+                    out.append((other, math.dist(here, there), item))
             return out
         li, iy, ix = grid.ungid(node)
         for dx, dy in DIAGONAL:
@@ -190,6 +202,13 @@ class BoardRouter:
                     if lj == li:
                         continue
                     out.append((grid.gid(lj, ix, iy), self.step * 2.0, via))
+        for pad_node in self._pad_near.get(node, ()):  # the way back into a pad, which the graph needs to exist
+            if grid.layer_of(pad_node) != layer:
+                continue
+            there = grid.xy(pad_node)
+            item = self._track(layer, here, there, net)
+            if self._clear(item, net_name):
+                out.append((pad_node, math.dist(here, there), item))
         return out
 
     def _search(self, sources: set[int], targets: set[int], net_name: str, net, budget: int):
@@ -243,7 +262,11 @@ class BoardRouter:
                 layers = [L for L in pad.GetLayerSet().CuStack() if L in self.grid.layers]
                 if not layers:
                     continue
-                out.append([self.grid.add_pad_node(x, y, L) for L in layers])
+                nodes = [self.grid.add_pad_node(x, y, L) for L in layers]
+                for node, layer in zip(nodes, layers):
+                    for grid_node in self._around(x, y, layer):
+                        self._pad_near.setdefault(grid_node, []).append(node)
+                out.append(nodes)
         return out
 
     def route_net(self, net_name: str, budget: int = 60000) -> str | None:
@@ -251,20 +274,36 @@ class BoardRouter:
         net = self.net_by_name.get(net_name)
         if net is None:
             return "no such net on the board"
+        self._pad_near = {}  # only this net's pads: another net's pad is copper to clear, not a place to go
         pads = self._pad_nodes(net_name)
         if len(pads) < 2:
             return None
         tree = set(pads[0])
+        laid = []
         for pad in pads[1:]:
             found = self._search(tree, set(pad), net_name, net, budget)
             if found is None:
+                self._unplace(laid)
                 x, y = self.grid.xy(pad[0])
-                return f"no route to the pad at ({x:.2f}, {y:.2f}) mm"
+                return (f"no route to the pad at ({x:.2f}, {y:.2f}) mm after "
+                        f"{len(pads) - 1} pad(s) of {len(pads)}; its copper was taken back off")
             path, items = found
             for item in items:
                 self._place(item)
+                laid.append(item)
             tree |= set(path)
         return None
+
+    def _unplace(self, items) -> None:
+        """Take a failed net's copper back off the board. A half-routed net is not a partial success, and
+        leaving its copper there blocks every net routed after it (`definition.md` section 3)."""
+        for item in items:
+            uid = item.m_Uuid.AsString()
+            if uid not in self._placed:
+                continue
+            self._placed.discard(uid)
+            self.obs.remove(item)
+            self.board.Delete(item)  # not Remove(): the proxy would own a C++ object with no destructor
 
     def _place(self, item) -> None:
         """Add a track or via to the board and to the obstacle index, once. A via edge is shared by every layer
