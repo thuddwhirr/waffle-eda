@@ -1,5 +1,39 @@
 # Plan
 
+## Next session starts here
+
+Read this first; it is the only part of the plan that says what to *do* rather than what is true. **Whoever
+finishes a piece of work updates this section in the same commit.** A stale next-step is worse than none.
+
+**Confirm the state before changing anything** (about four minutes, and it re-grounds on facts rather than on
+anyone's memory):
+
+```
+python3 scripts/gate.py m3a     # expect PASS, 3 of 3 class C references
+python3 -m pytest -q            # expect 150 passed, about 15 minutes
+```
+
+**The next action** is the delay measurement that D47 named, then M3b. `NetDesign.paths` records each path's
+layer sequence but not its length on each layer; the references mix microstrip and stripline, whose propagation
+differs by roughly 5.6 against 6.7 ps/mm, so equal copper length is not equal delay and part of the gap between
+the references and Lattice's published rule may be an artifact of measuring length rather than delay. It is the
+last thing that could change the answer to D30, it is half a day, and it needs no research.
+
+**What is blocked, and by what.** M3b's gate is graded by the length criterion of D30, which is undecided; the
+recommendation is on record in D47 (gate on what the references demonstrate, report Lattice's numbers beside it)
+and so is the recommendation on the benchmark's DRC criterion (keep the per-board measured rules). Both are the
+owner's to settle. Do not build M3b against a criterion that has not been fixed.
+
+**Discipline for M3b.** Its ladder is OrangeCrab, then LogicBone, then ButterStick. If OrangeCrab passes and the
+other two turn expensive, stop and go to M4 rather than grind: see the standing observation below.
+
+**Standing observation, worth re-reading before investing more in the bus.** All four gates iterate over
+`bus_references()`, which is five boards. The registry holds 23. Every class A and class B board was surveyed,
+fetched, and never touched by a gate. Everything built so far is bus machinery, and a simple two-layer board with
+a microcontroller and passives has nothing in the tool that applies to it -- no placement stage, no general
+router. The tool's general-purpose claim is first tested at M4, and that is the larger unknown, not the smaller.
+
+
 ## The reference ladder
 
 The tool earns its general-purpose claim one board class at a time. Each class needs several open-hardware reference
