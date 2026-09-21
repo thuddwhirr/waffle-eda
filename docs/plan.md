@@ -36,13 +36,25 @@ The two remaining failures on the smoke test are the other unbuilt stages, not n
 reached into a board the earlier nets have filled, which is rip-up, and `GND` is a supply net that stage D
 should pour rather than route as track.
 
-**`scripts/gate.py m4` no longer finishes.** It completed in under ten minutes while three boards were
-attempted and was still running after forty once four were, with no caching and no guides to search inside.
-Per-board figures, measured 2026-09-21 by routing each one directly: `tinkerforge-temperature` 4 of 6 nets at
-0.667, `open-book-c1` 25 of 35 at 0.714, `olimex-esp32c3-devkit` 29 of 34 at 0.853, `olimex-rp2040-pico-pc` 56
-of 60 at 0.933, all with zero electrical violations; `libresolar-mppt-2420` and `crkbd-corne-cherry` stop on
-the node ceiling. Route a board directly until stage B exists, and do not trust a gate you have not seen
-finish.
+**`scripts/gate.py m4` does not finish, and one board exhausts memory.** Per-board figures, measured
+2026-09-21 by routing each board directly, route and score time included:
+
+| board | nets connected | score | electrical violations | time |
+| --- | --- | --- | --- | --- |
+| `tinkerforge-temperature` | 4 of 6 | 0.667 | 0 | 16 s |
+| `open-book-c1` | 25 of 35 | 0.714 | 0 | 120 s |
+| `olimex-esp32c3-devkit` | 29 of 34 | 0.853 | 0 | 441 s |
+| `olimex-rp2040-pico-pc` | none | none | none | killed |
+| `libresolar-mppt-2420` | not attempted, 488,312 grid nodes exceeds the 400,000 ceiling | | | |
+| `crkbd-corne-cherry` | not attempted, 3,339,816 grid nodes exceeds the ceiling | | | |
+
+`olimex-rp2040-pico-pc` was killed by the memory cgroup at about 13.3 GB resident. The 400,000 node ceiling
+bounds the grid and does not bound memory, so something else grows. One candidate not yet tested: every edge
+test constructs a `pcbnew.PCB_TRACK` with the board as its parent, and if the board retains those objects the
+router leaks one per test. Do not treat this board as routable until that is measured.
+
+An earlier figure of 0.933 for that board is **stale**. It was measured before the clearance defect was fully
+fixed, when the router was ignoring a pad's own clearance, and it is not reproducible.
 
 **Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
 coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no
