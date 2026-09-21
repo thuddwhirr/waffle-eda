@@ -38,9 +38,13 @@ delay rather than copper, because a router graded on copper can pass the gate by
 mistake. The recommendation on the benchmark's DRC criterion (keep the per-board measured rules) is unchanged.
 Both are the owner's to settle. Do not build M3b against a criterion that has not been fixed.
 
-**If the owner settles D30 as recommended**, M3a's PASS stands untouched -- nothing in D48 changes what a length
-deficit is measured against -- and M3b starts on its ladder below. Only a move to Lattice's numbers would force
-M3a to be re-run, and D48 is the second measurement in a row arguing against that move.
+**What settling D30 costs, by option.** Part 1 alone (keep D27's spreads) leaves M3a untouched and M3b starts on
+its ladder below. Part 2 as well (grade the byte lanes in delay) is a change to M3a and a re-gate: the planner's
+windows, deficits and reserved room are millimetres of tree length today, and M3a's gate asks that the room meet
+a *length* deficit. That work is small and exact, not a redesign, because the plan already fixes each leg's
+layer, so a delay deficit divided by that layer's ps/mm is the length to add. Address and command are untouched
+under either. A move to Lattice's numbers instead would force a full M3a re-run, and D48 is the second
+measurement in a row arguing against that move.
 
 **Discipline for M3b.** Its ladder is OrangeCrab, then LogicBone, then ButterStick. If OrangeCrab passes and the
 other two turn expensive, stop and go to M4 rather than grind: see the standing observation below.
@@ -182,9 +186,11 @@ with a bus in one bank), each loading and passing DRC with only its bus open.
   millimetres and ISSI's picoseconds beside it, **and grade the byte lanes in delay rather than copper**, since
   LogicBone matched its lanes in delay and OrangeCrab in length, and a router graded on copper can pass the gate
   while leaving 27 ps between a lane and its strobe. Aim at Lattice's numbers for the target board of M6, whose
-  one-memory topology is OrangeCrab's. M3b's gate depends on this. M3a does not, under the recommendation as
-  written: D40 took D27's answer for what a deficit is measured against and part 1 leaves it alone, but a move
-  to Lattice's numbers instead would tighten every window, grow every deficit and force M3a to be re-run.
+  one-memory topology is OrangeCrab's. M3b's gate depends on this, and so does M3a, but only through part 2:
+  D40 took D27's answer for what a deficit is measured against, part 1 leaves that alone, and part 2 turns the
+  lane groups' windows and deficits into delay quantities, which is an M3a change and a re-gate (small and
+  exact, since the plan fixes each leg's layer). A move to Lattice's numbers instead would tighten every window,
+  grow every deficit and force a full M3a re-run.
 * ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is
   not bisected. Those runs were completing boards with no plan behind them, so neither figure is one M3b can be
   compared against.

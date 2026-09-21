@@ -1213,6 +1213,17 @@ keys, and D27's criterion is a length one:
 
 Both parts are the owner's to settle, and the pending-decisions list in the plan carries them.
 
+> **Corrected within the hour, 2026-09-21.** Point 1 above said M3a's PASS stands untouched, and read as though
+> it covered the whole recommendation. It does not. **Point 2 makes M3a work.** `busplanner.group_windows` feeds
+> `_deficits`, `_reserve` and `lengthen`, all in millimetres of planned tree length, and M3a's gate criterion is
+> that every net's reserved room is at least its *length* deficit; `bus_design.length_match` scores D27 the same
+> way. Grading byte lanes in delay makes their window, their deficit and that gate criterion delay quantities, so
+> M3a must be changed for the lane groups and re-gated. The work is small and exact rather than a redesign,
+> because the plan already fixes each leg's layer: a delay deficit divided by that layer's ps/mm is the length to
+> add, so the conversion has one right answer per leg. Address and command are untouched either way. The honest
+> statement is: **part 1 alone leaves M3a alone; part 1 and part 2 together cost an M3a change and a re-run.**
+> Recorded here rather than quietly edited, because the claim was already committed.
+
 **What was tried and dropped.** Converting Lattice's mils to picoseconds at a single velocity, to give one number
 per rule. It cannot be done honestly: the conversion depends on the layer, which is what the rule fails to say,
 and 2.54 mm is 14.2 ps of outer copper or 18.0 ps of inner. The report prints the stripline-equivalent length
