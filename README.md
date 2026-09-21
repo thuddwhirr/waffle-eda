@@ -28,6 +28,7 @@ and their gates, and the working agreement are in [`docs/definition.md`](docs/de
 |---|---|
 | [`docs/definition.md`](docs/definition.md) | the project definition: stages, gates, acceptance rule, free variables and locked constraints |
 | [`docs/plan.md`](docs/plan.md) | the reference ladder and milestones |
+| [`docs/router-spec.md`](docs/router-spec.md) | the general router of M4: what it must do, how, and what is still the owner's to decide |
 | [`docs/decisions.md`](docs/decisions.md) | the decisions log: what was decided, tried and dropped, with numbers |
 | [`docs/lessons/`](docs/lessons/README.md) | documents carried from `waffle-fpga`, with provenance |
 | `waffle_eda/` | the package: `kicad/` board helpers, `bench/` reference boards and scoring, `fab/` vendor profiles |

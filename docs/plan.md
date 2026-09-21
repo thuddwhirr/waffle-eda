@@ -35,9 +35,12 @@ is unknown, and the gate may now fail with an exception instead of a stated reas
 `tinkerforge-temperature` first, the registry's own smoke test, and believe the score rather than this
 paragraph.
 
-What it does not have: rip-up and negotiation, which both existing routers needed, and planes with their feeds
-and stitching, which M4's criterion names and which nothing in the tree has a precedent for. Power nets are
-routed as ordinary tracks today.
+**Read [`router-spec.md`](router-spec.md) before changing it.** It states what the router must do, the
+measured numbers the design rests on, and section 13 is an honest table of which parts of it the code actually
+contains: the search space, exact feasibility and tree growth, and nothing else. It has no rip-up, no
+negotiation, no planes, and no caching of edge feasibility, and on the last of those alone it is not expected to
+finish the two largest boards. Section 12 lists four questions that are the owner's, one of which
+(track width on a power board) is a gap in the benchmark's criterion and not only in the router.
 
 **M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
 session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
