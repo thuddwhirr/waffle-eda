@@ -36,6 +36,14 @@ The two remaining failures on the smoke test are the other unbuilt stages, not n
 reached into a board the earlier nets have filled, which is rip-up, and `GND` is a supply net that stage D
 should pour rather than route as track.
 
+**`scripts/gate.py m4` no longer finishes.** It completed in under ten minutes while three boards were
+attempted and was still running after forty once four were, with no caching and no guides to search inside.
+Per-board figures, measured 2026-09-21 by routing each one directly: `tinkerforge-temperature` 4 of 6 nets at
+0.667, `open-book-c1` 25 of 35 at 0.714, `olimex-esp32c3-devkit` 29 of 34 at 0.853, `olimex-rp2040-pico-pc` 56
+of 60 at 0.933, all with zero electrical violations; `libresolar-mppt-2420` and `crkbd-corne-cherry` stop on
+the node ceiling. Route a board directly until stage B exists, and do not trust a gate you have not seen
+finish.
+
 **Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
 coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no
 copper works the router asks for a change to a free variable -- a layer, a placement, a pin swap, a via type --
