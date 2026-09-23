@@ -1,0 +1,8 @@
+Item #,Designator,Qty,Manufacturer,Mfg Part #,Description / Value,Package/Footprint,Type
+1,U1,1,Texas Instruments,TMP101NA/3K,TMP101; I2C temperature sensor SOT-23-6,SOT-23-6,SMD
+2,J1,1,generic,PinHeader_1x04_P2.54mm_Vertical,Conn_01x04; 4-pin 2.54 mm header,PinHeader_1x04_P2.54mm_Vertical,THT
+3,C1,1,generic,C0603X7R160-104,100nF; decoupling 0603 X7R 16 V,C_0603_1608Metric,SMD
+4,R1,1,generic,RC0603FR-071KL,1k; LED series resistor 0603,R_0603_1608Metric,SMD
+5,R2,1,generic,RC0603FR-074K7L,4.7k; SDA pull-up 0603,R_0603_1608Metric,SMD
+6,R3,1,generic,RC0603FR-074K7L,4.7k; SCL pull-up 0603,R_0603_1608Metric,SMD
+7,D1,1,generic,LTST-C191KGKT,LED green; power LED 0603,LED_0603_1608Metric,SMD

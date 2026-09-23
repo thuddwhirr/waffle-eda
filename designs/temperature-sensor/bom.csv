@@ -1,0 +1,8 @@
+reference,value,description,manufacturer,mpn,alternates,quantity,unit_price_usd,stock,symbol,footprint,datasheet,long_lead
+U1,TMP101,I2C temperature sensor SOT-23-6,Texas Instruments,TMP101NA/3K,TMP102AIDRLR (SOT-563),1,unknown,unknown,Sensor_Temperature:TMP101,Package_TO_SOT_SMD:SOT-23-6,https://www.ti.com/lit/ds/symlink/tmp101.pdf,unknown
+J1,Conn_01x04,4-pin 2.54 mm header,generic,PinHeader_1x04_P2.54mm_Vertical,any 1x4 2.54 mm header,1,unknown,unknown,Connector_Generic:Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,generic,unknown
+C1,100nF,decoupling 0603 X7R 16 V,generic,C0603X7R160-104,any 0603 100 nF X7R,1,unknown,unknown,Device:C,Capacitor_SMD:C_0603_1608Metric,generic,unknown
+R1,1k,LED series resistor 0603,generic,RC0603FR-071KL,any 0603 1 kOhm,1,unknown,unknown,Device:R,Resistor_SMD:R_0603_1608Metric,generic,unknown
+R2,4.7k,SDA pull-up 0603,generic,RC0603FR-074K7L,any 0603 4.7 kOhm,1,unknown,unknown,Device:R,Resistor_SMD:R_0603_1608Metric,generic,unknown
+R3,4.7k,SCL pull-up 0603,generic,RC0603FR-074K7L,any 0603 4.7 kOhm,1,unknown,unknown,Device:R,Resistor_SMD:R_0603_1608Metric,generic,unknown
+D1,LED green,power LED 0603,generic,LTST-C191KGKT,any 0603 green LED,1,unknown,unknown,Device:LED,LED_SMD:LED_0603_1608Metric,generic,unknown

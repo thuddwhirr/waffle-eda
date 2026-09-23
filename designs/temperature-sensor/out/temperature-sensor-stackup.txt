@@ -1,0 +1,3 @@
+temperature-sensor: 2 layers, 1.6 mm FR-4, 1.0 oz copper, finish HASL.
+Controlled impedance: none. Rules: track 0.25 mm, clearance 0.2 mm, via 0.6/0.3 mm, hole to copper 0.25 mm, copper to edge 0.3 mm.
+Fab profile: pcbway (PCBWay published capability pages, captured 2026-09-10 (waffle-fpga vendor-notes.md); confirm at quote time).

@@ -1,0 +1,31 @@
+{
+ "stage": 6,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "files": 15,
+  "gerbers": 9,
+  "drill files": 1
+ },
+ "asks": [
+  "the assembler's BOM template is not on disk (unknown): confirm the column set before upload"
+ ],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-B_Cu.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-B_Mask.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-B_Silkscreen.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-Edge_Cuts.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-F_Cu.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-F_Mask.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-F_Paste.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-F_Silkscreen.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-drl_map.gbr",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor-job.gbrjob",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/gerbers/temperature-sensor.drl",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/temperature-sensor-assembly-top.pdf",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/temperature-sensor-bom-pcbway.csv",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/temperature-sensor-pos.csv",
+  "/home/user/waffle-eda/designs/temperature-sensor/out/temperature-sensor-stackup.txt"
+ ],
+ "seconds": 1.3
+}

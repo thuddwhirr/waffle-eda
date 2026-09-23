@@ -2,6 +2,8 @@
 references/
 # generated outputs
 build/
+# a design's stage 5 work directories (the router's DSN, session and log per attempt; attempts.json stays)
+designs/*/reports/stage5/
 # python
 __pycache__/
 *.pyc

@@ -1,0 +1,18 @@
+{
+ "stage": 2,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "parts": 7,
+  "priced total USD": 0.0,
+  "unpriced parts": 7,
+  "ceiling USD": 5.0
+ },
+ "asks": [
+  "prices unknown for U1, J1, C1, R1, R2, R3, D1: the cost decision escalates (definition.md, section 4)"
+ ],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/bom.csv"
+ ],
+ "seconds": 0.7
+}

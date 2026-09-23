@@ -43,6 +43,26 @@ def rules_path(ref: refs.Reference) -> Path:
     return refs.repo_root() / "build" / f"boardrules-{ref.key}.json"
 
 
+def pours_path(ref: refs.Reference) -> Path:
+    return refs.repo_root() / "build" / f"pours-{ref.key}.json"
+
+
+def pour_spec(ref: refs.Reference) -> list:
+    """The reference's pours (net, layer, outline, relief) as the specification stage 5 receives: the zones the
+    board itself has, teardrops excluded (`route.pours`). Cached beside the rules."""
+    from waffle_eda.route import pours
+    path = pours_path(ref)
+    mtime = refs.board_path(ref).stat().st_mtime
+    if path.is_file():
+        data = json.loads(path.read_text())
+        if data.get("board_mtime") == mtime and data.get("version") == VERSION:
+            return pours.pours_from_json(data["pours"])
+    spec = pours.pour_spec(kb.load_board(refs.board_path(ref)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"board_mtime": mtime, "version": VERSION, "pours": pours.pours_to_json(spec)}, indent=1))
+    return spec
+
+
 # --- the problem board ----------------------------------------------------------------------------------------
 def _strip(board, delete: bool = False) -> dict:
     """Count (and with ``delete`` remove) every piece of routed copper: tracks, arcs, vias and zones."""

@@ -1,0 +1,20 @@
+{
+ "stage": 5,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "attempt": 1,
+  "nets": 5,
+  "tracks": 35,
+  "vias": 4,
+  "stitching vias": 4
+ },
+ "asks": [],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/temperature-sensor.kicad_pcb",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/stage5-attempts.json",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/temperature-sensor-top.png",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/temperature-sensor-bottom.png"
+ ],
+ "seconds": 10.3
+}

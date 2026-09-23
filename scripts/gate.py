@@ -110,34 +110,34 @@ def gate_m3a() -> list[tuple[str, bool, str]]:
 
 
 def gate_m4() -> list[tuple[str, bool, str]]:
-    """M4: a full re-route of each class A reference from placement, DRC clean (plan.md, M4; D49).
-
-    The ladder rises as class C's does: the smallest board first. The benchmark is `waffle_eda.bench.rebuild`,
-    whose two sanity checks (the stripped board scores 0.000, the original 1.000) are asserted by the tests. This
-    gate judges only what the tool produces, so while M4's router is unbuilt every row fails with that reason.
-    """
+    """Class A: a full re-route of each reference from placement, DRC clean under its own measured rules (D50,
+    D55). The ladder rises smallest board first. The benchmark is `waffle_eda.bench.rebuild`, whose two sanity
+    checks (the stripped board scores 0.000, the original 1.000) are asserted by the tests; stage 5 is
+    `waffle_eda.route.stage5` (the specification's pours, stitching vias, Freerouting, the fill and the
+    closure loop). A missing jar or Java is a failing row, not a skip."""
     from waffle_eda.bench import rebuild
-    from waffle_eda.route import board_router
+    from waffle_eda.route import freerouting, stage5
     rows = []
     for ref in m4_references():
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
             continue
         try:
+            freerouting.check()
             bare, _info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
-            board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            result = board_router.route_board(board, rules)
-        except board_router.RoutingTooLarge as why:
-            rows.append((ref.key, False, str(why).split(". ")[0]))
+            board = kb.load_board(bare)
+            out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
+            result = stage5.route(board, rules, rebuild.pour_spec(ref), harness.bench_dir() / "stage5" / ref.key,
+                                  out_path=out)
+        except freerouting.FreeroutingUnavailable as why:
+            rows.append((ref.key, False, str(why)))
             continue
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
-        out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
-        kb.refill_zones(board)
-        kb.save_board(board, out)
         s = rebuild.score(ref, out)
+        rebuild.write_score(s)
         detail = s.summary()
         if result.failed:
             detail += f" | first failure: {sorted(result.failed.items())[0][1]}"

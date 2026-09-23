@@ -1,0 +1,38 @@
+# PCB specification (stage 4): what stage 5 builds the board from. Every rule is within the fab profile's
+# capability (checked by the stage 4 gate); the price is unknown until quotes are captured (D5).
+
+[board]
+fab = "pcbway"
+layers = 2
+thickness_mm = 1.6
+material = "FR-4"
+finish = "HASL"
+copper_oz = 1.0
+# the outline stage 5 starts from, inside the locked maximum of 20 x 15 mm (design.md); stage 5 may shrink it
+outline_mm = { width = 20.0, height = 15.0 }
+corner_radius_mm = 1.0
+
+[rules]
+# design values, not the fab's minimums: comfortably inside PCBWay's 0.1016 mm track and clearance
+track_mm = 0.25
+clearance_mm = 0.2
+via_mm = 0.6
+via_drill_mm = 0.3
+hole_to_copper_mm = 0.25
+edge_clearance_mm = 0.3
+
+[[pours]]
+net = "GND"
+layers = ["F.Cu", "B.Cu"]
+clearance_mm = 0.25
+min_width_mm = 0.25
+thermal_gap_mm = 0.3
+thermal_spoke_mm = 0.3
+
+[impedance]
+# no controlled impedance on this board
+targets = []
+
+[price]
+status = "unknown"
+note = "PCBWay's price model is not captured (D5); the owner is asked before an order"

@@ -1,0 +1,19 @@
+{
+ "stage": 3,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "parts": 7,
+  "nets": 5,
+  "erc errors": 0,
+  "erc warnings": 0
+ },
+ "asks": [],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/temperature-sensor.kicad_sch",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/netlist.net",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/erc.json",
+  "/home/user/waffle-eda/designs/temperature-sensor/reports/schematic-svg"
+ ],
+ "seconds": 2.1
+}

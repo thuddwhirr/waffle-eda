@@ -1,0 +1,24 @@
+# The connectivity specification of the design document (stage 1): every net and the pins on it, by reference
+# and pin number as the BOM's symbols number them. Stage 3's netlist must match this one to one.
+
+[design]
+name = "temperature-sensor"
+supply = "+3V3"
+ground = "GND"
+
+# Pins not listed on any net are no-connects (stage 3 flags them).
+[nets]
+"+3V3" = ["J1.1", "U1.4", "C1.1", "R1.1", "R2.1", "R3.1"]
+GND = ["J1.2", "U1.2", "U1.5", "C1.2", "D1.1"]
+SDA = ["J1.3", "U1.6", "R2.2"]
+SCL = ["J1.4", "U1.1", "R3.2"]
+LED_K = ["R1.2", "D1.2"]
+
+[no_connect]
+pins = ["U1.3"]
+
+# The interface positions of the design document's table: a locked edge is placed first and never moved; a
+# region confines a free part.
+[interfaces]
+J1 = { edge = "west", pin1 = "north", locked = true }
+D1 = { region = "east" }

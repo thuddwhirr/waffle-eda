@@ -111,6 +111,24 @@ defects: single-pad nets counted as connected; violations between two fixed item
 
 ## Class A (in progress)
 
+**D56. Stage 5's baseline is Freerouting 2.4.1 under Java 25, headless, with a settings file per run**
+(`waffle_eda/route/freerouting.py`, `scripts/fetch_freerouting.py`). Measured 2026-09-23 on `tinkerforge-temperature`,
+commit of this entry: 2.4.1 needs Java 25 (class file 69; apt `openjdk-25-jdk-headless`), runs without Xvfb with
+`gui.enabled=false`, and honours `-mp`; 1.9.0 routes 0 of 6 nets once a pour is exported as a plane. What the
+jar needs around it, each found by a failing board: unique reference designators (the exporter refuses `VAL` x2);
+the measured rules written into the net classes; the hole rule as a via and pin clearance in the DSN
+(`hole - ring`); the specification's pours as planes with their pins removed from the network; a stitching via
+at every surface pad of a poured net before routing; every neck (the fanout stage's 0.75 x width, unaffected by
+`automatic_neckdown` or `neck_width_um`) widened, nudged or re-laid under the exact collision index. Escape stubs
+laid before the router, own fanout with its fanout stage off, and 4/3 width lost (numbers in `route/stage5.py`).
+
+**D57. The class A gate after the first day on it**: `tinkerforge-temperature` 6 of 6 nets, 0 violations, 22 s
+(`scripts/route_reference.py`); `open-book-c1` 33 of 35 with 14 necks the repair cannot widen (a track the fanout
+stage squeezed past a 0.2 mm wide button pad) and one ground pad no stitching via fits; the four larger boards are
+in the gate's rows of `docs/plan.md`. The synthetic design `designs/temperature-sensor` passes all six stage gates
+to fab outputs (`scripts/design.py temperature-sensor status`); the owner's review of them is pending.
+Measurement, 2026-09-23.
+
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
 `olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420`; the last is the one whose power on
 continuous copper matters. Owner, 2026-09-21. (The rest of D49, taking M4 ahead of M3b, is superseded by D55.)

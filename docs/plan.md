@@ -9,39 +9,43 @@ Everything else in this file serves that sentence.
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none.
 
-**Confirm the state first.** A fresh container has no references and no `build/`; fetching takes a few minutes.
+**Confirm the state first.** On the web the session hook has already installed everything; elsewhere run the
+installs `.claude/hooks/session-start.sh` lists (pip, Java 25, KiCad's symbol and footprint libraries, the jar,
+the references).
 
 ```
-python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java, Xvfb: all present on 2026-09-23
-python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
-python3 scripts/gate.py a               # expect FAIL: the parked router reaches 4 of 6 nets on the smoke test
-python3 -m pytest -q -rs                # expect 0 failed; a skip is a guard for a build artifact, never a pass
+python3 scripts/check_env.py            # python, kicad-cli, pcbnew, z3, numpy, shapely, pytest, java 25, the jar, kicad-libs
+python3 scripts/gate.py a               # expect FAIL, 1 of 6: the rows below
+python3 -m pytest -q -rs                # expect 0 failed (a skip is a guard for a build artifact, never a pass)
+python3 scripts/design.py temperature-sensor status   # all six stages PASS, waiting on the owner's review
 ```
 
-**Milestone A, task 1: a baseline stage 5 behind the gate.** `scripts/gate.py a` strips each class A reference to
-placement (`bench/rebuild.strip_all`), calls `route.board_router.route_board(board, rules)`, refills zones and
-scores the result (`bench/rebuild.score`). Replace what that call does with a wrapper around Freerouting:
-export the problem board with `pcbnew.ExportSpecctraDSN`, run the jar headless under `xvfb-run`, import the
-session with `pcbnew.ImportSpecctraSES`, then refill and score exactly as now. The salvaged scripts show the
-mechanics and the pitfalls (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `import_ses.py`, `staged_route.sh`:
-rule areas export as keepouts, plane layers must be typed `power`, a `fix`-typed wire freezes its whole net in
-1.9). Supply nets on a two-layer board are pours, not tracks: pour them before routing, or let the router route
-them and measure what that costs; either way the gate decides. Score the smoke test first, then walk the ladder.
+**Milestone A, task 2: the class A gate, one board at a time, smallest first.** Stage 5 exists and is behind
+the gate (`route/stage5.py`: the specification's pours, a stitching via at every surface pad of a poured net,
+Freerouting 2.4.1 headless under the measured rules, the fill, the DRC, the closure loop; D56). The smoke test
+passes in 22 s. The next board is `open-book-c1` and its two failures are named:
 
-Obtaining the jar, measured 2026-09-23: `git ls-remote` on `freerouting/freerouting` works from here (latest tag
-v2.4.1), a GitHub release asset answered with a redirect, Maven Central answered 429. Try the current release
-first; the old project settled on 1.9.0 because 2.1.0 ignored `-mp` and wrote no session file when killed
-(`lessons/waffle-fpga-decisions.md` D51). Record the version and flags that worked as a decision. If no route
-works, say so and the owner supplies the jar; do not spend the session on it.
+1. **Necks the repair cannot widen** (14 on `open-book-c1`, the `track_width` rows of
+   `scripts/route_reference.py open-book-c1`): the router's fanout stage escapes a button pad in a straight line
+   past a 0.2 mm wide ground strip of the same footprint at three quarters of the width, and a full-width track
+   does not fit there. `route.freerouting.repair_necks` widens, nudges sideways or re-lays out of the pad; none
+   of the three helps a track boxed in along its whole length. What is missing is a repair that re-routes the
+   escape around the strip (the pad's other side, or a via first), or a way to keep the fanout stage off that
+   path. Measure before building: the reference's own escape from those pads is the answer key.
+2. **A ground pad no stitching via fits** (U1.8 of the Pico module, a 3.5 x 1.7 mm pad in a row): the site
+   search walks the pad's axis and then every 15 degrees around it up to 2 mm; that pad needs either a longer
+   reach or a via between the row's pads. Look at where the reference puts its via for that pad.
 
-**Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
-"Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a
-four-pin header, decoupling, one LED, two layers), which is what `tinkerforge-temperature` is. Stage 3 has a
-starting point in `salvage/waffle-fpga/hw/tools/gen_sch.py` and `symlib.py`; stage 6 is `kicad-cli pcb export`
-plus a re-parse of every file written.
+Then `olimex-esp32c3-devkit` (0.127 mm tracks, a QFN), then the three boards the gate has numbers for below.
+A board that fails gets its failing case in `tests/test_stage5.py` first, then the smallest change.
 
-**What is not next.** Nothing in `route/bus.py`, `busplanner.py`, `escape.py` or `length.py`; nothing on D30;
-nothing on the FPGA target; no research. Those wait for class C (see "Parked").
+**Alongside: the owner's review of `designs/temperature-sensor/`.** Every stage passed; the outputs are in
+`out/` and the renders in `reports/`. The milestone needs the owner's review of them, and the four asks
+`scripts/design.py temperature-sensor status` prints (the review date in `design.md`, the unknown prices, the
+uncaptured PCBWay price model, the assembler's BOM template) are the owner's, not a session's.
+
+**What is not next.** Nothing in `route/bus.py`, `busplanner.py`, `escape.py`, `length.py` or
+`board_router.py`; nothing on D30; nothing on the FPGA target; no research; no second router.
 
 ## How the ladder is climbed
 
@@ -89,9 +93,11 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-23):* gate FAIL. The parked homegrown router: 4 of 6 nets on `tinkerforge-temperature`, 25 of
-35 on `open-book-c1`, 29 of 34 on `olimex-esp32c3-devkit`, the other three not attemptable (D51/D52). Stages 1
-to 4 and 6: nothing written. The benchmark and its sanity pair pass on all six (D50).
+*State (2026-09-23, evening):* gate FAIL, 1 of 6. `tinkerforge-temperature` PASS (6 of 6 nets, 0 violations, 22 s); `open-book-c1` 33 of 35,
+14 `track_width` (necks the repair cannot widen) and one ground pad without a stitching site; `olimex-esp32c3-devkit`
+31 of 34 with 17 `hole_clearance`, measured before the day's last two fixes; the gate was still on
+`olimex-rp2040-pico-pc` when this was committed, and the rows for the three larger boards land in the next commit.
+The synthetic design passes all six stage gates to fab outputs (D57); the owner's review is pending.
 
 ### B. A class B board, end to end
 
@@ -138,8 +144,14 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/busplan.py`, `busplanner.py` | the bus plan and its check, gate `busplan` PASS 3 of 3 (D41) |
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
 | `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands |
+| `waffle_eda/route/freerouting.py`, `pours.py`, `stitch.py`, `stage5.py` | stage 5 of class A: Freerouting 2.4.1 headless under the measured rules with the hole rule as via clearance, the neck repair; the specification's pours; stitching vias; the fill-check-stitch loop with its attempt log (D56) |
+| `waffle_eda/sch/` | stage 3: a one-sheet schematic from `bom.csv` and `connectivity.toml`, ERC, the netlist compared one to one (from the salvage, D4) |
+| `waffle_eda/design/` | the design directory's six stages and status (`pipeline.py`); the board from the netlist with the smallest placer that serves class A (`board.py`) |
+| `designs/temperature-sensor/` | the class A synthetic design through all six stages to `out/` (D57) |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
-| `tests/` | 183 tests, 0 failed on 2026-09-21 |
+| `scripts/route_reference.py`, `design.py`, `fetch_freerouting.py` | one class A board through stage 5 with the knobs exposed; a design's stages and status; the pinned jar |
+| `.claude/hooks/session-start.sh` | every install a web session needs (pip, Java 25, KiCad libraries, the jar, the references) |
+| `tests/` | 200 tests (183 before this day, 18 added for stage 5 and the design, the router-not-built test gone); the full run was still going when this was committed |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)

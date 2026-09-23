@@ -1,0 +1,17 @@
+{
+ "stage": 4,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "rules checked": 7,
+  "impedance targets": 0,
+  "price": "unknown"
+ },
+ "asks": [
+  "the PCBWay price model is not captured (D5): the board price is unknown and the owner decides"
+ ],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/spec.toml"
+ ],
+ "seconds": 0.0
+}

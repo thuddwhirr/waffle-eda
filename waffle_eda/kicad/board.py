@@ -20,6 +20,9 @@ stage repeats it:
 * A shape built in Python (``pcbnew.SHAPE_CIRCLE(...)``) exposes only the ``Collide(SEG, ...)`` overload; make the
   shape from ``GetEffectiveShape()`` (typed as the base ``SHAPE``) the receiver and pass the built shape as the
   argument, or the call raises a ``TypeError`` about ``SEG const &``.
+* ``track.GetStart()`` and ``GetEnd()`` return the live vector, not a copy: a point kept across a ``SetStart``
+  moves with the track. Copy it (``pcbnew.VECTOR2I(track.GetStart())``) before saving or reusing it, or a
+  restore after a failed move writes the moved value back and a nudge accumulates every offset it tried.
 """
 from __future__ import annotations
 

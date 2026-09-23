@@ -45,5 +45,7 @@ numbers go in `docs/decisions.md`. Do not read `docs/archive/` unless a specific
 
 ## Mechanics
 
-Python 3.11 with KiCad 9's `pcbnew`; `scripts/check_env.py` verifies it. Reference boards are fetched by
-`scripts/fetch_references.py`, never committed. KiCad API pitfalls are documented in `waffle_eda/kicad/board.py`.
+Python 3.11 with KiCad 9's `pcbnew` and its symbol and footprint libraries, Java 25 and the pinned Freerouting jar;
+`scripts/check_env.py` verifies it all. Reference boards are fetched by `scripts/fetch_references.py`, the jar by
+`scripts/fetch_freerouting.py`, neither committed; `.claude/hooks/session-start.sh` does every install on the web.
+KiCad API pitfalls are documented in `waffle_eda/kicad/board.py`.

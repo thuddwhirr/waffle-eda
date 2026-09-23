@@ -1,0 +1,47 @@
+[
+ {
+  "attempt": 0,
+  "placement": {
+   "C1": {
+    "x_mm": 6.0,
+    "y_mm": 3.5,
+    "rotation": 0.0
+   },
+   "D1": {
+    "x_mm": 10.5,
+    "y_mm": 6.5,
+    "rotation": 0.0
+   },
+   "J1": {
+    "x_mm": 2.295,
+    "y_mm": 3.69,
+    "rotation": 0.0
+   },
+   "R1": {
+    "x_mm": 10.5,
+    "y_mm": 4.5,
+    "rotation": 0.0
+   },
+   "R2": {
+    "x_mm": 6.0,
+    "y_mm": 9.5,
+    "rotation": 180.0
+   },
+   "R3": {
+    "x_mm": 9.0,
+    "y_mm": 10.5,
+    "rotation": -90.0
+   },
+   "U1": {
+    "x_mm": 6.5,
+    "y_mm": 6.5,
+    "rotation": 180.0
+   }
+  },
+  "route": "5 nets routed, 0 failed | pours 2, stitching vias 4 (none possible 0), 1 fill rounds | freerouting 2.4.1: 4 nets routed, 0 failed; 35 tracks, 4 vias; router counts unrouted 0, violations 5; converged in 6s | 7s",
+  "failed": {},
+  "electrical": 0,
+  "by_type": {},
+  "unconnected_items": 0
+ }
+]

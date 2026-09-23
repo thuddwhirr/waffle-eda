@@ -1,0 +1,18 @@
+{
+ "stage": 1,
+ "passed": true,
+ "findings": [],
+ "numbers": {
+  "nets": 5,
+  "locked constraints": 6,
+  "interfaces": 2
+ },
+ "asks": [
+  "review design.md and replace 'Owner review: pending' with the review's date"
+ ],
+ "outputs": [
+  "/home/user/waffle-eda/designs/temperature-sensor/design.md",
+  "/home/user/waffle-eda/designs/temperature-sensor/connectivity.toml"
+ ],
+ "seconds": 0.0
+}
