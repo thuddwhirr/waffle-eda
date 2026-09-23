@@ -62,6 +62,31 @@ interface is a separate project that consumes this one's files, renders and repo
 router spec and full log are archived (`archive/`); this log is condensed to what stands; CLAUDE.md is
 rewritten to the rules in it.
 
+**D56. Stage 5's baseline is Freerouting 2.4.1 on Java 25, fetched, not installed.** The current release needs
+Java 25 (class file 69); the container has 21. `scripts/fetch_tools.py` puts the jar and a Temurin 25 JDK under
+`build/tools/` from GitHub releases (Maven Central answers 429, Adoptium's API 403 through the proxy);
+`scripts/check_env.py` requires both. The wrapper is `route/freerouting.py`; the class A gate runs it.
+Owner (the version), 2026-09-23; the rest measured the same day.
+
+**D57. What the wrapper had to learn, each by running it** (`route/freerouting.py`, 2026-09-23).
+`pcbnew.ExportSpecctraDSN` returns False and writes nothing when two footprints share a reference (five of six
+class A boards); duplicates are renamed for the export and restored after the import. The DSN carries the
+board's net-class values, not the measured rules; written in, the router asked for `tinkerforge-temperature`'s
+measured clearance (0.1972 mm, 0.003 under its SOT-563's pad gap) attaches nothing to that part: its maze finds
+the path and its exact insertion check rejects the last segment; at 0.190 it routes the whole board in 2 passes.
+So the wire-to-SMD-pad clearance is handed over as the rule less 0.0072 (4 of 6 nets, 2 clearance violations);
+the same slack on every clearance gives 6 of 6 there and 175 violations of exactly that slack on
+`libresolar-mppt-2420`, so it stays scoped. The default via cost of 50 stops the router placing any via of its
+own on a 15 x 25 mm board (0 vias, 18 passes alternating between two top-layer solutions); `router.scoring
+.via_costs` 1 in its settings file gives 14 to the reference's 15. The same setting as an `(autoroute_settings)`
+block in the DSN made the loader drop every pin of `olimex-rp2040-pico-pc` (0 unrouted items) when placed
+before the structure's rule block and was not read after it. The fanout stage necks its stubs to 75 % of the
+width, below the rule, and is off. The session file truncates via drills to whole micrometres (248.9 became
+248), so the drill is rounded up to one. Hole-to-copper is not a Specctra rule: typed via and pin clearances of
+the rule less the smallest ring carry it. Escape stubs laid by the wrapper (D51's finding, the reference's own
+exit pattern) made the smoke test worse (2 of 6 against 6 of 6 under the global slack) and stay off. Runs are
+deterministic per configuration.
+
 ## Benchmark and measurement
 
 **D10. Strip-and-score.** `bench/harness.py` strips the bus nets' tracks and vias, keeps everything else as

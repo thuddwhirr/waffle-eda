@@ -110,27 +110,29 @@ def gate_m3a() -> list[tuple[str, bool, str]]:
 
 
 def gate_m4() -> list[tuple[str, bool, str]]:
-    """M4: a full re-route of each class A reference from placement, DRC clean (plan.md, M4; D49).
+    """Class A: a full re-route of each class A reference from placement, DRC clean (plan.md, milestone A; D49).
 
     The ladder rises as class C's does: the smallest board first. The benchmark is `waffle_eda.bench.rebuild`,
     whose two sanity checks (the stripped board scores 0.000, the original 1.000) are asserted by the tests. This
-    gate judges only what the tool produces, so while M4's router is unbuilt every row fails with that reason.
+    gate judges only what the tool produces: stage 5's baseline, Freerouting behind `route.freerouting` (D55,
+    D56), with the DSN, session and log of every board left under `build/fr/<key>/`.
     """
     from waffle_eda.bench import rebuild
-    from waffle_eda.route import board_router
+    from waffle_eda.route import freerouting
     rows = []
+    missing = freerouting.available()
     for ref in m4_references():
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
+            continue
+        if missing:
+            rows.append((ref.key, False, missing))
             continue
         try:
             bare, _info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            result = board_router.route_board(board, rules)
-        except board_router.RoutingTooLarge as why:
-            rows.append((ref.key, False, str(why).split(". ")[0]))
-            continue
+            result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
@@ -138,10 +140,8 @@ def gate_m4() -> list[tuple[str, bool, str]]:
         kb.refill_zones(board)
         kb.save_board(board, out)
         s = rebuild.score(ref, out)
-        detail = s.summary()
-        if result.failed:
-            detail += f" | first failure: {sorted(result.failed.items())[0][1]}"
-        rows.append((ref.key, s.passed, detail))
+        rebuild.write_score(s)
+        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary()))
     return rows
 
 

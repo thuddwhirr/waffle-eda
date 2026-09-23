@@ -9,30 +9,36 @@ Everything else in this file serves that sentence.
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none.
 
-**Confirm the state first.** A fresh container has no references and no `build/`; fetching takes a few minutes.
+**Confirm the state first.** A fresh container has no references, no tools and no `build/`; fetching takes a few
+minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver numpy shapely pytest`).
 
 ```
-python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java, Xvfb: all present on 2026-09-23
+python3 scripts/fetch_tools.py          # Freerouting 2.4.1 and a Java 25 into build/tools/ (D56)
+python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar, Xvfb: all present on 2026-09-23
 python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
-python3 scripts/gate.py a               # expect FAIL: the parked router reaches 4 of 6 nets on the smoke test
+python3 scripts/gate.py a               # expect FAIL: see the state line under milestone A for the numbers
 python3 -m pytest -q -rs                # expect 0 failed; a skip is a guard for a build artifact, never a pass
 ```
 
-**Milestone A, task 1: a baseline stage 5 behind the gate.** `scripts/gate.py a` strips each class A reference to
-placement (`bench/rebuild.strip_all`), calls `route.board_router.route_board(board, rules)`, refills zones and
-scores the result (`bench/rebuild.score`). Replace what that call does with a wrapper around Freerouting:
-export the problem board with `pcbnew.ExportSpecctraDSN`, run the jar headless under `xvfb-run`, import the
-session with `pcbnew.ImportSpecctraSES`, then refill and score exactly as now. The salvaged scripts show the
-mechanics and the pitfalls (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `import_ses.py`, `staged_route.sh`:
-rule areas export as keepouts, plane layers must be typed `power`, a `fix`-typed wire freezes its whole net in
-1.9). Supply nets on a two-layer board are pours, not tracks: pour them before routing, or let the router route
-them and measure what that costs; either way the gate decides. Score the smoke test first, then walk the ladder.
+**Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
+reference to placement, routes it with `route.freerouting.route_board` (Freerouting 2.4.1 headless: export DSN,
+run the jar under `xvfb-run`, import the session; D56, D57), refills zones and scores it. Every board's DSN,
+session and logs are under `build/fr/<key>/`. The failing cases, first (gate run of 2026-09-23, 23:00 UTC,
+wrapper as committed; the last three boards were still running at the commit and the row says so):
 
-Obtaining the jar, measured 2026-09-23: `git ls-remote` on `freerouting/freerouting` works from here (latest tag
-v2.4.1), a GitHub release asset answered with a redirect, Maven Central answered 429. Try the current release
-first; the old project settled on 1.9.0 because 2.1.0 ignored `-mp` and wrote no session file when killed
-(`lessons/waffle-fpga-decisions.md` D51). Record the version and flags that worked as a decision. If no route
-works, say so and the owner supplies the jar; do not spend the session on it.
+| Board | Nets | Electrical violations | Blocker |
+|---|---|---|---|
+| `tinkerforge-temperature` | 4 of 6 | 2 clearance | the router's exact insertion check at the SOT-563 exits (D57) |
+| `open-book-c1` | 34 of 35 | 59: 40 track width, 18 clearance, 1 edge | the router necks traces below the rule at pads (`automatic_neckdown` off changes nothing); GND, a pour on the reference, left as a track |
+| `olimex-esp32c3-devkit` | 34 of 34 | 31: 16 hole clearance, 15 clearance | the typed via clearance is not honoured everywhere; clearance at pad exits |
+| `olimex-rp2040-pico-pc` | measuring | | first run routed nothing (the DSN settings block, D57; fixed) |
+| `crkbd-corne-cherry` | measuring | | first run: empty session for the same reason (fixed) |
+| `libresolar-mppt-2420` | measuring | | first run 101 of 102 and 201 clearance violations of exactly the global slack (scoped since) |
+
+The one thing measured to block the smoke test is the router's exact insertion check at the SOT-563: it needs
+about 0.01 mm more than the reference's tightest spot has (D57), so the wrapper asks for the rule less 0.0072 and
+the DRC finds the two places it used that. The options are on the owner's table in the session report. Do not
+tune the slack, the via cost or the fanout further without a failing case that names the board and the item.
 
 **Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
 "Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a
@@ -89,9 +95,11 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-23):* gate FAIL. The parked homegrown router: 4 of 6 nets on `tinkerforge-temperature`, 25 of
-35 on `open-book-c1`, 29 of 34 on `olimex-esp32c3-devkit`, the other three not attemptable (D51/D52). Stages 1
-to 4 and 6: nothing written. The benchmark and its sanity pair pass on all six (D50).
+*State (2026-09-23):* gate FAIL, 0 of 6. Stage 5's baseline (Freerouting 2.4.1 behind `route/freerouting.py`,
+D56, D57) connects 4 of 6 nets on `tinkerforge-temperature`, 34 of 35 on `open-book-c1`, 34 of 34 on
+`olimex-esp32c3-devkit`, each with clearance or width violations under the measured rules; the table in the
+next-step section has the numbers. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
+pass on all six (D50). Tests: 192 passed, 0 failed.
 
 ### B. A class B board, end to end
 
@@ -137,9 +145,10 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/escape.py`, `fanout.py`, `lattice.py`, `obstacles.py` | BGA escape router, gate `escape` PASS 9 of 9 (D20); the exact collision index every router uses |
 | `waffle_eda/route/busplan.py`, `busplanner.py` | the bus plan and its check, gate `busplan` PASS 3 of 3 (D41) |
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
-| `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands |
+| `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java |
+| `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
-| `tests/` | 183 tests, 0 failed on 2026-09-21 |
+| `tests/` | 195 tests, 0 failed on 2026-09-23 (192 passed, 3 skips guarding unbuilt artifacts) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)

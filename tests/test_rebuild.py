@@ -117,10 +117,3 @@ def test_the_rules_apply_to_the_whole_board_and_not_to_a_net_list():
     for constraint in rebuild.QUIET_CONSTRAINTS:
         assert f"(constraint {constraint} (min 0mm))" in text
     assert "edge_clearance" in rebuild.QUIET_CONSTRAINTS
-
-
-def test_m4s_router_is_not_built_and_says_so():
-    """M4 is a failing milestone, not a pending one. When the router exists this test is the one to delete."""
-    from waffle_eda.route import board_router
-    with pytest.raises(NotImplementedError):
-        board_router.route_board(None, None)
