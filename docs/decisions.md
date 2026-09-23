@@ -50,15 +50,17 @@ target board's via size and fab tier are specified by the owner when a class C d
 not researched. No vendor research of capability, price, lead time or reputation: this environment cannot reach
 the sources (two rounds, 316 agents and 19.5 M tokens, returned evidence for one vendor). Owner, 2026-09-21.
 
-**D55. The plan is the class ladder, one class at a time, whole pipeline first.** Owner, 2026-09-23, on the
-review of the first five days. A milestone is a class of board (A, B, B+, C) going through all six stages with
-no interactive routing, gated on every reference in the class and on one synthetic design to fab files. Each
-stage uses the cheapest existing tool that passes the class (Freerouting for stage 5 of class A, `kicad-cli` for
-DRC and exports); own code is written where a measurement shows the baseline fails, and never re-architected
-because of one board. The DDR3 bus work (M3b, D30, the M6 target board) is parked inside class C, untouched
-until B+ passes. The user interface is a separate project that consumes this one's files, renders and reports.
-The plan, the router spec and the full log of the first five days are archived (`archive/`); this log is
-condensed to what stands; CLAUDE.md is rewritten to the rules in it.
+**D55. Build the whole pipeline for class A boards to completion first; then work through the pipeline again
+and extend it for class B, then B+, then C, then C'.** Owner, 2026-09-23, on the review of the first five days.
+"Completion" for a class: every reference board in the class passes the class gate through all six stages
+with no interactive routing, and one synthetic design of that class reaches fab files the owner reviewed. The
+next class is not started until the current one is complete, and every earlier class stays passing. Each stage
+uses the cheapest existing tool that passes the class (Freerouting for stage 5 of class A, `kicad-cli` for DRC
+and exports); own code is written where a measurement shows the baseline fails, and never re-architected
+because of one board. The DDR3 bus work (M3b, D30, the M6 target board) is parked inside class C. The user
+interface is a separate project that consumes this one's files, renders and reports. The first five days' plan,
+router spec and full log are archived (`archive/`); this log is condensed to what stands; CLAUDE.md is
+rewritten to the rules in it.
 
 ## Benchmark and measurement
 
