@@ -1,0 +1,75 @@
+# PCBWay, standard capability. Numbers captured from PCBWay's published capability and stack-up pages on 2026-09-10 by
+# the waffle-fpga project (docs/lessons/vendor-notes.md, stackup.md, tooling-project-brief.md section 7). Confirm on
+# the quote page at order time; impedance control and via-in-pad are quoted under "Advanced PCB".
+
+[profile]
+name = "pcbway"
+vendor = "PCBWay"
+source = "PCBWay published capability pages, captured 2026-09-10 (waffle-fpga vendor-notes.md); confirm at quote time"
+
+[capability]
+# Standard quick-order tier, from the text of https://www.pcbway.com/capabilities.html read on 2026-09-18
+# (decisions D16). The advanced tier below is the same page's advanced table, 0.5 oz outer copper before plating,
+# with its difficulty grades. Confirm on the quote page before a design rule is fixed.
+layer_counts = [1, 2, 4, 6, 8, 10, 12, 14]
+thickness_mm = [0.2, 3.2]
+min_track_outer_mm = 0.1016        # 4 mil
+min_clearance_outer_mm = 0.1016    # 4 mil
+min_track_inner_mm = 0.1016        # 4 mil
+min_clearance_inner_mm = 0.1016    # 4 mil
+min_drill_mm = 0.15                # holes under 0.2 mm at extra charge
+min_annular_ring_mm = 0.15         # 6 mil
+standard_via_pad_mm = 0.45         # the smallest via with a 0.15 mm ring on the 0.15 mm minimum drill
+standard_via_drill_mm = 0.15       # 10.7:1 on a 1.6 mm board: medium difficulty per the advanced table
+hole_clearance_mm = 0.229          # inner-layer hole isolation ring, 8 layers, normal process (9 mil)
+copper_to_edge_mm = 0.30
+outer_copper_oz = 1.0
+inner_copper_oz = 1.0
+via_in_pad = "option"              # advanced tier
+filled_capped_vias = "option"      # advanced tier
+blind_buried_vias = "option"       # advanced tier
+controlled_impedance = "option"
+surface_finishes = ["HASL", "ENIG", "ENEPIG"]
+material = "FR-4"
+smallest_passive = "0201"
+bga_assembly = true
+x_ray_inspection = "option"
+assembly_min_quantity = 5
+
+[advanced]
+# difficulty grades: normal / medium / high, as printed on the page
+outer_track_spacing_mil = { normal = "4/5", medium = "4/4, locally 3.5/3.5 between a BGA's pads", high = "under 3.5/3.5" }
+inner_track_spacing_mil = { normal = "4/4", medium = "4/3.5", high = "under 3.5/3" }
+via_annular_ring_mil = { normal = 5, medium = 4 }
+inner_hole_isolation_8L_mil = { normal = 9, medium = 7, high = 6 }
+thickness_to_hole_ratio = { normal = 8, medium = 10, not_offered_above = 12 }
+hole_to_hole_mil = { normal = 16, medium = "14 to 16", high = "13 to 14", via_under_0p45mm = 11 }
+
+# PCBWay's published standard 8-layer 1.6 mm structure #1 (1 oz / 1 oz, >= 60 % inner residual copper).
+[stackup.eight_layer_1p6mm]
+layers = 8
+finished_thickness_mm = 1.62
+finished_thickness_tolerance = 0.10
+outer_copper_oz = 1.0     # 0.5 oz base plated to 1 oz
+inner_copper_oz = 1.0
+# Dielectric between consecutive copper layers, top to bottom: type, thickness after lamination (mm), Dk at 1 MHz.
+dielectrics = [
+  { between = "L1-L2", type = "prepreg 2116", thickness_mm = 0.1195, dk = 4.45 },
+  { between = "L2-L3", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L3-L4", type = "prepreg 7628", thickness_mm = 0.175,  dk = 4.74 },
+  { between = "L4-L5", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L5-L6", type = "prepreg 7628", thickness_mm = 0.175,  dk = 4.74 },
+  { between = "L6-L7", type = "core",         thickness_mm = 0.23,   dk = 4.6 },
+  { between = "L7-L8", type = "prepreg 2116", thickness_mm = 0.1195, dk = 4.45 },
+]
+# Closed-form impedance widths the last project derived for this structure (salvage/waffle-fpga/hw/tools/impedance.py).
+[stackup.eight_layer_1p6mm.impedance_mm]
+microstrip_50_single = 0.212
+microstrip_100_diff = { width = 0.158, gap = 0.150 }
+microstrip_90_diff = { width = 0.193, gap = 0.150 }
+stripline_50_single = 0.129
+stripline_100_diff = { width = 0.100, gap = 0.200 }
+
+[price]
+status = "unknown"
+note = "Fill from real PCBWay quotes before any cost-based decision; until then every cost-crossing escalates to the owner."
