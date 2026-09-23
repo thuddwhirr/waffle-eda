@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """The milestone gate: PASS only when every reference in the milestone's class passes in full. Exit 0 on PASS.
 
-    python3 scripts/gate.py m1     # strip-and-score harness: do nothing scores 0, the original copper passes
-    python3 scripts/gate.py m2     # fan-out: every bus ball on every BGA of every bus reference, zero electrical
-                                   # violations under the reference's constraints; every synthetic case complete
-                                   # and DRC clean
-    python3 scripts/gate.py m3a    # the bus plan: for every class C reference, our plan passes the check of
-                                   # `waffle_eda.route.busplan` (every net in one piece, no crossings, every via
-                                   # site legal for its package's style and its own, room for every length deficit,
-                                   # the bus packages' escapes part of the plan)
-    python3 scripts/gate.py m3b    # the bus routing inside that plan: every bus net connected, zero violations
-                                   # under the constraints, lengths matched as the reference matches them (D27),
-                                   # vias only inside the packages
-    python3 scripts/gate.py m4     # the whole board re-routed from placement: every net of every class A
-                                   # reference connected, zero electrical violations under the rules measured
-                                   # off that board, planes on continuous copper (D49)
+    python3 scripts/gate.py a        # class A: the whole board re-routed from placement: every net of every
+                                     # class A reference connected, zero electrical violations under the rules
+                                     # measured off that board (D50, D55)
+    python3 scripts/gate.py escape   # BGA escape (class B+): every bus ball on every BGA of every bus reference,
+                                     # zero electrical violations under the reference's constraints; every
+                                     # synthetic case complete and DRC clean
+    python3 scripts/gate.py busplan  # the bus plan (class C): for every class C reference, our plan passes the
+                                     # check of `waffle_eda.route.busplan` (every net in one piece, no crossings,
+                                     # every via site legal for its package's style and its own, room for every
+                                     # length deficit, the bus packages' escapes part of the plan)
+    python3 scripts/gate.py bus      # the bus routing inside that plan (class C): every bus net connected, zero
+                                     # violations under the constraints, lengths matched as the reference matches
+                                     # them (D27), vias only inside the packages
+    python3 scripts/gate.py harness  # the bus strip-and-score harness itself: do nothing scores 0, the original
+                                     # copper passes
 
+The milestone names of the first five days (m1, m2, m3a, m3b, m4) still work and mean the same gates.
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
 """
 from __future__ import annotations
@@ -163,12 +165,20 @@ def gate_m3() -> list[tuple[str, bool, str]]:
     return rows
 
 
+GATES = {
+    "a": gate_m4, "m4": gate_m4,
+    "escape": gate_m2, "m2": gate_m2,
+    "busplan": gate_m3a, "m3a": gate_m3a,
+    "bus": gate_m3, "m3b": gate_m3, "m3": gate_m3,
+    "harness": gate_m1, "m1": gate_m1,
+}
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or argv[0] not in ("m1", "m2", "m3", "m3a", "m3b", "m4"):
+    if len(argv) != 1 or argv[0] not in GATES:
         print(__doc__)
         return 2
-    rows = {"m1": gate_m1, "m2": gate_m2, "m3a": gate_m3a, "m3": gate_m3, "m3b": gate_m3,
-            "m4": gate_m4}[argv[0]]()
+    rows = GATES[argv[0]]()
     failed = [r for r in rows if not r[1]]
     print(f"\n=== GATE {argv[0].upper()}: {'PASS' if not failed else 'FAIL'} ({len(rows) - len(failed)} of {len(rows)} cases pass) ===")
     for key, ok, detail in sorted(rows, key=lambda r: r[1]):

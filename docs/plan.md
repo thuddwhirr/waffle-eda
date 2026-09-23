@@ -1,312 +1,168 @@
 # Plan
 
+The plan is the reference ladder: one class of board at a time, the whole pipeline for that class before the
+next class is touched (D55). A milestone is a class. Everything else in this file serves that sentence.
+
 ## Next session starts here
 
-Read this first; it is the only part of the plan that says what to *do* rather than what is true. **Whoever
-finishes a piece of work updates this section in the same commit.** A stale next-step is worse than none.
+This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
+same commit.** A stale next-step is worse than none.
 
-**Confirm the state before changing anything** (about four minutes, and it re-grounds on facts rather than on
-anyone's memory):
+**Confirm the state first.** A fresh container has no references and no `build/`; fetching takes a few minutes.
 
 ```
-python3 scripts/gate.py m3a     # expect PASS, 3 of 3 class C references
-python3 -m pytest -q -rs        # 183 tests; expect 0 failed, about 21 minutes. -rs prints why anything skipped
-python3 scripts/segment_lengths.py orangecrab-r0.2.1 logicbone butterstick   # the D48 evidence for D30
+python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java, Xvfb: all present on 2026-09-23
+python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
+python3 scripts/gate.py a               # expect FAIL: the parked router reaches 4 of 6 nets on the smoke test
+python3 -m pytest -q -rs                # expect 0 failed; a skip is a guard for a build artifact, never a pass
 ```
 
-**0 failed is the criterion; the pass count moves and that is not a fault.** The skips are guards the tests
-already carry for build artifacts, not anything disabled, so the number that skip depends on what `build/`
-already holds. Three escape cases want the stripped boards `scripts/fanout_bench.py` writes; two more want the
-constraints files `python3 -m waffle_eda.bench.constraints` writes, and they pass once anything has written
-them. Measured on 2026-09-21: **180 passed, 3 skipped, 0 failed** with the constraints files present, and five
-skip without them. Run those two scripts first if you want the full count. Do not read a skip as a pass, and do
-not add one.
+**Milestone A, task 1: a baseline stage 5 behind the gate.** `scripts/gate.py a` strips each class A reference to
+placement (`bench/rebuild.strip_all`), calls `route.board_router.route_board(board, rules)`, refills zones and
+scores the result (`bench/rebuild.score`). Replace what that call does with a wrapper around Freerouting:
+export the problem board with `pcbnew.ExportSpecctraDSN`, run the jar headless under `xvfb-run`, import the
+session with `pcbnew.ImportSpecctraSES`, then refill and score exactly as now. The salvaged scripts show the
+mechanics and the pitfalls (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `import_ses.py`, `staged_route.sh`:
+rule areas export as keepouts, plane layers must be typed `power`, a `fix`-typed wire freezes its whole net in
+1.9). Supply nets on a two-layer board are pours, not tracks: pour them before routing, or let the router route
+them and measure what that costs; either way the gate decides. Score the smoke test first, then walk the ladder.
 
-**The next action is the global stage (B in the spec), and it is now the thing blocking everything.** The
-router runs and the pad escape is built (D51, D52). On `tinkerforge-temperature` it reaches **4 of 6 nets, 196
-tracks, zero electrical violations, score 0.667, 8 s.** FAIL.
+Obtaining the jar, measured 2026-09-23: `git ls-remote` on `freerouting/freerouting` works from here (latest tag
+v2.4.1), a GitHub release asset answered with a redirect, Maven Central answered 429. Try the current release
+first; the old project settled on 1.9.0 because 2.1.0 ignored `-mp` and wrote no session file when killed
+(`lessons/waffle-fpga-decisions.md` D51). Record the version and flags that worked as a decision. If no route
+works, say so and the owner supplies the jar; do not spend the session on it.
 
-Three of the six class A boards cannot be attempted at all: at a grid step fine enough for their pads they need
-2.1, 3.3 and 5.4 million nodes against the 400,000 the router will hold, and they stop with that message rather
-than filling memory. Only `olimex-esp32c3-devkit` and `open-book-c1` join the smoke test in fitting. So the
-global stage is not an optimisation any more, it is the difference between half the ladder being attemptable
-and not.
+**Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
+"Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a
+four-pin header, decoupling, one LED, two layers), which is what `tinkerforge-temperature` is. Stage 3 has a
+starting point in `salvage/waffle-fpga/hw/tools/gen_sch.py` and `symlib.py`; stage 6 is `kicad-cli pcb export`
+plus a re-parse of every file written.
 
-The two remaining failures on the smoke test are the other unbuilt stages, not new faults: `SCL` is a last pad
-reached into a board the earlier nets have filled, which is rip-up, and `GND` is a supply net that stage D
-should pour rather than route as track.
+**What is not next.** Nothing in `route/bus.py`, `busplanner.py`, `escape.py` or `length.py`; nothing on D30;
+nothing on the FPGA target; no research. Those wait for class C (see "Parked").
 
-**`scripts/gate.py m4` does not finish, and one board exhausts memory.** Per-board figures, measured
-2026-09-21 by routing each board directly, route and score time included:
+## How the ladder is climbed
 
-| board | nets connected | score | electrical violations | time |
-| --- | --- | --- | --- | --- |
-| `tinkerforge-temperature` | 4 of 6 | 0.667 | 0 | 16 s |
-| `open-book-c1` | 25 of 35 | 0.714 | 0 | 120 s |
-| `olimex-esp32c3-devkit` | 29 of 34 | 0.853 | 0 | 441 s |
-| `olimex-rp2040-pico-pc` | none | none | none | killed |
-| `libresolar-mppt-2420` | not attempted, 488,312 grid nodes exceeds the 400,000 ceiling | | | |
-| `crkbd-corne-cherry` | not attempted, 3,339,816 grid nodes exceeds the ceiling | | | |
+1. **A milestone is a class.** It is complete when every reference in the class passes the class gate in full
+   *and* one synthetic design of that class has gone through all six stages to fab outputs that the owner
+   reviewed. A plan, an escape, a spec or a partial route is never a milestone.
+2. **Two gates per class.** The re-route gate (strip a reference to placement, re-route, DRC clean under the
+   board's own measured rules) proves stage 5. It cannot prove stages 1 to 4 or 6, because it starts from a
+   finished placement; the synthetic design proves those.
+3. **Lower classes stay green.** Before pushing a change to shared code, run every gate below the current class.
+   The class A gate is the regression suite for everything after it.
+4. **Cheapest tool that passes.** Each stage uses an existing tool where one passes the class: Freerouting for
+   stage 5, `kicad-cli` for DRC and exports, KiCad's libraries for symbols and footprints. Own code is written
+   where a measurement shows the baseline fails the class, and only for what fails.
+5. **Revision is a failing case first, then the smallest change** that passes it and keeps every lower class
+   green. A stage is never re-architected because of one board.
+6. **Time box.** A class not passed after four sessions gets a written review with options for the owner in the
+   fifth, not another iteration.
+7. **Rungs are not equal.** A to B adds checks and rules around an existing router. B to B+ adds BGA escape,
+   which passes its gate today. B+ to C is the cliff, and it is reached with a working general pipeline, a
+   baseline to measure against, and the bus plan as an input.
 
-`olimex-rp2040-pico-pc` was killed by the memory cgroup at about 13.3 GB resident. The 400,000 node ceiling
-bounds the grid and does not bound memory, so something else grows. One candidate not yet tested: every edge
-test constructs a `pcbnew.PCB_TRACK` with the board as its parent, and if the board retains those objects the
-router leaks one per test. Do not treat this board as routable until that is measured.
+## The classes and their references
 
-An earlier figure of 0.933 for that board is **stale**. It was measured before the clearance defect was fully
-fixed, when the router was ignoring a pad's own clearance, and it is not reproducible.
+Registry: `waffle_eda/bench/references.py`; measured facts: [`references.md`](references.md); survey and
+rejections: D9. Selection rules: open hardware under a licence that allows the use, a KiCad board pcbnew 9
+loads, a board that was manufactured and worked, a class the tool claims.
 
-**Read [`router-spec.md`](router-spec.md) before changing it.** Its stages are rules and net classes, a
-coarse global route, exact copper inside its guides, planes and rails, verification, and **closure**: when no
-copper works the router asks for a change to a free variable -- a layer, a placement, a pin swap, a via type --
-and the tool retries, escalating to the owner only when a locked constraint would have to be crossed
-(`definition.md` sections 3 and 4). That loop exists nowhere in the tree and is the difference between a router
-and an automated one. The committed code is a fragment of the third stage only, which the spec's last section
-states. One decision needs recording before the work: D50's criterion gains track width by net class, a return
-via near every signal via, and plane integrity. Not whether -- the definition already requires all three --
-but into the log.
-
-**M3b is deferred, not descoped** (D49). It keeps its scope and M6 still requires it. Nothing here lets a later
-session call it finished, optional, or a known limitation. The delay measurement D47 named is **done** (D48),
-so nothing measurable is left that bears on D30, but D30 itself is not decided and does not need to be until
-M3b is picked up again.
-
-**What D48 found, in two lines.** Address and command: every reference is outside Lattice's rule at every
-memory, in copper, in delay and in ISSI's picoseconds alike, so D47's verdict stands and the unit was not the
-explanation. Byte lanes: the two units disagree about two of the three answer keys, because LogicBone matched
-its lanes in delay and OrangeCrab matched them in length, and OrangeCrab's lanes -- the ones D47 called the only
-ones that met the rule -- carry 27 ps of skew against their own strobe.
-
-**What blocks M3b when it is picked up again.** Its gate is graded by the length criterion of D30, which is
-undecided. The recommendation is in D48 and has two parts: keep D27's spreads as the tolerance, and grade the
-byte lanes in delay rather than copper. **D54 has since replaced that second part.** The delay model uses no
-trace geometry and reads a real permittivity from only one of the three boards, so it is too crude to be a
-tolerance. Every memory and FPGA vendor specifies the constraint that removes the need for it: all nets of a
-matched group on one layer. On one layer, matching length is matching delay. So part 2 is now a same-layer
-constraint with copper length kept as the criterion, which is a smaller change than D48 estimated and needs no
-model. The benchmark's DRC criterion is no longer open: D53 settled it as the per-board measured rules. Do not
-build M3b against a criterion that has not been fixed.
-
-**What settling D30 costs, by option.** Part 1 alone (keep D27's spreads) leaves M3a untouched and M3b starts on
-its ladder below. Part 2 as well (grade the byte lanes in delay) is a change to M3a and a re-gate: the planner's
-windows, deficits and reserved room are millimetres of tree length today, and M3a's gate asks that the room meet
-a *length* deficit. That work is small and exact, not a redesign, because the plan already fixes each leg's
-layer, so a delay deficit divided by that layer's ps/mm is the length to add. Address and command are untouched
-under either. A move to Lattice's numbers instead would force a full M3a re-run, and D48 is the second
-measurement in a row arguing against that move.
-
-**Discipline for M3b.** Its ladder is OrangeCrab, then LogicBone, then ButterStick. If OrangeCrab passes and the
-other two turn expensive, stop and go to M4 rather than grind: see the standing observation below.
-
-**Standing observation, worth re-reading before investing more in the bus.** All four gates iterate over
-`bus_references()`, which is five boards. The registry holds 23. Every class A and class B board was surveyed,
-fetched, and never touched by a gate. Everything built so far is bus machinery, and a simple two-layer board with
-a microcontroller and passives has nothing in the tool that applies to it -- no placement stage, no general
-router. The tool's general-purpose claim is first tested at M4, and that is the larger unknown, not the smaller.
-
-
-## The reference ladder
-
-The tool earns its general-purpose claim one board class at a time. Each class needs several open-hardware reference
-boards in KiCad format, not one: a tool that passes one board has learned that board. ButterStick and LogicBone are
-the two that happened to be measured first; the registry in `waffle_eda/bench/references.py` is meant to grow, and
-the survey for the simpler classes is the first M1 task.
-
-| Class | Board | References (registry keys) |
-|---|---|---|
-| A | 2 layers, a microcontroller or module, passives, headers | `tinkerforge-temperature`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `open-book-c1`, `libresolar-mppt-2420`, `crkbd-corne-cherry` |
-| B | 4 layers, fine-pitch QFN microcontroller or small FPGA, USB 2.0 pair, switching regulator, ground planes | `pico-ice-rev3`, `upduino-v3.01`, `sensor-watch-c1`, `tinkerforge-master-v3.2`, `buspirate5-rev10`, `olimex-esp32-poe-m1`, `tinytapeout-demo`, `mch2022-badge`, `fomu-pvt` |
-| B+ | a BGA on four to six layers, with a slow bus or none | `tinyfpga-bx` (0.4 mm BGA), `glasgow-revc3` (BGA-121), `ulx3s` (caBGA381 and SDRAM on four layers), `cynthion` (caBGA256, six layers) |
-| C | BGA FPGA with a DDR3 bus, in rising order (D35, D38) | `orangecrab-r0.2.1` (one x16 on six layers, dog-bone at both, the target's shape), `logicbone` (two x8, dog-bone, 8 layers, inside the standard fab tier but for spacing), `butterstick` (two x16 dual rank, via-in-pad and hollow escapes, the finest rules of the four) |
-| C' | BGA FPGA with HyperRAM, no DDR3 | `butterstick-r0.2` |
-
-The measured facts for every board are in [`references.md`](references.md), generated from the registry and the
-measurement files. The survey that produced the picks, and the repositories rejected, are in `decisions.md` D9.
-
-Selection rules for a reference: open hardware under a licence that allows the use (CERN OHL, MIT, CC BY), KiCad
-board file (any version pcbnew 9 loads), a board that was manufactured and worked, and a class the tool claims.
+| Class | Board | The routing problem | References |
+|---|---|---|---|
+| A | 2 layers, a microcontroller or module, passives, headers | connectivity; fine-pitch pad escapes; ground as a pour; one board with real current | `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420` |
+| B | 4 layers, fine-pitch QFN MCU or small FPGA, USB 2.0 pair, switching regulator, ground planes | electrical intent: a differential pair, plane integrity and return paths, a switcher's loop, decoupling placement, width by net class | `pico-ice-rev3`, `upduino-v3.01`, `sensor-watch-c1`, `tinkerforge-master-v3.2`, `buspirate5-rev10`, `olimex-esp32-poe-m1`, `tinytapeout-demo`, `mch2022-badge`, `fomu-pvt` |
+| B+ | a BGA on 4 to 6 layers, with a slow bus or none | BGA escape, dog-bone and via-in-pad, 0.4 to 0.8 mm pitch, no length matching | `tinyfpga-bx`, `glasgow-revc3`, `ulx3s`, `cynthion` |
+| C | BGA FPGA with a DDR3 bus, 6 to 8 layers, rising order | escapes planned jointly with the bus, per-lane length matching, layer assignment, via budgets, meanders | `orangecrab-r0.2.1`, `logicbone`, `butterstick` |
+| C' | BGA FPGA with HyperRAM | the escape problem with a loose bus | `butterstick-r0.2` |
 
 ## Milestones
 
-**M0. Foundation** (done, session 1). Repository, definition, environment verified (KiCad 9, pcbnew bindings, z3),
-reference boards fetched by script and loading in pcbnew 9, the `waffle-fpga` tools and documents carried over with
-provenance, a first measurement of both references.
+### A. A class A board, end to end
 
-**M1. Benchmark harness** (done, session 2). For each class C reference: strip only the DDR3 bus copper, keep everything else as
-obstacles, and score a candidate result against the original copper: nets connected, zero electrical violations
-touching the bus under the reference's constraints (D17, D18; session 3, before that relative to the original's count),
-lengths within the board's measured spread, vias inside the packages, layers used. The "do nothing" tool scores
-zero, the original copper scores full marks. A synthetic BGA-pair generator (6 x 6, 9 x 16, 20 x 20 with a bus in one
-bank) with known feasibility for unit tests. A measurement report for both references that states every rule with its
-evidence. Runs in seconds to a minute. Pick and fetch the class A and B references.
+*Adds:* the six stages as a pipeline; the design directory; a baseline stage 5; supply nets as pours; escape
+stubs for fine-pitch rows (D51/D52); a diagnosis when a net cannot be routed; the closure loop in its simplest
+form (a placement change on a failed route, logged, retried within a budget).
 
-**M2. Fan-out** (complete, session 3: `python3 scripts/gate.py m2` PASS, 9 of 9 cases, 461 of 461 bus balls, zero electrical violations under every reference's constraints; decisions D13 to D20). The fan-out passes both class C references: every ball escaped, DRC clean, in both
-via styles (dog-bone and via-in-pad). Synthetic tests in place.
+*Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
+to fab outputs, re-parsed, reviewed by the owner.
 
-Its boundary changed in D36 and D38 without changing its result. The escape of a package that carries a bus is an
-output of the bus plan, not an input to it: which via site each ball takes fixes the order that bundle leaves the
-package, so an escape computed before the bus can only be lucky, and 50 to 65 % of what M2 certifies on the class C
-boards is never requested by the bus router. M2's gate therefore stands for packages with no bus behind them, where
-escaping is the whole job; for the bus packages the escape router is the subroutine M3a calls once it knows each
-net's order and layer, and the escapes are judged by M3a and M3b.
+*State (2026-09-23):* gate FAIL. The parked homegrown router: 4 of 6 nets on `tinkerforge-temperature`, 25 of
+35 on `open-book-c1`, 29 of 34 on `olimex-esp32c3-devkit`, the other three not attemptable (D51/D52). Stages 1
+to 4 and 6: nothing written. The benchmark and its sanity pair pass on all six (D50).
 
-**M3a. The bus plan** (complete: `python3 scripts/gate.py m3a` PASS, 3 of 3 class C references; decisions D39 to
-D41). For a reference, produce a plan before any detailed search: per net and leg, the
-layer, the via site at each package taken from that package's measured escape style (D32), the order of each bundle
-where it crosses each package boundary, and the length room reserved along each run. Gate (`scripts/gate.py m3a`):
-every run placed; no two runs of one layer crossing; every via site legal for its package's style and used by one
-net only; every net's reserved room at least its length deficit; the bus packages' escapes part of the plan rather
-than taken from M2. The reference's own plan is the answer key and the tooling already reads it
-(`bus_design.reference_plan`, `entry_order`, `via_sites`). The gate runs in seconds, which is the point: a plan is
-a smaller artifact than a route and a mistake in it is caught in the session that makes it.
+### B. A class B board, end to end
 
-**M3b. The bus routing.** Route inside the plan of M3a, tune the lengths, check by DRC. Passes the class C
-references in the ladder's order, OrangeCrab then LogicBone then ButterStick: all bus nets, DRC clean, lengths
-matched as the reference matches them (each data lane within the reference's own lane spread on total length,
-differential pairs within 0.2 mm, address and command within the reference's spread at each memory's pins;
-decisions D27, subject to D30), layer changes only at the packages. Fails with a diagnosis, never with a list.
+*Adds:* net classes with width per class from the reference (D50's criterion gains it here); a differential pair
+routed as a pair and checked for gap and skew; planes with feeds and stitching, and a plane-integrity check (no
+signal crosses a split in the plane that references it); a return via near every layer change; switching
+regulator and decoupling placement rules from `lessons/layout-practices.md`; the fab profile's price model for a
+four-layer board.
 
-**M4. The rest of the copper.** A router for the miscellaneous nets with the bus and pairs fixed (own, or Freerouting
-if it can be made to respect fixed copper), planes and power rails on continuous copper with feeds and plane vias,
-checks at every stage. Passes a full re-route of a class A or B reference from placement, DRC clean.
+*Gates:* `gate.py b` on the nine references; a class B synthetic design (an MCU with USB and a buck regulator)
+to fab outputs. *First task:* extend `tests/test_rebuild.py`'s sanity pair to the class B references, since the
+benchmark was only asserted on class A.
 
-*State: the benchmark is built and its gate is red.* `python3 scripts/gate.py m4` FAIL, 0 of 6 class A
-references (D49, D50). Those runs predate the first router; a router has since been written and never run, so
-the gate's present output is unverified. The problem board is placement,
-pads, outline and keepouts with every track, arc, via and pour removed, which is what `definition.md` gives
-stage 5; a candidate is scored on every routable net connected and zero electrical violations under the rules
-measured off that board. Both sanity checks hold on all six: the original copper scores 1.000 and the stripped
-board 0.000. Its ladder, smallest first: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
-`olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420`. The last is the one whose power on
-continuous copper the others do not exercise.
+### B+. A BGA without a matched bus
 
-**M5. The front half and the first end-to-end run.** Design document, BOM under a cost ceiling, a readable schematic,
-the PCB specification with a price estimate, then stages 5 and 6 on the class A or B target. First board to fab outputs
-with no interactive routing.
+*Adds:* the escape router (`route/escape.py`, gate `escape`, D13 to D20) as stage 5's escape for ball grids, in
+the role D36 gives it: packages with no length-matched bus behind them; via-in-pad as a fab option; the fab
+demands a pitch implies, computed at stage 4 from part selection (D42).
 
-**M6. The simplified FPGA board.** The `waffle-fpga` target reduced to what exercises the tool: ECP5 caBGA381 with
-configuration and rails, one DDR3L, one differential-pair interface, power entry, a PMOD. End to end, no interactive
-routing. The open questions from the brief's section 11 are answered here; the defaults are one x16 in FBGA-96, eight
-layers, HDMI.
+*Gates:* `gate.py bplus` on the four references; a class B+ synthetic design.
 
-The order is deliberate: M1 to M4 put depth into the routing back half first, because that is the unsolved part; M5
-then automates what the last project did by hand well enough.
+### C. A BGA FPGA with DDR3
 
-## State of M1
+*Adds:* the bus plan (`route/busplan.py`, `busplanner.py`, gate `busplan`, D39 to D41) as the input to the
+detailed stage; the detailed bus router, chosen by measurement between the baseline with the plan's escapes fixed
+and the parked `route/bus.py`; length tuning; the length criterion of D30, decided here; the target board of
+`lessons/tooling-project-brief.md` section 2 as the synthetic design, with the fab tier and via the owner
+specifies (D53).
 
-Done: the survey and a registry of 23 boards across all classes; the strip-and-score harness, passing its two sanity
-checks on ButterStick and LogicBone (the stripped board scores zero, the original copper 0.99, in 5 to 16 seconds);
-the measurement report; the synthetic BGA-pair generator with four cases (6 x 6 straight and reversed, 9 x 16, 20 x 20
-with a bus in one bank), each loading and passing DRC with only its bus open.
+*Gates:* `gate.py busplan` (passes today, 3 of 3), `gate.py bus` and `gate.py c` on the three references in
+rising order; the target board to fab outputs.
 
-## Pending owner decisions
+## What exists
 
-* ~~The target board's via~~ and ~~the fab tier for the target board~~ **Deferred (D53)**: assume every
-  reference board was manufactured by someone; vendor limits are specified later. Both belong to M6. They are
-  not open questions and must not be raised again each session. No further vendor research; the round of
-  2026-09-20 returned evidence for one vendor only and its retry is cancelled (D44, D53).
-* ~~The benchmark's DRC criterion~~ **Decided (D53)**: the per-board measured rules, which
-  `waffle_eda/bench/constraints.py` and `waffle_eda/bench/rebuild.py` already apply. A board that exists was
-  fabricated, so the rules it demonstrates are achievable. Applying a fab tier instead would fail every class C
-  reference by construction (D42).
-* **The length criterion of M3b** (D30), now with the vendor's numbers verified (D45): stay with the references'
-  own spreads as D27 wrote them, move to Lattice's published rules for the part, or measure both references per
-  segment against the clock first and decide after. **The recommendation is the third.** Lattice's checklist is
-  length-only in mils, with no picosecond figure and no clock-to-strobe rule anywhere in it: ±50 mil DQ to its
-  DQS, ±10 mil on each pair, ±100 mil lane-to-lane and address-and-command to CK. Its address-and-command rule is
-  a 5.08 mm window, and **all three class C references exceed it** -- 6.7 mm, 8.0 mm and 11.4 mm on total net
-  length, 6.1 to 11.9 mm measured at each memory's pins. Since those boards were manufactured and work, either
-  the guidance is conservative or the tolerance is not measured the way we measure it, and Lattice does not say
-  which convention it means; TI, the only vendor that does say, measures per segment from the controller to each
-  memory. Adopting the numbers against our present measurement would fail every reference by construction.
-  **D47 has since measured it per leg and the convention is not the explanation**: every reference is still
-  outside on address and command at every memory, while OrangeCrab, the only point-to-point board, is the only
-  one whose data lanes meet the rule. **D48 has since measured it as delay and closed the question**: on address
-  and command every reference is outside in copper, in delay and in ISSI's picoseconds alike, so nothing
-  measurable is left to change this; on the byte lanes the two units disagree, OrangeCrab's lanes are the
-  furthest outside once velocity is applied rather than the only ones inside, and the topology split D47 read
-  off them was an artifact of the unit. The recommendation is now in two parts: gate on D27 and report Lattice's
-  millimetres and ISSI's picoseconds beside it, **and grade the byte lanes in delay rather than copper**, since
-  LogicBone matched its lanes in delay and OrangeCrab in length, and a router graded on copper can pass the gate
-  while leaving 27 ps between a lane and its strobe. Aim at Lattice's numbers for the target board of M6, whose
-  one-memory topology is OrangeCrab's. M3b's gate depends on this, and so does M3a, but only through part 2:
-  D40 took D27's answer for what a deficit is measured against, part 1 leaves that alone, and part 2 turns the
-  lane groups' windows and deficits into delay quantities, which is an M3a change and a re-gate (small and
-  exact, since the plan fixes each leg's layer). A move to Lattice's numbers instead would tighten every window,
-  grow every deficit and force a full M3a re-run.
-* ~~The regression D33 did not close~~ **Decided (D43)**: 42 of 55 stands as the baseline and the difference is
-  not bisected. Those runs were completing boards with no plan behind them, so neither figure is one M3b can be
-  compared against.
+| Path | State |
+|---|---|
+| `waffle_eda/kicad/` | board load/save/DRC helpers with the pitfalls documented in `board.py`; zone refill in a child process (D14); PNG/SVG renders (`render.py`) |
+| `waffle_eda/bench/references.py`, `references.toml` | 23 boards, fetched by script |
+| `waffle_eda/bench/harness.py`, `constraints.py` | bus strip-and-score, per-reference constraints (D10, D17, D18) |
+| `waffle_eda/bench/rebuild.py` | whole-board strip-and-score with measured rules; sanity pair asserted on class A (D50) |
+| `waffle_eda/bench/synthetic.py`, `survey.py`, `fanout_measure.py`, `bus_design.py`, `delay.py` | synthetic BGA pairs; the survey; measurements of how references escape and route their bus |
+| `waffle_eda/fab/` | PCBWay profile as data (D5) |
+| `waffle_eda/route/escape.py`, `fanout.py`, `lattice.py`, `obstacles.py` | BGA escape router, gate `escape` PASS 9 of 9 (D20); the exact collision index every router uses |
+| `waffle_eda/route/busplan.py`, `busplanner.py` | the bus plan and its check, gate `busplan` PASS 3 of 3 (D41) |
+| `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
+| `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands |
+| `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
+| `tests/` | 183 tests, 0 failed on 2026-09-21 |
+| `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
-## State of M2
+## Parked (class C, not before)
 
-Complete. Gate M2 under decisions D17 to D20 (session 3): PASS, 9 of 9 cases, 461 of 461 bus balls escaped.
+* **The bus routing inside the plan** (the old M3b). Last reproducible result 42 of 55 nets on ButterStick, no
+  plan behind it (D43). The bus code is not touched until B+ passes.
+* **D30, the class C length criterion.** Measured to exhaustion (D45, D47, D48, D54); decided when class C
+  starts.
+* **The target FPGA board** (the old M6), its via and its fab tier (D53).
+* **The homegrown general router** and its spec (`archive/router-spec-2026-09-21.md`). Revisited only if the
+  baseline is measured to fail a class and the failure is in the router rather than around it.
 
-```
-=== GATE M2: PASS (9 of 9 cases pass) ===
-  pass  pair-6x6-straight      U1 16/16, U2 16/16; DRC electrical 0
-  pass  pair-6x6-reversed      U1 16/16, U2 16/16; DRC electrical 0
-  pass  pair-9x16-straight     U1 35/35, U2 35/35; DRC electrical 0
-  pass  pair-20x20-bank        U1 84/84, U2 84/84; DRC electrical 0
-  pass  butterstick            U4 55/55, U11 50/50, U12 50/50; DRC under the reference's constraints: ours 0
-  pass  logicbone              IC1 50/50, IC2 39/39, IC3 39/39; DRC under the reference's constraints: ours 0
-  pass  butterstick-r0.2       U3 26/26, U5 13/13; DRC under the reference's constraints: ours 0
-  pass  ulx3s                  U1 39/39; DRC under the reference's constraints: ours 0
-  pass  orangecrab-r0.2.1      U3 50/50, U4 50/50; DRC under the reference's constraints: ours 0
-```
+## Interface
 
-Every ball we route on every board has zero electrical violations under the reference's constraints, which the
-originals meet by construction; every original passes its own constraints file. Per package the escape takes one to
-eleven seconds. The escapes differ from the originals' in via count and layer use, and whether they are as good
-for a length-matched bus is only known once M3 routes the bus from them. M3 starts on the owner's word.
+This project's interface is Claude Code, files, renders and reports. A user interface is a separate project
+that consumes them (D55). What this project provides:
 
-## State of M3a
-
-**PASS.** `python3 scripts/gate.py m3a` exits 0: all three class C references, every net planned in one piece, no
-two runs of one layer crossing, every via site legal for its package's measured style and used by one net only,
-room for every net's length deficit, and every bus ball escaped by the plan rather than by M2.
-
-```
-=== GATE M3A: PASS (3 of 3 cases pass) ===
-  pass  butterstick            the plan passes
-  pass  logicbone              the plan passes
-  pass  orangecrab-r0.2.1      the plan passes
-```
-
-How the plans compare with the boards' own, ours first in each pair (D39, D40, D41):
-
-| board | nets | legs | address/command spread | lane 0 | lane 1 | vias, most per net | vias in all | to build |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| OrangeCrab | 50 | 145 | 17.1 / 6.7 mm | 9.4 / 0.5 | 0.8 / 0.6 | 4 / 2 | 93 / 87 | 9 s |
-| LogicBone | 50 | 272 | 11.7 / 11.4 mm | 4.4 / 4.2 | 7.2 / 7.1 | 7 / 4 | 154 / 99 | 94 s |
-| ButterStick | 55 | 255 | 28.4 / 8.0 mm | 1.3 / 0.7 | 10.8 / 0.8 | 13 / 3 | 193 / 149 | 114 s |
-
-The gate is met on all three and the plan is not equally good on all three. LogicBone's spreads land on its
-board's own to a tenth of a millimetre; ButterStick's address and command still spread 28.4 mm against its
-board's 8.0, and one of its nets takes 13 vias against a reference of 3. Those are differences M3b has to live
-with, and they are the first place to look when it fails.
-
-Checking a plan takes under a second on every board, which is the point of the split (D37): a mistake in a plan
-is caught in the session that makes it rather than after an hour of routing.
-
-## State of M3b
-
-FAIL; the routing inside the plan is not built. What the measurement sessions of 19 and 20 September established
-is recorded in D28 to D41: the negotiation's plateau is an ordering problem and not a capacity one (D29, D31,
-D32); the bench's own spacing setting had made every net contested by construction, so the routing measurements
-of six weeks were taken inside a stall (D33); a bus package's escape belongs to the bus plan (D36); and a
-criterion two knobs can trade against each other is a criterion with a missing mechanism (D41).
-
-The last reproducible bus routing, from before M3a existed, both with the structural rules of D32 switched off
-and zero DRC errors:
-
-| board | routed | electrical violations | lengths within spread | vias inside packages | run |
-| --- | --- | --- | --- | --- | --- |
-| ButterStick | 42 of 55 | 0 | 25 of 55 | 100 % | no extra bus spacing (D33) |
-| ButterStick | 39 of 55 | 0 | 25 of 55 | 100 % | the 0.2 mm default (D33) |
-| ButterStick | 53 to 54 of 55 | 0 | 27 to 36 of 55 | 100 % | 18 September, **not reproducible** (D33) |
-| LogicBone | 45 of 50 | 0 | 40 of 50 | 100 % | 18 September, not re-measured since (D33) |
-
-The repair stage was the binding constraint on the reproducible runs: it spent its whole budget and left 13 to 16
-nets stranded. The 18 September rows are what the bench reported then and no number in them should be relied on.
-None of these runs had a plan to route inside, which is what M3b changes.
+* **A design is a directory**, `designs/<name>/`: `design.md` (stage 1), `bom.csv` (stage 2), the schematic and
+  netlist (stage 3), `spec.toml` (stage 4), the board (stage 5), `reports/` (the gate output, the diagnosis, the
+  bus and pair reports, the attempt log of the closure loop) and `out/` (stage 6). Every stage reads the
+  previous stage's files and writes its own; nothing is passed in memory that a person cannot open.
+* **A render at every gate**: placement and routing as PNG or SVG (`kicad/render.py`), failed nets highlighted,
+  the diagnosis beside it.
+* **A status command** that prints where a design is in the pipeline, which gate it is at, and what it is
+  waiting on from the owner.
+* **Owner input is a file edit**, never a drag: a locked constraint in `design.md`, a line vetoed in `bom.csv`.
+  The acceptance rule (`definition.md` section 3) means there is nothing to manipulate, only to review.

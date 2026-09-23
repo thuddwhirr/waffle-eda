@@ -88,16 +88,15 @@ Adapted from the `waffle-fpga` brief, section 9, and kept.
 * Keep the decisions log: what was tried, the numbers, why it was dropped.
 * Every recorded result names the configuration that produced it: the commit, the environment overrides and the
   resolved settings the tool ran with. A result without that provenance is not quotable in the plan. Any bench
-  parameter that changes a result is measured before it is set, never assumed (D33: a 0.8 mm spacing between bus
-  nets, chosen by assumption, made every net contested by construction and invalidated six weeks of routing
-  measurements without anyone noticing).
+  parameter that changes a result is measured before it is set, never assumed (D33: a spacing chosen by
+  assumption made every net contested by construction and invalidated every routing measurement taken under it).
+* One class of board at a time, the whole pipeline for that class, every lower class kept green (D55). Each stage
+  uses the cheapest existing tool that passes the class; own code is written where a measurement shows the
+  baseline fails, and a stage is never re-architected because of one board.
 * When a tool fails three times on the same problem, stop and find the missing constraint or the missing test. Do not
-  brute-force.
-* Before a long background job, check that its sources are reachable, and fetch known documents by their URL
-  rather than searching for them. While it runs, look for failure signals in its output rather than confirming it
-  is alive. A job that cannot reach its sources is a failure from its third minute and saying so then costs
-  nothing (D46: two research rounds ran four and a half hours, 213 agents and 12.8 M tokens, against domains the
-  egress policy had already refused, and the refusals were in the log three minutes after launch).
+  brute-force. A class not passed after four sessions gets a written review, not a fifth iteration.
+* Facts from outside the repository come from the owner or are marked unknown. No research rounds against the
+  network (D53: two rounds ran for hours against domains the egress policy had already refused).
 * Report briefly: numbers per stage, what is open, what is next. Do not narrate iterations.
 * Ask the owner only for locked-constraint changes and design revisions.
 
@@ -106,3 +105,12 @@ Adapted from the `waffle-fpga` brief, section 9, and kept.
 * Flex and rigid-flex, RF layout, more than eight layers, HDI blind and buried vias. These become fab options later.
 * Signal and power integrity simulation beyond closed-form impedance and the length and spacing rules.
 * Firmware and gateware for the boards produced.
+* A user interface. That is a separate project that consumes this one's files, renders and reports (D55).
+
+## 7. Interface
+
+The tool is driven from Claude Code and speaks in files. A design is a directory, one file per stage, so every
+stage's output is something a person can open in an editor or in KiCad; every gate produces a render and a
+report; a status command says where a design is and what it waits on. The owner's input is an edit to one of
+those files (a locked constraint, a vetoed part), never a drag or a drawn track: under section 3 there is nothing
+to manipulate, only to review. The directory layout is in `plan.md`, "Interface".

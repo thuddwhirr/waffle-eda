@@ -127,15 +127,15 @@ class BoardRouter:
         self.step = step_mm or min(max(self.track_mm + self.clearance_mm, 0.1), max(self.pad_pitch / 3, 0.05))
         region = self._region()
         self.grid = _Grid(board, rules, region, self.step)
-        # A grid fine enough for the pads is too big for a large board, which is what stage B of
-        # `docs/router-spec.md` exists to fix: restricting the detailed search to a coarse guide. Until it
-        # exists, say so and stop rather than filling memory and appearing to work.
+        # A grid fine enough for the pads is too big for a large board. This router is parked (D55); the
+        # baseline stage 5 of plan.md replaces it. Say so and stop rather than filling memory and appearing
+        # to work.
         nodes = self.grid.nx * self.grid.ny * len(self.grid.layers)
         if nodes > self.MAX_NODES:
             raise RoutingTooLarge(
                 f"{nodes:,} grid nodes at a {self.step:.4f} mm step (the finest pad pitch is "
                 f"{self.pad_pitch:.3f} mm) exceeds the {self.MAX_NODES:,} this router can hold. A board this "
-                f"size needs the global stage of docs/router-spec.md section 6, which is not built.")
+                f"size is beyond this parked router (D55); the baseline stage 5 of docs/plan.md replaces it.")
         self.obs = Obstacles(board, local_clearance=True)
         self.net_by_name = {n.GetNetname(): n for n in board.GetNetsByName().values()}
         self._placed: set[str] = set()
