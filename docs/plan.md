@@ -1,7 +1,8 @@
 # Plan
 
-The plan is the reference ladder: one class of board at a time, the whole pipeline for that class before the
-next class is touched (D55). A milestone is a class. Everything else in this file serves that sentence.
+The plan is the reference ladder (D55): build the whole pipeline for class A boards to completion first, then
+work through the pipeline again and extend it for class B, then B+, then C, then C'. A milestone is a class.
+Everything else in this file serves that sentence.
 
 ## Next session starts here
 
