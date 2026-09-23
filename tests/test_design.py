@@ -1,6 +1,7 @@
 """The design directory and stages 1 to 4 of the temperature-sensor design (plan.md, milestone A): the
 documents' gates, the schematic generator, ERC and the netlist comparison. Stages 5 and 6 are exercised by
 `scripts/design.py` because they take minutes; their mechanics are tested in `test_stage5.py`."""
+import shutil
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,18 @@ def _dir() -> Path:
     d = pipeline.design_dir(DESIGN)
     if not d.is_dir():
         pytest.skip("the temperature-sensor design directory is missing")
+    return d
+
+
+@pytest.fixture
+def work(tmp_path) -> Path:
+    """A copy of the design's inputs: a stage run regenerates the schematic with fresh UUIDs and rewrites the
+    reports, and a test must never leave the committed design dirty."""
+    src = _dir()
+    d = tmp_path / DESIGN
+    d.mkdir()
+    for name in ("design.md", "connectivity.toml", "bom.csv", "spec.toml"):
+        shutil.copy(src / name, d / name)
     return d
 
 
@@ -56,8 +69,8 @@ def test_the_netlist_comparison_is_one_to_one():
     assert any("EXTRA" in x for x in diffs)
 
 
-def test_stage_1_2_and_4_gates_pass_on_the_design_and_ask_about_price():
-    d = _dir()
+def test_stage_1_2_and_4_gates_pass_on_the_design_and_ask_about_price(work):
+    d = work
     r1 = pipeline.stage1(d)
     assert r1.passed, r1.summary()
     assert r1.numbers["locked constraints"] >= 5
@@ -69,8 +82,8 @@ def test_stage_1_2_and_4_gates_pass_on_the_design_and_ask_about_price():
     assert r4.numbers["rules checked"] == 7 and any("price" in a for a in r4.asks)
 
 
-def test_stage_3_draws_the_schematic_erc_clean_with_the_netlist_matching(tmp_path):
-    d = _dir()
+def test_stage_3_draws_the_schematic_erc_clean_with_the_netlist_matching(work):
+    d = work
     r3 = pipeline.stage3(d)
     assert r3.passed, r3.summary()
     assert r3.numbers["erc errors"] == 0 and r3.numbers["nets"] == 5
@@ -95,10 +108,9 @@ def test_the_specification_stays_inside_the_fab_and_the_locked_size():
     assert [(p.net, p.layer) for p in spec.pour_spec()] == [("GND", "F.Cu"), ("GND", "B.Cu")]
 
 
-def test_the_placer_keeps_the_header_on_the_west_edge_and_every_part_inside():
-    d = _dir()
-    if not (d / "reports" / "netlist.net").is_file():
-        pipeline.stage3(d)
+def test_the_placer_keeps_the_header_on_the_west_edge_and_every_part_inside(work):
+    d = work
+    pipeline.stage3(d)
     board, spec, placement = board_mod.build(d, DESIGN)
     assert placement["J1"]["x_mm"] < spec.width_mm / 4
     for fp in board.GetFootprints():

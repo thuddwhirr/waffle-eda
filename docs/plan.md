@@ -151,7 +151,7 @@ rising order; the target board to fab outputs.
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
 | `scripts/route_reference.py`, `design.py`, `fetch_freerouting.py` | one class A board through stage 5 with the knobs exposed; a design's stages and status; the pinned jar |
 | `.claude/hooks/session-start.sh` | every install a web session needs (pip, Java 25, KiCad libraries, the jar, the references) |
-| `tests/` | 200 tests (183 before this day, 18 added for stage 5 and the design, the router-not-built test gone); the full run was still going when this was committed |
+| `tests/` | 200 tests: 197 passed, 3 skipped (build-artifact guards), 0 failed on 2026-09-23 in 24 min alongside the gate |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)
