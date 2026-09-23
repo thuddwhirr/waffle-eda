@@ -134,6 +134,16 @@ defects: single-pad nets counted as connected; violations between two fixed item
 `Arc` on `Edge.Cuts` read as copper; net names escaped in the API and unescaped in the DRC report
 (`kb.unescape_net`). `harness.drc_facts` has the fourth defect latent. Measurement, 2026-09-21.
 
+**D58. A KiCad 5 board's legacy zone fills fail KiCad 9's DRC until refilled; its net-class rules survive the
+conversion, its project rules do not.** Under the rules KiCad 9 applies with no project file, the three KiCad 5
+class A references show 19, 4 and 241 violations, almost all "zone clearance" of the zone's own setting short by
+0.01 mm: the legacy fill converted "best effort". After `ZONE_FILLER` in KiCad 9: 0, and 15 on
+`libresolar-mppt-2420` (3 at KiCad 9's default 0.2 mm, which its designer never used, 12 edge). `kicad-cli pcb
+drc` never refills. The designers' net-class clearance and width are in the board file and load (tinkerforge
+0.150 / 0.300 mm); the project-level rules of KiCad 5's `.pro` are not read. The benchmark's measured rules are
+unaffected: they are measured off the copper and every converted original passes them (`tests/test_rebuild.py`).
+Measurement, 2026-09-23.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
