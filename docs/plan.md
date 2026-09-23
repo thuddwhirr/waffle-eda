@@ -36,7 +36,12 @@ passes in 22 s. The next board is `open-book-c1` and its two failures are named:
    search walks the pad's axis and then every 15 degrees around it up to 2 mm; that pad needs either a longer
    reach or a via between the row's pads. Look at where the reference puts its via for that pad.
 
-Then `olimex-esp32c3-devkit` (0.127 mm tracks, a QFN), then the three boards the gate has numbers for below.
+Then `olimex-esp32c3-devkit` (0.127 mm tracks, a QFN; its 19 `hole_clearance` rows are holes with a clearance of
+their own that the DSN keepouts do not carry), then `olimex-rp2040-pico-pc`, then the two boards the router
+does not finish in 600 s (`crkbd-corne-cherry`, `libresolar-mppt-2420`): for those, measure first whether a
+pass budget by improvement, preferred routing directions per layer and the router's `-us`/`-is` strategies
+change anything, before any change of our own. Two cheap wastes to remove on the way: the fill-check-stitch loop
+runs all four rounds when a round changes nothing, and the router sits at the same score for dozens of passes.
 A board that fails gets its failing case in `tests/test_stage5.py` first, then the smallest change.
 
 **Alongside: the owner's review of `designs/temperature-sensor/`.** Every stage passed; the outputs are in
@@ -93,10 +98,18 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-23, evening):* gate FAIL, 1 of 6. `tinkerforge-temperature` PASS (6 of 6 nets, 0 violations, 22 s); `open-book-c1` 33 of 35,
-14 `track_width` (necks the repair cannot widen) and one ground pad without a stitching site; `olimex-esp32c3-devkit`
-31 of 34 with 17 `hole_clearance`, measured before the day's last two fixes; the gate was still on
-`olimex-rp2040-pico-pc` when this was committed, and the rows for the three larger boards land in the next commit.
+*State (2026-09-23, evening):* gate FAIL, 1 of 6, measured by `scripts/gate.py a` at commit 5327efb (the router's
+budget: 100 passes or 600 s per board; the gate took 40 min alongside the test suite):
+
+| Board | Nets connected | Electrical violations | What failed |
+|---|---|---|---|
+| `tinkerforge-temperature` | 6 of 6 | 0 | PASS, 22 s |
+| `open-book-c1` | 33 of 35 | 14 `track_width` | necks past a 0.2 mm button pad; U1.30 unrouted; U1.8 without a stitching site |
+| `olimex-esp32c3-devkit` | 32 of 34 | 19 `hole_clearance` | U3.27 unrouted; holes the DSN rules do not cover (the mounting holes carry a 1.85 mm clearance of their own, `route/obstacles.py`) |
+| `olimex-rp2040-pico-pc` | 51 of 60 | 3 `clearance`, 1 `hole_clearance` | nine nets the router left open in 38 passes |
+| `crkbd-corne-cherry` | 0 of 152 | 0 | the router hit the 600 s budget after 4 passes; no session written |
+| `libresolar-mppt-2420` | 3 of 102 | 0 | the router hit the 600 s budget; no session written |
+
 The synthetic design passes all six stage gates to fab outputs (D57); the owner's review is pending.
 
 ### B. A class B board, end to end
