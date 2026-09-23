@@ -35,10 +35,29 @@ wrapper as committed; the last three boards were still running at the commit and
 | `crkbd-corne-cherry` | measuring | | first run: empty session for the same reason (fixed) |
 | `libresolar-mppt-2420` | measuring | | first run 101 of 102 and 201 clearance violations of exactly the global slack (scoped since) |
 
-The one thing measured to block the smoke test is the router's exact insertion check at the SOT-563: it needs
-about 0.01 mm more than the reference's tightest spot has (D57), so the wrapper asks for the rule less 0.0072 and
-the DRC finds the two places it used that. The options are on the owner's table in the session report. Do not
-tune the slack, the via cost or the fanout further without a failing case that names the board and the item.
+**Why it fails, measured (D57, D59), and the next step the owner agreed on 2026-09-23.** The router connects
+nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
+than 0.011 mm, the error of the router's octagonal model of round copper against KiCad's exact DRC; (2) traces
+necked below the rule where they enter a pad, the router's own behaviour, which its setting does not switch
+off; (3) per-pad clearance overrides (mounting holes at 1.85 mm, fiducials at 1.016 mm) that KiCad's Specctra
+export does not carry, so the router never saw them; (4) ground routed as tracks where every class A reference
+pours it. Our copper fails the designers' own project rules the same way (open-book 48, esp32c3 31), so the
+criterion is not the problem and is not loosened. **One more session, as repair, not tuning**, in this order,
+each item behind a failing gate or test case that names the board and the violation kind, every lower item
+kept green:
+
+1. export every pad with a clearance override as a keepout grown by the override (wrapper only; removes the 26
+   large violations on the two Olimex boards);
+2. restore necked traces to the rule width after the import, then DRC again;
+3. nudge each remaining sub-0.011 mm clearance shortfall away from the shape it violates by the shortfall plus
+   a hair, from the DRC report, under KiCad's own ruler;
+4. pour ground before routing and hand it to the router as a plane;
+5. then, and only then, the fine-pitch exits again (`freerouting.escape_stubs`), whose only measurement so far
+   was confounded by 1 to 4.
+
+**The stop:** if `tinkerforge-temperature` and `open-book-c1` are not green after that session, Freerouting is
+not the baseline; the session after writes the review the ladder rules call for, with two options: our own
+router for exits and pours with Freerouting between them, or our own router outright. No fifth tuning session.
 
 **Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
 "Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a

@@ -200,3 +200,34 @@ def test_an_old_java_is_named_with_its_version(monkeypatch, tmp_path):
     monkeypatch.setattr(fr, "java_major", lambda _java: 21)
     reason = fr.available()
     assert reason and "21" in reason and str(fr.JAVA_MAJOR) in reason
+
+
+# --- rules the export does not carry (D59) --------------------------------------------------------------------
+def test_pads_with_a_clearance_override_become_keepouts_grown_by_it():
+    """The Specctra export carries the net-class clearance only. `olimex-esp32c3-devkit` gives its four mounting
+    holes 1.85 mm and its six fiducials 1.016 mm, and the router routed past them at the ordinary clearance."""
+    ref = _ref("olimex-esp32c3-devkit")
+    bare, _ = rebuild.strip_all(ref)
+    board = kb.load_board(bare)
+    keepouts = fr.pad_keepouts(board, clearance_mm=0.1261)
+    by_ref = {k.reference: k for k in keepouts}
+    assert sorted(by_ref) == ["FID1", "FID2", "FID3", "FID4", "FID5", "FID6", "MH1", "MH2", "MH3", "MH4"]
+    assert by_ref["MH1"].grow_mm == pytest.approx(1.85, abs=1e-4)  # the whole override, see the module
+    assert by_ref["FID1"].grow_mm == pytest.approx(1.016, abs=1e-4)
+    assert by_ref["MH1"].layers == ("F.Cu", "B.Cu") and by_ref["FID1"].layers == ("F.Cu",)
+    text = fr.keepouts_dsn(DSN, keepouts)
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.count("(keepout") == sum(len(k.layers) for k in keepouts)  # one per copper layer of the pad
+    assert structure.index("(keepout") < structure.index("(via ")  # where KiCad puts its own
+
+
+def test_the_smoke_board_carries_overrides_too_and_an_override_below_the_rule_is_none():
+    """Its four mounting holes hold copper 0.899 mm away and its two fiducials 0.65; asked for a clearance above
+    those, nothing is a keepout."""
+    ref = _ref("tinkerforge-temperature")
+    bare, _ = rebuild.strip_all(ref)
+    board = kb.load_board(bare)
+    keepouts = fr.pad_keepouts(board, clearance_mm=0.1972)
+    assert sorted((k.reference, round(k.grow_mm, 3)) for k in keepouts) == \
+        [("Fiducial_Mark", 0.65), ("Fiducial_Mark", 0.65), ("U3", 0.899), ("U4", 0.899), ("U5", 0.899), ("U6", 0.899)]
+    assert fr.pad_keepouts(board, clearance_mm=0.9) == []

@@ -230,6 +230,75 @@ def typed_clearances(dsn_text: str, d: DsnRules) -> str:
     return dsn_text[:end] + "\n".join(lines) + "\n" + dsn_text[end:]
 
 
+# --- rules the export does not carry: per-pad clearance overrides (D59) ---------------------------------------
+# KiCad's Specctra export carries the net-class clearance only. A pad with its own clearance (a mounting hole at
+# 1.85 mm, a fiducial at 1.016 mm on `olimex-esp32c3-devkit`) is routed past at the ordinary clearance, and the
+# gate's DRC then fails every track that came near. So every such pad goes into the DSN as a keepout circle
+# around the pad grown by the whole override, on each copper layer the pad is on. Grown by the whole override
+# rather than the override less the clearance, because whether the router keeps its clearance from a keepout
+# edge is not known; the cost is a little room around ten pads.
+@dataclass(frozen=True)
+class PadKeepout:
+    reference: str
+    pad: str
+    x_mm: float
+    y_mm: float
+    radius_mm: float  # the pad's own half extent, before growing
+    grow_mm: float  # the override
+    layers: tuple  # copper layer names
+
+
+def _local_clearance_mm(item) -> float:
+    value = item.GetLocalClearance()
+    if value is None:
+        return 0.0
+    if hasattr(value, "value"):  # KiCad 9 returns an optional
+        return kb.mm(value.value()) if value.has_value() else 0.0
+    return kb.mm(value)
+
+
+def pad_keepouts(board, clearance_mm: float) -> list[PadKeepout]:
+    """Every pad whose own clearance override exceeds the clearance the router is asked for."""
+    names = {lid: name for lid, name in kb.copper_layers(board)}
+    out = []
+    for fp in board.GetFootprints():
+        fp_clr = _local_clearance_mm(fp)
+        for pad in fp.Pads():
+            override = max(fp_clr, _local_clearance_mm(pad))
+            if override <= clearance_mm:
+                continue
+            layers = tuple(names[l] for l in pad.GetLayerSet().CuStack() if l in names)
+            if not layers:
+                continue
+            size = pad.GetSize(pad.GetLayerSet().CuStack()[0])
+            drill = pad.GetDrillSize()
+            radius = max(kb.mm(size.x), kb.mm(size.y), kb.mm(drill.x), kb.mm(drill.y)) / 2
+            pos = pad.GetPosition()
+            out.append(PadKeepout(reference=fp.GetReference(), pad=pad.GetNumber(), x_mm=kb.mm(pos.x),
+                                  y_mm=kb.mm(pos.y), radius_mm=radius, grow_mm=override, layers=layers))
+    return out
+
+
+def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | None = None) -> str:
+    """Add the keepouts to the structure section, where KiCad puts its own (after the boundary, before the
+    via). Coordinates are micrometres with y negated, as KiCad writes them."""
+    lines = []
+    for k in keepouts:
+        for layer in (layers or k.layers):
+            if layers and layer not in k.layers:
+                continue
+            name = f'"{layer}"' if any(c in layer for c in " ()") or not layer.isascii() else layer
+            lines.append(f'    (keepout "" (circle {name} {2 * (k.radius_mm + k.grow_mm) * 1000:.2f} '
+                         f'{k.x_mm * 1000:.2f} {-k.y_mm * 1000:.2f}))')
+    if not lines:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    i = dsn_text.find("    (via ", start)
+    if i < 0:
+        i = dsn_text.index("    (rule\n", start)
+    return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
 # --- escape stubs for fine-pitch rows (D51/D52) --------------------------------------------------------------
 # A trace leaving a pad in a fine-pitch row must stay within a corridor: the neighbour pad's edge, less the
 # clearance, less half the width. On the SOT-563 of `tinkerforge-temperature` the pads are 0.200 mm apart and
@@ -464,7 +533,8 @@ def export_dsn(board, rules, out: Path, slack_all: bool = False) -> tuple[DsnRul
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
-    out.write_text(typed_clearances(out.read_text(), d))
+    text = typed_clearances(out.read_text(), d)
+    out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm)))
     return d, renamed
 
 

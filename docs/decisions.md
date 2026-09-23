@@ -144,6 +144,17 @@ drc` never refills. The designers' net-class clearance and width are in the boar
 unaffected: they are measured off the copper and every converted original passes them (`tests/test_rebuild.py`).
 Measurement, 2026-09-23.
 
+**D59. Why Freerouting's copper fails the rules the reference meets** (four class A boards, 2026-09-23,
+`build/bench/rebuild/*/candidate.json`). Same widths and vias as the reference; the copper is placed
+differently. (1) 48 clearance violations short by under 0.011 mm: the router keeps every coordinate as an
+integer at 0.1 um and every round shape as an octagon (`geometry/planar/IntOctagon`), which lies inside the
+true circle by up to 7.6 % of the radius (0.011 mm on a 0.30 mm trace end, 0.027 on a 0.70 mm via); its own
+check passes, KiCad's exact one does not. (2) 40 width violations by 0.03 mm or more on `open-book-c1`: traces
+necked where they enter a pad; `automatic_neckdown` off changes nothing. (3) 26 violations of 1.016 and
+1.85 mm: per-pad clearance overrides on fiducials and mounting holes, which the Specctra export does not carry.
+(4) Ground left as tracks where every class A reference pours it. Under the designers' own project rules our
+copper fails the same way (open-book 48, esp32c3 31; the originals 0). Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
