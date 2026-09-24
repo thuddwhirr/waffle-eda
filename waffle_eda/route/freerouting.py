@@ -592,20 +592,23 @@ def hole_rule_areas(board, rules) -> list:
     came 0.1 mm too close to its four mounting holes on both layers). The circle is the hole plus the rule."""
     import math
     made = []
+    enabled = [lid for lid, _n in kb.copper_layers(board)]  # a pad's layer set names all 32 copper ids
+    sides = 64
     for fp in board.GetFootprints():
         for pad in fp.Pads():
             drill = pad.GetDrillSize()
             hole = max(kb.mm(drill.x), kb.mm(drill.y))
             if hole <= 0:
                 continue
-            layers = pad.GetLayerSet().CuStack()
+            layers = [l for l in pad.GetLayerSet().CuStack() if l in enabled]
             size = pad.GetSize(layers[0]) if layers else drill
             ring = (min(kb.mm(size.x), kb.mm(size.y)) - hole) / 2
             if ring >= rules.hole_to_copper_mm:
                 continue
-            radius = hole / 2 + rules.hole_to_copper_mm
+            # circumscribed: the polygon's flat sides stay outside the circle of hole plus rule
+            radius = (hole / 2 + rules.hole_to_copper_mm) / math.cos(math.pi / sides)
             pos = pad.GetPosition()
-            for layer in (layers or [lid for lid, _n in kb.copper_layers(board)]):
+            for layer in (layers or enabled):
                 zone = pcbnew.ZONE(board)
                 zone.SetIsRuleArea(True)
                 zone.SetDoNotAllowCopperPour(True)
@@ -614,8 +617,8 @@ def hole_rule_areas(board, rules) -> list:
                 zone.SetLayer(layer)
                 outline = zone.Outline()
                 outline.NewOutline()
-                for k in range(32):
-                    a = 2 * math.pi * k / 32
+                for k in range(sides):
+                    a = 2 * math.pi * k / sides
                     outline.Append(pos.x + kb.nm(radius * math.cos(a)), pos.y + kb.nm(radius * math.sin(a)))
                 board.Add(zone)
                 made.append(zone)
