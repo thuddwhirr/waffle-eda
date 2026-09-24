@@ -179,7 +179,7 @@ def _largest_met(board_path: Path, work_dir: Path, constraint: str, vtype: str,
     best = lo
     for _ in range(steps):
         mid = (lo + hi) / 2
-        facts = _drc(board_path, rules_text({constraint: mid}), work_dir, tag="probe")
+        facts = _drc(board_path, rules_text({constraint: mid}), work_dir, tag="probe", runs=1)
         if facts["by_type"].get(vtype, 0) == 0:
             best, lo = mid, mid
         else:
@@ -230,11 +230,35 @@ def board_facts(report: dict) -> dict:
             "unconnected_items": len(unconnected), "unconnected_nets": sorted(nets)}
 
 
-def _drc(board_path: Path, rules: str, work_dir: Path, tag: str) -> dict:
-    """Run KiCad's DRC on a copy of ``board_path`` under ``rules`` and return the whole-board facts."""
+DRC_RUNS = 2  # kicad-cli's report dropped a real violation in 1 run of 8 on one board (D63): the union of two
+
+
+def _violation_id(v: dict) -> tuple:
+    return (v.get("type"), tuple(sorted((i.get("description", ""), i.get("pos", {}).get("x"), i.get("pos", {}).get("y"))
+                                        for i in v.get("items", []))))
+
+
+def _drc(board_path: Path, rules: str, work_dir: Path, tag: str, runs: int = DRC_RUNS) -> dict:
+    """Run KiCad's DRC on a copy of ``board_path`` under ``rules`` and return the whole-board facts, as the
+    union of ``runs`` reports: a violation any run reports counts."""
     copy = harness._copy_board(board_path, work_dir)
     (work_dir / "board.kicad_dru").write_text(rules)
-    return board_facts(harness.run_drc(copy, work_dir / f"{tag}.json"))
+    merged: dict | None = None
+    seen: set[tuple] = set()
+    for k in range(runs):
+        report = harness.run_drc(copy, work_dir / f"{tag}{'' if k == 0 else k}.json")
+        if merged is None:
+            merged = report
+            seen = {_violation_id(v) for v in report.get("violations", [])}
+            continue
+        for v in report.get("violations", []):
+            if _violation_id(v) not in seen:
+                seen.add(_violation_id(v))
+                merged.setdefault("violations", []).append(v)
+        for u in report.get("unconnected_items", []):
+            if u not in merged.get("unconnected_items", []):
+                merged.setdefault("unconnected_items", []).append(u)
+    return board_facts(merged or {})
 
 
 def measure_rules(ref: refs.Reference, force: bool = False) -> BoardRules:

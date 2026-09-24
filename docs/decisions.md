@@ -187,6 +187,15 @@ a boxed track's violating item and then its far-side blocker are pushed instead 
 against fixed copper moves away, and a move may keep only the collisions it moves away from, so none deepens
 (the rule that took open-book from 2 violations to 0). Runs are deterministic per configuration. Measurement.
 
+**D63. `kicad-cli pcb drc` does not report the same violations on every run of one file.** Eight runs on a
+saved board of eight parallel tracks with seven pairs 0.19 mm apart under a 0.1972 rule: seven runs report 7
+clearance violations, one reports 6 (2026-09-24). D18 recorded the same for counts near the cap; this is far
+below it. Consequences: the gate's scoring DRC runs twice and a violation either run reports counts
+(`bench/rebuild.DRC_RUNS`); the repair steers by the exact collision index (`freerouting.index_violations`)
+and not by the report, which also removes one DRC per repair round; and the order test
+(`tests/test_freerouting.py`) found this through a digest that differed between insertion orders of the same
+copper. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

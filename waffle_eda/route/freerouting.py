@@ -327,6 +327,7 @@ def widen_tracks(board, width_mm: float) -> int:
 # stays connected after a move of a few micrometres; the DRC says whether the move made a new violation.
 NUDGE_EXTRA_MM = 0.0005
 REPAIR_ROUNDS = 12
+TRACE: list | None = None  # a list here receives the repair's decisions, for the order test's diagnosis
 
 
 @dataclass(frozen=True)
@@ -378,6 +379,62 @@ def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float 
         else:
             hi = mid
     return lo
+
+
+def index_violations(board, obstacles, rules) -> list[Violation]:
+    """Every pair of our copper (a track or via) and other-net copper closer than the rules, from the exact
+    collision index, in geometric order. KiCad's DRC report dropped a real violation in 1 run of 8 on one
+    board (D63), so the repair does not steer by it; the gate's DRC still judges the result."""
+    out = []
+    seen: set[tuple] = set()
+    ours = kb.track_segments(board) + kb.vias(board)
+    for item in ours:
+        is_via = item.GetClass() == "PCB_VIA"
+        layer = pcbnew.F_Cu if is_via else item.GetLayer()
+        for oid, other in _hits(obstacles, item, rules).items():
+            pair = tuple(sorted((item.m_Uuid.AsString(), oid)))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            gap = _gap_mm(item, other, layer if not is_via else (other.GetLayer() if other.GetClass() == "PCB_TRACK" else pcbnew.F_Cu))
+            short = round(rules.clearance_mm - gap, 4)
+            vtype = "clearance"
+            if short <= 0:  # copper clears; the index answered for a hole
+                vtype, short = "hole_clearance", round(rules.hole_to_copper_mm - gap - _ring_mm(other, item), 4)
+            if short <= 0:
+                continue
+            out.append(Violation(type=vtype, rule_mm=rules.clearance_mm if vtype == "clearance" else rules.hole_to_copper_mm,
+                                 actual_mm=round((rules.clearance_mm if vtype == "clearance" else rules.hole_to_copper_mm) - short, 4),
+                                 items=(_item_ref(item), _item_ref(other))))
+    return sorted(out, key=_violation_key)
+
+
+def _ring_mm(a, b) -> float:
+    """The copper ring around whichever of the two has a hole (a via or a plated pad), else 0."""
+    for item in (a, b):
+        if item.GetClass() == "PCB_VIA":
+            return kb.via_diameter_mm(item) / 2 - kb.via_drill_mm(item) / 2
+        if item.GetClass() == "PAD" and item.GetDrillSize().x > 0:
+            layers = item.GetLayerSet().CuStack()
+            size = item.GetSize(layers[0] if layers else pcbnew.F_Cu)
+            return max(0.0, (min(kb.mm(size.x), kb.mm(size.y)) - max(kb.mm(item.GetDrillSize().x), kb.mm(item.GetDrillSize().y))) / 2)
+    return 0.0
+
+
+def _item_ref(item) -> tuple:
+    """(uuid, description, position) as the DRC report would give them, for an item of the board."""
+    cls = item.GetClass()
+    if cls == "PCB_TRACK":
+        p = item.GetStart()
+        return (item.m_Uuid.AsString(), f"Track [{item.GetNetname()}] on {item.GetLayerName()}, length {kb.mm(item.GetLength()):.4f} mm", (kb.mm(p.x), kb.mm(p.y)))
+    p = item.GetPosition()
+    if cls == "PCB_VIA":
+        return (item.m_Uuid.AsString(), f"Via [{item.GetNetname()}]", (kb.mm(p.x), kb.mm(p.y)))
+    if cls == "PAD":
+        parent = item.GetParentFootprint()
+        ref = parent.GetReference() if parent else "?"
+        return (item.m_Uuid.AsString(), f"Pad {item.GetNumber()} [{item.GetNetname()}] of {ref}", (kb.mm(p.x), kb.mm(p.y)))
+    return (item.m_Uuid.AsString(), cls, (kb.mm(p.x), kb.mm(p.y)))
 
 
 def _hits(obstacles, item, rules) -> dict:
@@ -476,23 +533,35 @@ def _push_chain(board, obstacles, item, ux: float, uy: float, step: float, rules
 
 
 def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, rules):
-    """The first other-net copper ``item`` newly meets when moved ``distance_mm`` along (ux, uy), or None."""
+    """The nearest other-net copper ``item`` newly meets when moved ``distance_mm`` along (ux, uy), or None.
+    Nearest by gap, ties by position: the index yields hits in board order, which follows the order items
+    came in, and the order test caught the chain push choosing differently for the same geometry (D25)."""
     moved = _with_ends(board, item)
     before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(ux * distance_mm), kb.nm(uy * distance_mm))
-    hit = None
+    best = None
     for m in moved:
-        new = [o for o in obstacles._collisions(m, rules.clearance_mm, rules.hole_to_copper_mm)
-               if o.m_Uuid.AsString() not in before[m.m_Uuid.AsString()]]
-        if new:
-            hit = new[0]
-            break
+        layer = m.GetLayer() if m.GetClass() != "PCB_VIA" else pcbnew.F_Cu
+        for o in obstacles._collisions(m, rules.clearance_mm, rules.hole_to_copper_mm):
+            if o.m_Uuid.AsString() in before[m.m_Uuid.AsString()]:
+                continue
+            key = (round(_gap_mm(m, o, layer), 4), _item_key(o))
+            if best is None or key < best[0]:
+                best = (key, o)
     _move(board, item, moved, -kb.nm(ux * distance_mm), -kb.nm(uy * distance_mm))
     for m in moved:
         obstacles.add(m)
-    return hit
+    return None if best is None else best[1]
+
+
+def _item_key(item) -> tuple:
+    """A geometric sort key for any board item (D25)."""
+    if item.GetClass() == "PCB_TRACK":
+        return (0,) + _track_key(item)
+    p = item.GetPosition()
+    return (1, p.x, p.y)
 
 
 def _move(board, item, moved, dx_nm: int, dy_nm: int) -> None:
@@ -554,7 +623,7 @@ def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
 
 
 def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
-    """Move tracks a few micrometres away from what they violate, under KiCad's own DRC, until it is clean.
+    """Move tracks a few micrometres away from what they violate, until the exact collision index is clean.
 
     A track is moved once per round, by the largest shortfall on its open side plus a hair, or, when it is
     pressed from both sides, by half the difference of the two shortfalls, so it settles between its
@@ -565,12 +634,12 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
-        violations = sorted((v for v in drc_violations(board, rules, work_dir / f"round{round_no}")
-                             if v.type in ("clearance", "hole_clearance") and _ours(board, v)), key=_violation_key)
+        tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
+        obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
+        violations = index_violations(board, obstacles, rules)
         report["remaining"] = len(violations)
         if not violations:
             return report
-        tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
         via_ids = {v.m_Uuid.AsString() for v in kb.vias(board)}
         # per track: the shortfalls on each side of it, along its own normal
         sides: dict[str, list[float]] = {}
@@ -598,7 +667,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 entry[side] = max(entry[side], v.short_mm)
                 partners.setdefault(uuid, [set(), set()])[side].add(other[0])
         moved_now = 0
-        obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
+        if TRACE is not None:
+            TRACE.append(("round", round_no, sorted((_track_key(tracks[u])[1:3], tuple(sides[u])) for u in sides)))
         stuck: list[str] = []
         balanced: set[str] = set()  # pressed equally from both sides: moved only by a neighbour's push
         for uuid, (plus, minus) in sorted(sides.items(), key=lambda kv: _track_key(tracks[kv[0]])):
@@ -626,6 +696,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 stuck.append(uuid)
         # a track boxed in: the item it violates, then whatever blocks its way on the far side, is pushed
         # instead, where that is ours (a via or a track), and what blocks that in turn, a few items deep
+        if TRACE is not None:
+            TRACE.append(("stuck", [_track_key(tracks[u])[1:3] for u in stuck], "balanced", sorted(_track_key(tracks[u])[1:3] for u in balanced)))
         vias = {v.m_Uuid.AsString(): v for v in kb.vias(board)}
         movable = {**tracks, **vias}
         for uuid in stuck:
@@ -684,9 +756,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         report["unfixable"] = unfixable
         if moved_now == 0:
             break
-    violations = [v for v in drc_violations(board, rules, work_dir / "final")
-                  if v.type in ("clearance", "hole_clearance") and _ours(board, v)]
-    report["remaining"] = len(violations)
+    report["remaining"] = len(index_violations(board, Obstacles(board), rules))
     return report
 
 
@@ -698,7 +768,10 @@ def _track_key(track) -> tuple:
 
 
 def _violation_key(v: Violation) -> tuple:
-    return (v.type, tuple(sorted(p for _u, _d, p in v.items)), v.short_mm)
+    """Type, the items' positions and descriptions (net, layer, length), and the shortfall: the report gives
+    both items of a clearance violation the same position, so positions alone tie and fall back to report
+    order (D25)."""
+    return (v.type, tuple(sorted((p, d) for _u, d, p in v.items)), v.short_mm)
 
 
 def _ours(board, v: Violation) -> bool:
@@ -1187,6 +1260,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
         result.widened = widen_tracks(board, d.width_mm)
+        kb.save_board(board, work_dir / "imported.kicad_pcb")  # the router's output as imported: the repair
+        say(f"saved {work_dir / 'imported.kicad_pcb'}")  # alone can be rerun on it (scripts/repair_only.py)
         result.repair = repair_clearances(board, rules, work_dir / "repair")
         say(f"repair: {result.repair}")
         via_ring, pin_ring = smallest_ring_mm(board)
