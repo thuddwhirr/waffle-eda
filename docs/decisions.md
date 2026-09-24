@@ -280,6 +280,17 @@ up to 0.19 mm with 4 shorts (KiCad 40); after, 39 left none over 0.0075 mm (KiCa
 its physical layout rather than a chip layout problem; it stays in the registry (class `-`) and fetched, for the
 measurements D70 and D71 cite. Class A is the other five, `libresolar-mppt-2420` last. Owner, 2026-09-24.
 
+**D73. Class A's gate passes on all five boards** (`gate.py a`, 2026-09-24: PASS 5 of 5; 6 of 6, 35 of 35, 34 of
+34, 60 of 60, 102 of 102 nets, 0 violations each; 12 to 590 s a board). What `libresolar-mppt-2420` took: its USB
+connector's shield is twelve pad pieces in six overlapping groups that the reference joins with short tracks,
+and D61's rule left the router one pin per group with the other pieces as pads of no net, obstacles walling the
+pin in: 1 of 6 connections routed. Every piece as a pin with a fixed wire across each overlap measured worse
+(open-book 32 of 35, esp32c3 33 of 34, rp2040 58 of 60) and was reverted. What holds: a plated piece stays the
+group's pin where there is one (the router reaches it on either layer), the groups the router leaves apart are
+joined after the import by a straight track where the run clears every other net (4 laid), and a via boxed
+between a pad and a track pushes the track as a boxed track would (its two 0.002 and 0.004 mm leftovers).
+Measurement; the milestone's other half, the synthetic design through the six stages, is untouched.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

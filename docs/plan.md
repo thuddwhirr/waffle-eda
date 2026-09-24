@@ -24,7 +24,7 @@ python3 -m pytest -q -rs                # class A only (the parked classes' test
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
 reference to placement, routes it with `route.freerouting.route_board` (Freerouting 2.4.1 headless: export DSN,
 run the jar under `xvfb-run`, import the session; D56, D57), refills zones and scores it. Every board's DSN,
-session and logs are under `build/fr/<key>/`. The failing cases, first (each row from the latest run of that board on the committed wrapper, 2026-09-24 17:00 UTC):
+session and logs are under `build/fr/<key>/`. The failing cases, first (each row from the latest run of that board on the committed wrapper, 2026-09-24 20:15 UTC):
 
 | Board | Nets | Electrical violations | Blocker |
 |---|---|---|---|
@@ -32,14 +32,14 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 | `open-book-c1` | **35 of 35, PASS** | 0 | none: green since D62 |
 | `olimex-esp32c3-devkit` | **34 of 34, PASS** | 0 | none: green since D66 |
 | `olimex-rp2040-pico-pc` | **60 of 60, PASS** | 0 | none: green since D69 (D67 to D69 are what it took) |
-| `libresolar-mppt-2420` | 0 of 102 | | the 20-minute cap, no session file (D70's crkbd runs showed why: a killed run writes none); an earlier run inside the cap gave 101 of 102 with 201 clearance violations of the slack, before the repair existed |
+| `libresolar-mppt-2420` | **102 of 102, PASS** | 0 | none: green since D73 (the USB shield's pad pieces) |
 
 **Where it stands (2026-09-24, 07:30 UTC):** four rungs green through the gate in minutes each (D60,
 D62, D66, D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`. The loop that gets a rung green: run its
 gate row once (the wrapper saves the router's output as `build/fr/<key>/imported.kicad_pcb`), then
 `python3 scripts/repair_only.py <key> --twice` to measure a repair change in a minute without the router, and
 the gate row again to confirm. Freerouting's optimiser is off (D65): routing takes seconds and repeats to the
-digest, which every gate row prints. Four rungs are green (D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, in 15 to 265 s each. `crkbd-corne-cherry` left the ladder (D72; its measurements are D70 and D71, and the placer fixes they gave hold for every board). The next rung is `libresolar-mppt-2420`, killed at the cap before the optimiser was off; measure it with a pass budget first. Climb one board at a time,
+digest, which every gate row prints. All five rungs are green (D73): `python3 scripts/gate.py a` PASS 5 of 5 in about 25 minutes, libresolar's 10 the longest. `crkbd-corne-cherry` left the ladder (D72). What remains of milestone A is its other half: the synthetic temperature-sensor design through all six stages to fab outputs the owner reviews (stages 1 to 4 and 6 have nothing written), and the owner's review of one board's fab outputs. Climb one board at a time,
 and run one Freerouting at a time: two at once have left an empty session file (`route/freerouting.py`,
 pitfalls); the milestone is the whole gate.
 
@@ -123,11 +123,11 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-24, 19:00 UTC):* gate FAIL, 4 of 5. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
-inside the repairs of `route/freerouting.py`, D56 to D69) passes `tinkerforge-temperature` (6 of 6),
-`open-book-c1` (35 of 35), `olimex-esp32c3-devkit` (34 of 34) and `olimex-rp2040-pico-pc` (60 of 60), 0
-violations each, in under a minute a board but rp2040's four and a half; `libresolar-mppt-2420` was killed at the
-20-minute cap with no session file, before the optimiser was off; `crkbd-corne-cherry` left the ladder (D72). Numbers per board in the next-step section's table. Tests: the class A suite, 91 passed in 31 s (the parked
+*State (2026-09-24, 20:15 UTC):* gate PASS, 5 of 5. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
+inside the repairs of `route/freerouting.py`, D56 to D73) passes all five: `tinkerforge-temperature` (6 of 6),
+`open-book-c1` (35 of 35), `olimex-esp32c3-devkit` (34 of 34), `olimex-rp2040-pico-pc` (60 of 60) and
+`libresolar-mppt-2420` (102 of 102), 0 violations each, in 12 s to 10 min a board; `crkbd-corne-cherry` left the
+ladder (D72). Numbers per board in the next-step section's table. Tests: the class A suite, 92 passed in 31 s (the parked
 classes' 128 deselected; the whole suite, 209, last passed in full at 02:53). Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
 pass on all six (D50).
 
