@@ -360,7 +360,21 @@ def drc_violations(board, rules, work_dir: Path) -> list[Violation]:
     return out
 
 
-def _move_checked(board, obstacles, track, dx_mm: float, dy_mm: float, rules) -> bool:
+def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float = 0.05) -> float:
+    """How far ``track`` can move along the unit vector (ux, uy) before colliding, by bisection of trial moves."""
+    lo, hi = 0.0, limit_mm
+    if _move_checked(board, obstacles, track, ux * hi, uy * hi, rules, keep=False):
+        return hi
+    for _ in range(8):
+        mid = (lo + hi) / 2
+        if _move_checked(board, obstacles, track, ux * mid, uy * mid, rules, keep=False):
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
+def _move_checked(board, obstacles, track, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
     """Move ``track`` (and the ends it shares) and keep the move only if none of the moved tracks then collides
     with other-net copper under the exact collision index; otherwise put everything back."""
     ends = (pcbnew.VECTOR2I(track.GetStart()), pcbnew.VECTOR2I(track.GetEnd()))
@@ -374,7 +388,7 @@ def _move_checked(board, obstacles, track, dx_mm: float, dy_mm: float, rules) ->
     _move_track(board, track, kb.nm(dx_mm), kb.nm(dy_mm))
     clean = all(obstacles.clear(item, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm) is None
                 for item in moved)
-    if not clean:
+    if not clean or not keep:
         _move_track(board, track, -kb.nm(dx_mm), -kb.nm(dy_mm))
     for item in moved:
         obstacles.add(item)
@@ -475,12 +489,15 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             if abs(step) < 1e-6:
                 continue
             track = tracks[uuid]
-            for attempt in (step, step / 2, step / 4, step / 8):  # a move that lands on other copper is halved
-                if abs(attempt) < 0.0003:
-                    break
-                if _move_checked(board, obstacles, track, nx * attempt, ny * attempt, rules):
-                    moved_now += 1
-                    break
+            short = abs(step) - NUDGE_EXTRA_MM if not (plus > 0 and minus > 0) else abs(step)
+            sign = 1 if step > 0 else -1
+            room = _room(board, obstacles, track, nx * sign, ny * sign, rules)  # free travel that way
+            if room < short - 1e-6:  # boxed in: no translation clears both sides
+                stuck.append(uuid)
+                continue
+            move = min(abs(step), (short + room) / 2)  # the middle of the corridor, or the step if there is room
+            if _move_checked(board, obstacles, track, nx * sign * move, ny * sign * move, rules):
+                moved_now += 1
             else:
                 stuck.append(uuid)
         # a track that cannot move at all: push what it collides with instead, where that is a track
