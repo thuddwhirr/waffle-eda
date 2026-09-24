@@ -73,3 +73,25 @@ stripline_100_diff = { width = 0.100, gap = 0.200 }
 [price]
 status = "unknown"
 note = "Fill from real PCBWay quotes before any cost-based decision; until then every cost-crossing escalates to the owner."
+
+# PCBWay's standard two-layer build, the class A default. The dielectric detail (core thickness, Dk) is not
+# captured: the pages read on 2026-09-10 detail only the four-layer builds (vendor-notes.md). Nothing in class A
+# depends on it, since no class A net carries an impedance target; a design with one escalates (D74).
+[stackup.two_layer_1p6mm]
+layers = 2
+finished_thickness_mm = 1.6
+outer_copper_oz = 1.0
+detail_captured = false
+note = "core thickness and Dk unknown, not captured from the vendor; needed only for an impedance target"
+
+# What the vendor's order takes (vendor-notes.md, "Files to deliver at order time", captured 2026-09-10). Stage 6
+# writes each one and re-parses it. The BOM columns are as the notes describe them; the vendor's own template
+# file is not on disk, so the column headings are confirmed at order time.
+[deliverables]
+gerbers = "RS-274X, one file per layer, X2 attributes"
+drill = "Excellon, plated and non-plated holes"
+position = "pick-and-place: reference, value, package, x, y, rotation, side; mm"
+bom = "manufacturer part number, manufacturer, quantity, designators, DNP"
+assembly_drawing = "PDF: fab layer with references, and the outline"
+stackup_note = "layer count, thickness, copper weight, finish, material; impedance targets when there are any"
+netlist = "IPC-D-356, optional"

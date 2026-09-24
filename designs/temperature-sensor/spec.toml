@@ -1,0 +1,73 @@
+# The PCB specification, written by waffle_eda.design.stage4_spec from design.md, bom.csv and the fab
+# profile, with the outline as stage 5 left it (grown for room or pulled in to the parts, within the
+# locked maximum). Regenerated each run: edit design.md or the profile, not this file.
+
+[design]
+name = "temperature-sensor"
+fab = "pcbway"
+assembler = "PCBWay, turnkey"
+quantity = 5
+written = "2026-09-24 20:15 UTC"
+
+[board]
+layers = 2
+copper_layers = ["F.Cu", "B.Cu"]
+thickness_mm = 1.6
+outer_copper_oz = 1.0
+material = "FR-4"
+surface_finish = "HASL"
+assembly_sides = 1
+why = "two layers and one assembled side: a breakout with no fine-pitch package or impedance target; HASL is the cheapest finish offered"
+
+[stackup]
+name = "two_layer_1p6mm"
+layers = 2
+finished_thickness_mm = 1.6
+outer_copper_oz = 1.0
+detail_captured = false
+note = "core thickness and Dk unknown, not captured from the vendor; needed only for an impedance target"
+
+[outline]
+width_mm = 22.5
+height_mm = 12.7
+corner_radius_mm = 1.0
+max_mm = [25.0, 15.0]
+origin_mm = [100.0, 100.8]
+why = "1.5 times the parts' boxes (grown by the placer's keep-apart) in the maximum's proportions, not shorter than the parts on an edge; stage 5 grows it for room or pulls it in to the parts"
+
+[rules]
+track_width = 0.25
+clearance = 0.14
+via_diameter = 0.6
+via_drill = 0.3
+hole_clearance = 0.25
+edge_clearance = 0.3
+annular_ring = 0.15
+min_pad_gap_mm = 0.15
+min_pad_gap_part = "U1 pads 1 and 2"
+why = "class A defaults; the clearance stays 0.01 mm under the tightest pad gap (0.15 mm on U1)"
+
+[vias]
+type = "through"
+via_in_pad = false
+filled_capped = false
+
+[impedance]
+targets = []
+note = "no controlled-impedance net: I2C at 400 kHz and DC supply"
+
+[price]
+status = "unknown"
+estimate = "unknown"
+note = "the fab profile has no price model (D5); a quote comes from the owner or the vendor's order page"
+
+[parts]
+U1 = [2.45, 2.185]
+J1 = [3.59, 11.21]
+C1 = [3.01, 1.51]
+R1 = [3.01, 1.51]
+R2 = [3.01, 1.51]
+D1 = [3.05, 1.59]
+R3 = [3.01, 1.51]
+H1 = [4.95, 4.95]
+H2 = [4.95, 4.95]

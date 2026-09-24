@@ -1,0 +1,35 @@
+%TF.GenerationSoftware,KiCad,Pcbnew,9.0.9-9.0.9~ubuntu24.04.1*%
+%TF.CreationDate,2026-09-24T20:21:33+00:00*%
+%TF.ProjectId,temperature-sensor,74656d70-6572-4617-9475-72652d73656e,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Legend,Bot*%
+%TF.FilePolarity,Positive*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by KiCad (PCBNEW 9.0.9-9.0.9~ubuntu24.04.1) date 2026-09-24 20:21:33*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+%ADD10R,1.700000X1.700000*%
+%ADD11C,1.700000*%
+%ADD12C,2.200000*%
+G04 APERTURE END LIST*
+%LPC*%
+D10*
+%TO.C,J1*%
+X102600000Y-103300000D03*
+D11*
+X102600000Y-105840000D03*
+X102600000Y-108380000D03*
+X102600000Y-110920000D03*
+%TD*%
+D12*
+%TO.C,H1*%
+X119700000Y-103600000D03*
+%TD*%
+%TO.C,H2*%
+X119700000Y-110700000D03*
+%TD*%
+%LPD*%
+M02*

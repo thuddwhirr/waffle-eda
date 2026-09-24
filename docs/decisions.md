@@ -306,6 +306,18 @@ pads, so nothing passes between them and every such pad needs an escape stub end
 lattice node; a failed net's copper must come off the board inside the run; a one-way graph and copper left
 behind were both found only by running. Measurement, 2026-09-21.
 
+**D74. The synthetic temperature-sensor design goes through all six stages to fab outputs**
+(`scripts/design.py run temperature-sensor`, 2026-09-24, commit of this entry). Stage 1 `design.md`: 9 blocks, 5
+nets, the locked set; stage 2 `bom.csv`: 9 parts, each symbol and footprint found in KiCad's libraries; stage 3: a
+four-sheet schematic, ERC 0 errors and 0 warnings, its netlist matching the design one to one (5 nets, 19 pins);
+stage 4 `spec.toml`: two layers, clearance 0.14 mm held 0.01 under the SOT-563's 0.15 mm pad gap; stage 5: placed,
+routed and pulled in to 22.5 x 12.7 mm in one attempt, 5 of 5 nets, 0 violations, 0 DRC warnings, 13 s; stage 6:
+nine Gerbers, drill files (14 plated and 2 non-plated holes), positions, the vendor BOM, the assembly drawing, the
+stack-up note and an IPC-D-356 netlist grouping the pins as the schematic does, every file re-parsed. Found on the
+way: the container lacks KiCad's libraries (fetched at the release's tag); ERC warns on every symbol without project
+library tables; a board built in memory and handed to the router segfaults `pcbnew` (saved and reloaded instead).
+Waiting on the owner: the review of `design.md` and the outputs; prices and lead times, unknown. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

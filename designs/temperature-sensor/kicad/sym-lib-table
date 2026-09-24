@@ -1,0 +1,8 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "Connector_Generic")(type "KiCad")(uri "${KIPRJMOD}/../../../build/tools/kicad-symbols/Connector_Generic.kicad_sym")(options "")(descr ""))
+  (lib (name "Device")(type "KiCad")(uri "${KIPRJMOD}/../../../build/tools/kicad-symbols/Device.kicad_sym")(options "")(descr ""))
+  (lib (name "Mechanical")(type "KiCad")(uri "${KIPRJMOD}/../../../build/tools/kicad-symbols/Mechanical.kicad_sym")(options "")(descr ""))
+  (lib (name "Sensor_Temperature")(type "KiCad")(uri "${KIPRJMOD}/../../../build/tools/kicad-symbols/Sensor_Temperature.kicad_sym")(options "")(descr ""))
+  (lib (name "power")(type "KiCad")(uri "${KIPRJMOD}/../../../build/tools/kicad-symbols/power.kicad_sym")(options "")(descr ""))
+)

@@ -13,13 +13,17 @@ same commit.** A stale next-step is worse than none.
 minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver numpy shapely pytest`).
 
 ```
-python3 scripts/fetch_tools.py          # Freerouting 2.4.1 and a Java 25 into build/tools/ (D56)
-python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar, Xvfb: all present on 2026-09-23
+python3 scripts/fetch_tools.py          # Freerouting 2.4.1, a Java 25 and KiCad's symbol and footprint libraries at
+                                        # tag 9.0.9 into build/tools/ (D56, D74); a few minutes
+python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar, Xvfb, the libraries: all present on 2026-09-24
 python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
-python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 25 minutes; the first three boards alone
+python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 minutes; the first three boards alone
                                         # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
+python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
+python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
+                                                      # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # class A only (the parked classes' tests carry a marker pyproject deselects;
-                                        # `-m parked` runs them); expect 0 failed; a skip guards a build artifact
+                                        # `-m parked` runs them); expect 0 failed
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
@@ -35,14 +39,31 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 | `olimex-rp2040-pico-pc` | **60 of 60, PASS** | 0 | none: green since D69 (D67 to D69 are what it took) |
 | `libresolar-mppt-2420` | **102 of 102, PASS** | 0 | none: green since D73 (the USB shield's pad pieces) |
 
-**Where it stands (2026-09-24, 07:30 UTC):** four rungs green through the gate in minutes each (D60,
-D62, D66, D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`. The loop that gets a rung green: run its
-gate row once (the wrapper saves the router's output as `build/fr/<key>/imported.kicad_pcb`), then
-`python3 scripts/repair_only.py <key> --twice` to measure a repair change in a minute without the router, and
-the gate row again to confirm. Freerouting's optimiser is off (D65): routing takes seconds and repeats to the
-digest, which every gate row prints. All five rungs are green (D73): `python3 scripts/gate.py a` PASS 5 of 5 in about 25 minutes, libresolar's 10 the longest. `crkbd-corne-cherry` left the ladder (D72). What remains of milestone A is its other half: the synthetic temperature-sensor design through all six stages to fab outputs the owner reviews (stages 1 to 4 and 6 have nothing written), and the owner's review of one board's fab outputs. Climb one board at a time,
-and run one Freerouting at a time: two at once have left an empty session file (`route/freerouting.py`,
-pitfalls); the milestone is the whole gate.
+**Where it stands (2026-09-24, 20:30 UTC):** both halves of milestone A run green. The gate: PASS 5 of 5
+(D73; 13 s to 7 min a board, 12 minutes in all). The synthetic design: `designs/temperature-sensor/` is through all
+six stages (D74), its fab outputs under `out/`, its renders and every gate's report under `reports/`. **What
+remains is the owner's part, and only that:** the review of `design.md` (set `owner review` to `accepted
+<date>`) and of the fab outputs (`out/temperature-sensor-assembly.pdf`, `reports/layout.png`, the BOM), and the
+prices and lead times the BOM and the spec escalate as unknown. `python3 scripts/design.py status
+temperature-sensor` lists exactly those. When the owner has reviewed them, milestone A is complete and the next
+session starts class B with its first task (below, "B. A class B board"): the sanity pair of
+`tests/test_rebuild.py` on the class B references. Until then nothing in class B is touched. The loop that got
+a class A rung green stays the tool for a regression: run its gate row once (the wrapper saves the router's
+output as `build/fr/<key>/imported.kicad_pcb`), then `python3 scripts/repair_only.py <key> --twice` to measure
+a repair change in a minute without the router, and the gate row again to confirm. Freerouting's optimiser is
+off (D65); run one Freerouting at a time (two at once have left an empty session file, `route/freerouting.py`,
+pitfalls). `crkbd-corne-cherry` left the ladder (D72).
+
+**How a design runs (D74).** `scripts/design.py run <name>` takes `designs/<name>/design.md` and `bom.csv`
+through stages 1 to 6, each reading the previous stage's files and writing its own plus
+`reports/stage<N>-<name>.md` (PASS or FAIL first, the failing criteria, what waits on the owner, the numbers).
+A criterion the tool cannot check (a price with no quote, the owner's review) is escalated, not failed. Stage
+5 is the class A gate's router inside a closure loop: a seeded placement (`design/placer.py`: interfaces on
+their locked edges, parts with no net in the corners, the rest annealed on wire length with courtyards 1.5 mm
+apart, then the outline pulled in to the parts), `route.freerouting.route_board`, the ground pours, KiCad's
+DRC under the specification's rules; a failed attempt is logged to `reports/attempts.log` and the next one
+re-places with the next seed on an outline grown within the locked maximum. Stage 6 is `kicad-cli pcb export`
+with every file re-parsed against the board and the vendor's checklist in the fab profile.
 
 **Why it failed, measured (D57, D59), and the repair order the owner agreed on 2026-09-23.** The router connects
 nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
@@ -69,11 +90,11 @@ kept green:
 not the baseline; the session after writes the review the ladder rules call for, with two options: our own
 router for exits and pours with Freerouting between them, or our own router outright. No fifth tuning session.
 
-**Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
-"Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a
-four-pin header, decoupling, one LED, two layers), which is what `tinkerforge-temperature` is. Stage 3 has a
-starting point in `salvage/waffle-fpga/hw/tools/gen_sch.py` and `symlib.py`; stage 6 is `kicad-cli pcb export`
-plus a re-parse of every file written.
+**Milestone A, the other half, done (D74): the design directory and stages 1 to 6 on one class A design.**
+See "Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor,
+a four-pin header, decoupling, one LED, two layers), which is what `tinkerforge-temperature` is. Stage 3 is the
+salvaged schematic generator ported with tests (`design/schematic.py`); stage 6 is `kicad-cli pcb export` plus
+a re-parse of every file written.
 
 **What is not next.** Nothing in `route/bus.py`, `busplanner.py`, `escape.py` or `length.py`; nothing on D30;
 nothing on the FPGA target; no research. Those wait for class C (see "Parked").
@@ -124,13 +145,14 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-24, 20:15 UTC):* gate PASS, 5 of 5. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
-inside the repairs of `route/freerouting.py`, D56 to D73) passes all five: `tinkerforge-temperature` (6 of 6),
-`open-book-c1` (35 of 35), `olimex-esp32c3-devkit` (34 of 34), `olimex-rp2040-pico-pc` (60 of 60) and
-`libresolar-mppt-2420` (102 of 102), 0 violations each, in 12 s to 10 min a board; `crkbd-corne-cherry` left the
-ladder (D72). Numbers per board in the next-step section's table. Tests: the class A suite, 92 passed in 31 s (the parked
-classes' 128 deselected; the whole suite, 209, last passed in full at 02:53). Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
-pass on all six (D50).
+*State (2026-09-24, 20:30 UTC):* gate PASS, 5 of 5, and the synthetic design through all six stages (D74);
+what remains is the owner's review. Stage 5's baseline (Freerouting 2.4.1, optimiser off, inside the repairs
+of `route/freerouting.py`, D56 to D73) passes all five: `tinkerforge-temperature` (6 of 6), `open-book-c1`
+(35 of 35), `olimex-esp32c3-devkit` (34 of 34), `olimex-rp2040-pico-pc` (60 of 60) and `libresolar-mppt-2420`
+(102 of 102), 0 violations each, in 13 s to 7 min a board; `crkbd-corne-cherry` left the ladder (D72). The
+synthetic design `designs/temperature-sensor/`: six gates PASS (numbers in D74), 22.5 x 12.7 mm, fab outputs
+under `out/`. Tests: the class A suite, 116 passed in 31 s (the parked classes' 128 deselected).
+The benchmark and its sanity pair pass on all six (D50).
 
 ### B. A class B board, end to end
 
@@ -178,8 +200,12 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
 | `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java |
 | `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
+| `waffle_eda/design/` | the six stages on a design directory (D74): `stage1_design` to `stage6_outputs`, `gate` (a stage's criteria, escalations and report), `schematic` (the generator, from the salvage), `board_build`, `placer` (edges, corners, annealing, compaction, silkscreen references) |
+| `waffle_eda/kicad/libs.py`, `sexp.py`, `symbols.py` | KiCad's libraries found on disk (fetched at the release's tag), an S-expression reader and writer, symbols with their pins |
+| `designs/temperature-sensor/` | the class A synthetic design: `design.md`, `bom.csv`, `kicad/` (schematic and board in one project), `netlist.net`, `spec.toml`, `reports/`, `out/` |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
-| `tests/` | 209 tests; the class A suite is 81 of them, 24 s (`pytest`); the parked classes' tests carry the `parked` marker and run with `pytest -m parked` |
+| `scripts/design.py` | `run <name>` (stages in order, stopping at a failing gate), `status <name>` (each gate, what waits on the owner) |
+| `tests/` | 244 tests; the class A suite is 116 of them, 31 s (`pytest`); the parked classes' tests carry the `parked` marker and run with `pytest -m parked` |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)
@@ -203,7 +229,7 @@ that consumes them (D55). What this project provides:
   previous stage's files and writes its own; nothing is passed in memory that a person cannot open.
 * **A render at every gate**: placement and routing as PNG or SVG (`kicad/render.py`), failed nets highlighted,
   the diagnosis beside it.
-* **A status command** that prints where a design is in the pipeline, which gate it is at, and what it is
-  waiting on from the owner.
+* **A status command**, `scripts/design.py status <name>`, that prints where a design is in the pipeline,
+  which gate it is at, and what it is waiting on from the owner; `scripts/design.py run <name>` runs the stages.
 * **Owner input is a file edit**, never a drag: a locked constraint in `design.md`, a line vetoed in `bom.csv`.
   The acceptance rule (`definition.md` section 3) means there is nothing to manipulate, only to review.

@@ -266,6 +266,12 @@ def _drc(board_path: Path, rules: str, work_dir: Path, tag: str, runs: int = DRC
     return board_facts(merged or {})
 
 
+def drc_under_rules(board_path: Path, values: dict[str, float], work_dir: Path, tag: str = "drc") -> dict:
+    """Whole-board DRC facts (`board_facts`) for any board under a rule set: what the class A gate does to a
+    re-routed reference, for a design's own board (stage 5 of the pipeline)."""
+    return _drc(board_path, rules_text(values), work_dir, tag)
+
+
 def measure_rules(ref: refs.Reference, force: bool = False) -> BoardRules:
     """Measure (or load from cache) the rules the reference's own copper meets across the whole board."""
     path = rules_path(ref)

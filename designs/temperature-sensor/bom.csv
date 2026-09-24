@@ -1,0 +1,10 @@
+block,reference,value,kind,symbol,footprint,mpn,manufacturer,alternates,datasheet,price,stock,lead_time,sheet,dnp,notes
+sensor,U1,TMP102 digital temperature sensor SOT-563,specific,Sensor_Temperature:TMP102xxDRL,Package_TO_SOT_SMD:SOT-563,TMP102AIDRLR (from the symbol's part name; confirm at order),Texas Instruments,TMP112AIDRLR (Sensor_Temperature:TMP112xxDRL),https://www.ti.com/lit/ds/symlink/tmp102.pdf,unknown,unknown,unknown,sensor,no,12-bit I2C sensor; address 0x48 with ADD0 to ground
+header,J1,"1x4 pin header, 2.54 mm, vertical",generic,Connector_Generic:Conn_01x04,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,any,any,,generic,unknown,unknown,unknown,host,no,VCC GND SDA SCL
+cap,C1,"100 nF, 16 V or more, X7R, 0603",generic,Device:C,Capacitor_SMD:C_0603_1608Metric,any,any,,generic,unknown,unknown,unknown,sensor,no,decoupling at U1's V+
+pullup_sda,R1,"10 kOhm, 1 %, 0603",generic,Device:R,Resistor_SMD:R_0603_1608Metric,any,any,,generic,unknown,unknown,unknown,sensor,no,SDA pull-up
+pullup_scl,R2,"10 kOhm, 1 %, 0603",generic,Device:R,Resistor_SMD:R_0603_1608Metric,any,any,,generic,unknown,unknown,unknown,sensor,no,SCL pull-up
+led,D1,"LED, green, 0603",generic,Device:LED,LED_SMD:LED_0603_1608Metric,any,any,,generic,unknown,unknown,unknown,indicator,no,power indicator
+led_res,R3,"1 kOhm, 5 %, 0603",generic,Device:R,Resistor_SMD:R_0603_1608Metric,any,any,,generic,unknown,unknown,unknown,indicator,no,about 1.5 mA at 3.3 V
+hole1,H1,"mounting hole, M2, 2.2 mm",generic,Mechanical:MountingHole,MountingHole:MountingHole_2.2mm_M2,none,none,,generic,0,n/a,0 weeks,mechanical,no,no part fitted
+hole2,H2,"mounting hole, M2, 2.2 mm",generic,Mechanical:MountingHole,MountingHole:MountingHole_2.2mm_M2,none,none,,generic,0,n/a,0 weeks,mechanical,no,no part fitted

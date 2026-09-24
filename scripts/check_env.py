@@ -2,8 +2,9 @@
 """Verify the tools this project depends on. Exit 1 if a required one is missing.
 
 Required: Python >= 3.11, KiCad 9 (`kicad-cli`) and its `pcbnew` bindings on this interpreter, z3, numpy, shapely,
-pytest, Xvfb, and stage 5's router: Freerouting 2.4.1 with a Java 25 to run it (D56; `scripts/fetch_tools.py`
-puts both under build/tools/). Optional: git (fetching references).
+pytest, Xvfb, stage 5's router: Freerouting 2.4.1 with a Java 25 to run it (D56), and KiCad's symbol and
+footprint libraries (D74); `scripts/fetch_tools.py` puts all of them under build/tools/. Optional: git
+(fetching references).
 """
 from __future__ import annotations
 
@@ -59,6 +60,9 @@ def main() -> int:
     rows.append(("freerouting", fr.jar_path().is_file(), str(fr.jar_path()) if fr.jar_path().is_file()
                  else f"not found at {fr.jar_path()} (python3 scripts/fetch_tools.py)", True))
     rows.append(("xvfb-run", shutil.which("xvfb-run") is not None, shutil.which("xvfb-run") or "not found", True))
+    from waffle_eda.kicad import libs
+    for name, d in (("kicad symbols", libs.symbols_dir()), ("kicad footprints", libs.footprints_dir())):
+        rows.append((name, d is not None, str(d) if d else "not found (python3 scripts/fetch_tools.py)", True))
     git = run(["git", "--version"]) if shutil.which("git") else None
     rows.append(("git", git is not None, git or "not found", False))
 

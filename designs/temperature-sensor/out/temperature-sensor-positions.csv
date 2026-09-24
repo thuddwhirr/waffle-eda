@@ -1,0 +1,8 @@
+Ref,Val,Package,PosX,PosY,Rot,Side
+"C1","100 nF, 16 V or more, X7R, 0603","C_0603_1608Metric",107.300000,-104.300000,90.000000,top
+"D1","LED, green, 0603","LED_0603_1608Metric",113.300000,-102.300000,0.000000,top
+"J1","1x4 pin header, 2.54 mm, vertical","PinHeader_1x04_P2.54mm_Vertical",102.600000,-103.300000,0.000000,top
+"R1","10 kOhm, 1 %, 0603","R_0603_1608Metric",106.700000,-108.900000,90.000000,top
+"R2","10 kOhm, 1 %, 0603","R_0603_1608Metric",110.500000,-109.200000,180.000000,top
+"R3","1 kOhm, 5 %, 0603","R_0603_1608Metric",114.300000,-106.100000,90.000000,top
+"U1","TMP102 digital temperature sensor SOT-563","SOT-563",110.800000,-105.700000,180.000000,top
