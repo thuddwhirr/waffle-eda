@@ -27,6 +27,12 @@ What the wrapper has to know, each found by running it (`docs/decisions.md` D56)
 * **Two Freerouting runs at once can leave an empty session file.** Twice, with other instances routing other
   boards on the same machine, a run finished its passes, logged "Saving", and wrote 0 bytes (2026-09-24); no
   run alone has ever done that, and memory was not short. Run one board at a time; the gate does.
+* **A plane on a `signal` layer makes 2.4.1 call the layer "a dedicated power plane" and its session comes
+  back empty.** A zone laid before the export goes into the DSN as a `(plane ...)`; when it covers more than
+  half the board the router logs "Layer 'In1.Cu' has been automatically configured as a dedicated power
+  plane", routes, logs "Saving", and writes 0 bytes: three runs on `pico-ice-rev3` (D81), alone on the
+  machine, while a run with the same layers typed `(type power)` in the DSN wrote its session. A plane handed
+  to the router therefore goes on a layer typed `power`, or not at all.
 
 Salvaged mechanics (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `staged_route.sh`) that class A does not
 need yet and that are not implemented here: plane layers typed `power` (class B), rule areas dropped from the
@@ -1574,6 +1580,17 @@ def lay_stubs(board, stubs: list[Stub]) -> list:
     return made
 
 
+def type_layers_power(dsn_text: str, layers: list[str]) -> str:
+    """Type the given layers `power` in the DSN's structure section, as the salvaged exporter did for its
+    plane layers: the router then only drops vias into them and its session survives (D81)."""
+    for layer in layers:
+        dsn_text, n = re.subn(r"\(layer %s\n(\s*)\(type signal\)" % re.escape(layer),
+                              lambda m, layer=layer: f"(layer {layer}\n{m.group(1)}(type power)", dsn_text)
+        if n != 1:
+            raise ValueError(f"layer {layer!r} not found once as a signal layer in the DSN ({n} matches)")
+    return dsn_text
+
+
 def fix_wires(dsn_text: str) -> str:
     """Type every exported wire as fixed: on a problem board the only wires at export time are the stubs."""
     return dsn_text.replace("(type route)", "(type fix)")
@@ -1740,8 +1757,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
 
     ``pours`` are laid after the import (D62: on an outer layer the router trusted a plane its fill could not
     reach); ``planes`` are laid before the export, on inner layers, where every via reaches the fill: KiCad
-    writes them as DSN `(plane ...)` entries and the router connects their nets by via instead of routing a
-    board's ground and supplies as tracks (D80: pico-ice's 313 items left 27 after nine two-minute passes)."""
+    writes them as DSN `(plane ...)` entries, their layers are typed `power` in the DSN (on a `signal` layer
+    the router calls the plane a dedicated power plane and writes an empty session, pitfalls above), and the
+    router connects their nets by via instead of routing them as tracks (D80, D81)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1755,6 +1773,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid:
         dsn.write_text(fix_wires(dsn.read_text()))
+    if planes:
+        dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib

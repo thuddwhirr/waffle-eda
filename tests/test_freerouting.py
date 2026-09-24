@@ -801,3 +801,16 @@ def test_piece_groups_the_router_left_apart_are_joined_where_the_run_is_clear():
     before = len(kb.track_segments(board))
     fr.join_piece_groups(board, rules)
     assert len(kb.track_segments(board)) == before  # reached on both sides: nothing to join
+
+
+def test_a_plane_layer_handed_to_the_router_is_typed_power_in_the_dsn():
+    """D81: a plane on a `signal` layer makes 2.4.1 call the layer a dedicated power plane and write an empty
+    session; the layers of the planes handed over are typed power, and a layer the DSN does not carry as a
+    signal layer is an error, not a silent no-op."""
+    dsn = "(pcb x\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (layer In1.Cu\n      (type signal)\n    )\n  )\n)"
+    out = fr.type_layers_power(dsn, ["In1.Cu"])
+    assert "(layer In1.Cu\n      (type power)" in out and "(layer F.Cu\n      (type signal)" in out
+    with pytest.raises(ValueError):
+        fr.type_layers_power(dsn, ["In9.Cu"])
+    with pytest.raises(ValueError):
+        fr.type_layers_power(out, ["In1.Cu"])  # already power: typing it again is a mistake

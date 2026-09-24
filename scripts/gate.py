@@ -26,6 +26,7 @@ ladder one board at a time; the milestone is the whole gate, never a subset.
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import _path  # noqa: F401
@@ -157,12 +158,31 @@ def router_budget() -> dict:
     return out
 
 
+# Which of a reference's recorded pours the router gets before the export, as planes on layers typed power
+# (D81): none, as class A does (every pour laid after the import); "gnd", the ground plane's inner layers; or
+# "inner", every inner-layer pour. `WAFFLE_PLANES` selects it while the class B rungs are measured.
+PLANES = os.environ.get("WAFFLE_PLANES", "none")
+
+
+def plane_split(board, pours: list[dict]) -> tuple[list[dict], list[dict]]:
+    outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
+    if PLANES == "inner":
+        planes = [p for p in pours if p["layer"] not in outer]
+    elif PLANES == "gnd":
+        planes = [p for p in pours if p["layer"] not in outer and p["net"] == "GND"]
+    else:
+        planes = []
+    return planes, [p for p in pours if p not in planes]
+
+
 def _reroute_gate(references) -> list[tuple[str, bool, str]]:
     from waffle_eda.bench import rebuild
     from waffle_eda.route import freerouting
     rows = []
     missing = freerouting.available()
     budget = router_budget()
+    if PLANES != "none":
+        budget = {**budget}  # the row says which planes it ran with (D38)
     for ref in references:
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
@@ -174,9 +194,7 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
-            planes = [p for p in info["pours"] if p["layer"] not in outer]  # the inner planes go before the export (D80)
-            pours = [p for p in info["pours"] if p["layer"] in outer]
+            planes, pours = plane_split(board, info["pours"])
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
                                              pours=pours, planes=planes, **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
@@ -188,7 +206,7 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
         fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
-        budget_note = f" | router budget overridden: {budget}" if budget else ""
+        budget_note = (f" | router budget overridden: {budget}" if budget else "") + (f" | planes {PLANES}" if PLANES != "none" else "")
         rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
     return rows
 
