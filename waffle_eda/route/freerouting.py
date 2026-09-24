@@ -332,6 +332,7 @@ NUDGE_EXTRA_MM = 0.0005
 REPAIR_ROUNDS = 12
 TRACE: list | None = None  # a list here receives the repair's decisions, for the order test's diagnosis
 DRAG_FLOOR = True  # set per strategy by repair_clearances; see _move_checked
+CARRY_MM = 0.6  # a connected segment shorter than this is carried whole with a move, not pivoted on its far end
 
 
 @dataclass(frozen=True)
@@ -469,17 +470,33 @@ def _gap_mm(a, b, layer: int) -> float:
 
 
 def _with_ends(board, item) -> list:
-    """``item`` and the tracks of its net whose ends sit on it (a via's position, or a track's ends)."""
+    """``item`` and the tracks of its net that a move of it carries: those whose ends sit on it (a via's
+    position, or a track's ends), and, when such a neighbour is shorter than ``CARRY_MM``, the tracks on its
+    far end too, since that neighbour moves whole (see :func:`_move`). The esp32c3's USB_DN sat 0.014 mm off
+    the centre of a 0.02 mm corridor and could not move: its short 45-degree neighbour, pivoted on its far
+    end, swung into the next pad's corner."""
     is_via = item.GetClass() == "PCB_VIA"
     net = item.GetNetCode()
+    own = item.m_Uuid.AsString()
     if is_via:
-        ends = (pcbnew.VECTOR2I(item.GetPosition()),)
+        ends = [pcbnew.VECTOR2I(item.GetPosition())]
     else:
-        ends = (pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd()))
-    return [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
-                     and o.m_Uuid.AsString() != item.m_Uuid.AsString()
-                     and (is_via or o.GetLayer() == item.GetLayer())
-                     and (o.GetStart() in ends or o.GetEnd() in ends)]
+        ends = [pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd())]
+    segments = [o for o in kb.track_segments(board) if o.GetNetCode() == net and o.m_Uuid.AsString() != own]
+    moved = [item]
+    seen = {own}
+    far_ends = []
+    for o in segments:
+        if o.GetStart() in ends or o.GetEnd() in ends:
+            moved.append(o)
+            seen.add(o.m_Uuid.AsString())
+            if o.GetLength() < kb.nm(CARRY_MM):  # carried whole: its far end moves too
+                far_ends.append(pcbnew.VECTOR2I(o.GetEnd() if o.GetStart() in ends else o.GetStart()))
+    for o in segments:  # the tracks on a carried neighbour's far end follow with that end
+        if o.m_Uuid.AsString() not in seen and (o.GetStart() in far_ends or o.GetEnd() in far_ends):
+            moved.append(o)
+            seen.add(o.m_Uuid.AsString())
+    return moved
 
 
 def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True,
@@ -577,19 +594,31 @@ def _item_key(item) -> tuple:
 
 
 def _move(board, item, moved, dx_nm: int, dy_nm: int) -> None:
-    """Translate ``item`` and the ends of ``moved`` that sit on it."""
+    """Translate ``item``; carry every neighbour in ``moved`` shorter than ``CARRY_MM`` whole; for the rest
+    move only the end that sits on a moved point."""
     if item.GetClass() == "PCB_VIA":
-        at = item.GetPosition()
-        for o in moved:
-            if o is item:
-                continue
-            if o.GetStart() == at:
-                o.SetStart(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
-            if o.GetEnd() == at:
-                o.SetEnd(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
-        item.SetPosition(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
+        points = [pcbnew.VECTOR2I(item.GetPosition())]
+        item.SetPosition(pcbnew.VECTOR2I(points[0].x + dx_nm, points[0].y + dy_nm))
     else:
-        _move_track(board, item, dx_nm, dy_nm)
+        points = [pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd())]
+        item.SetStart(pcbnew.VECTOR2I(points[0].x + dx_nm, points[0].y + dy_nm))
+        item.SetEnd(pcbnew.VECTOR2I(points[1].x + dx_nm, points[1].y + dy_nm))
+    others = [o for o in moved if o.m_Uuid.AsString() != item.m_Uuid.AsString()]
+    anchors = list(points)
+    carried = set()
+    for o in others:
+        if (o.GetStart() in points or o.GetEnd() in points) and o.GetLength() < kb.nm(CARRY_MM):
+            anchors.append(pcbnew.VECTOR2I(o.GetEnd() if o.GetStart() in points else o.GetStart()))
+            o.SetStart(pcbnew.VECTOR2I(o.GetStart().x + dx_nm, o.GetStart().y + dy_nm))
+            o.SetEnd(pcbnew.VECTOR2I(o.GetEnd().x + dx_nm, o.GetEnd().y + dy_nm))
+            carried.add(o.m_Uuid.AsString())
+    for o in others:
+        if o.m_Uuid.AsString() in carried:
+            continue
+        if o.GetStart() in anchors:
+            o.SetStart(pcbnew.VECTOR2I(o.GetStart().x + dx_nm, o.GetStart().y + dy_nm))
+        if o.GetEnd() in anchors:
+            o.SetEnd(pcbnew.VECTOR2I(o.GetEnd().x + dx_nm, o.GetEnd().y + dy_nm))
 
 
 def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
