@@ -7,6 +7,8 @@ import pytest
 from waffle_eda.bench import delay, references as refs
 from waffle_eda.kicad import board as kb
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 def test_outer_copper_is_faster_than_inner():
     """The whole reason delay and length differ: a surface line's field runs partly in air."""

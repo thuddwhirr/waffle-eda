@@ -4,6 +4,8 @@ import pytest
 from waffle_eda.bench import harness, synthetic
 from waffle_eda.kicad import board as kb
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 @pytest.mark.parametrize("name", sorted(synthetic.CASES))
 def test_case_generates_and_passes_drc(name, tmp_path):

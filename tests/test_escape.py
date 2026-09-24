@@ -8,6 +8,8 @@ from waffle_eda.kicad import board as kb
 from waffle_eda.route import escape as esc, fanout as fo
 from waffle_eda.route.lattice import Lattice
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 @pytest.mark.parametrize("name", sorted(synthetic.CASES))
 def test_synthetic_cases_escape_completely(name, tmp_path):

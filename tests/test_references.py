@@ -44,6 +44,7 @@ def test_measure_reference(key):
         assert bus["routed_net_count"] == bus["net_count"]
 
 
+@pytest.mark.parked  # class C
 @pytest.mark.parametrize("key", ["butterstick", "logicbone"])
 def test_ddr3_references_match_the_brief(key):
     """The brief's measured claims: layer changes at the packages, three or fewer vias on most nets."""
@@ -56,6 +57,7 @@ def test_ddr3_references_match_the_brief(key):
     assert bus["length_mm"]["max"] < 60
 
 
+@pytest.mark.parked  # class C: the bus harness
 @pytest.mark.parametrize("key", ["butterstick", "logicbone"])
 def test_harness_do_nothing_scores_zero_and_answer_passes(key):
     ref = refs.REFERENCES[key]

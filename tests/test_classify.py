@@ -9,6 +9,8 @@ import pytest
 from waffle_eda.bench import bus_design as bd, references as refs
 from waffle_eda.kicad import board as kb
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 CLASS_C = [r.key for r in refs.REFERENCES.values() if r.has_bus and r.cls == "C"]
 
