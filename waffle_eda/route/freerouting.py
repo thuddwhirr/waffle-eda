@@ -437,6 +437,7 @@ def widen_tracks(board, width_mm: float) -> int:
 # clearance violation that involves a track, move that track away from the other item by the shortfall plus a
 # hair, carrying the tracks that share its ends with it, then check again. A track end inside a pad or a via
 # stays connected after a move of a few micrometres; the DRC says whether the move made a new violation.
+ROUTER_EDGE_MM = 0.30  # what the router keeps from the board edge; the DRC and the repair hold the measured rule (D68)
 NUDGE_EXTRA_MM = 0.0005
 REPAIR_ROUNDS = 12
 TRACE: list | None = None  # a list here receives the repair's decisions, for the order test's diagnosis
@@ -1598,8 +1599,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s,
-                              edge_clearance_mm=rules.edge_clearance_mm if router_edge_mm is None else router_edge_mm)
+    if router_edge_mm is None:  # the router's own margin closed rp2040's last corridor at the rule (D68)
+        router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exported_layers=layers,
