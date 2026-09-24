@@ -707,3 +707,58 @@ def test_the_repair_keeps_the_strategy_whose_deepest_violation_is_shallowest(mon
     outcomes[False]["worst_mm"] = 0.011  # as shallow: then the fewer wins
     report = fr.repair_clearances(board, _rules(), tmp_path / "repair")
     assert report["strategy"] == "free" and report["remaining"] == 51
+
+
+def test_a_gap_within_rounding_of_the_rule_is_no_violation_and_never_a_hole_one(tmp_path):
+    """crkbd's KEY3 stub sat 0.18896 mm from a pad under a 0.189 rule: the shortfall rounded to zero, the
+    index took that for a hole case, and a pad with no hole gave a 0.0605 mm violation the placer chased."""
+    import pcbnew
+    path = _two_track_board(tmp_path, gap_mm=0.30)
+    board = kb.load_board(path)
+    net_c = pcbnew.NETINFO_ITEM(board, "C")
+    board.Add(net_c)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetFPID(pcbnew.LIB_ID("test", "pad"))
+    fp.SetReference("P1")
+    pad = pcbnew.PAD(fp)
+    pad.SetNumber("1")
+    pad.SetShape(pcbnew.PAD_SHAPE_RECT)
+    pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+    pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(0.5)))
+    y = 5.0 - 0.125 - 0.18896 - 0.25  # 0.18896 from track A's edge
+    pad.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(y)))
+    fp.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(y)))
+    ls = pcbnew.LSET()
+    ls.AddLayer(pcbnew.F_Cu)
+    pad.SetLayerSet(ls)
+    pad.SetNet(net_c)
+    fp.Add(pad)
+    board.Add(fp)
+    rules = _rules(clearance_mm=0.189, hole_to_copper_mm=0.2495, edge_clearance_mm=0.0, min_track_mm=0.25)
+    from waffle_eda.route.obstacles import Obstacles
+    found = fr.index_violations(board, Obstacles(board), rules)
+    assert [v.type for v in found if v.short_mm > 0.001] == []
+    assert fr.repair_clearances(board, rules, tmp_path / "repair")["worst_mm"] <= 0.001
+
+
+def test_a_kept_collision_never_deepens_under_an_end_move_or_a_push(tmp_path):
+    """crkbd's KEY5 ran 0.006 mm too close to KEY10 along 4 mm; an end move for a violation at its other end
+    swung its far end 0.28 mm into KEY10, an overlap KiCad reports as a short (D70)."""
+    import pcbnew
+    from waffle_eda.route.obstacles import Obstacles
+    path = _two_track_board(tmp_path, gap_mm=0.183)  # A at y 5.0, B 0.006 too close below it, x 2..8
+    board = kb.load_board(path)
+    rules = _rules(clearance_mm=0.189, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    a = next(t for t in kb.track_segments(board) if t.GetNetname() == "A")
+    # floored: swinging A's far end 0.1 mm down keeps the collision with B (it had it) but deepens it past the
+    # router's own clearance; free: the same swing may deepen, but 0.2 mm would overlap B, a short
+    for floor, swing in ((True, 0.1), (False, 0.2)):
+        fr.DRAG_FLOOR = floor
+        obstacles = Obstacles(board)
+        assert not fr._move_end_checked(board, obstacles, a, 1, 0.0, swing, rules)
+        # a push of A with nothing vouched for (as in a chain push), straight into B
+        assert not fr._move_checked(board, obstacles, a, 0.0, swing, rules)
+        # the same push away from B is fine
+        assert fr._move_checked(board, obstacles, a, 0.0, -swing, rules, keep=False)
+    fr.DRAG_FLOOR = True
+    assert kb.mm(a.GetEnd().y) == pytest.approx(5.0)  # nothing moved

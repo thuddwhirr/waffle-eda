@@ -521,7 +521,9 @@ def index_violations(board, obstacles, rules) -> list[Violation]:
                 gap = _gap_mm(item, other, other_layer)
                 rule, vtype = rules.clearance_mm, "clearance"
                 short = round(rule - gap, 4)
-                if short <= 0:  # copper clears; the index answered for a hole
+                if short <= 0:  # copper clears; the index answered for a hole, if either has one
+                    if not _has_hole(other) and not _has_hole(item):
+                        continue  # a gap within rounding of the rule (crkbd's KEY3 stub: 0.18896 under 0.189)
                     vtype, rule = "hole_clearance", rules.hole_to_copper_mm
                     short = round(rule - gap - _ring_mm(other, item), 4)
             if short <= 0:
@@ -529,6 +531,12 @@ def index_violations(board, obstacles, rules) -> list[Violation]:
             out.append(Violation(type=vtype, rule_mm=rule, actual_mm=round(rule - short, 4),
                                  items=(_item_ref(item), _item_ref(other, near=item))))
     return sorted(out, key=_violation_key)
+
+
+def _has_hole(item) -> bool:
+    if item.GetClass() == "PCB_VIA":
+        return True
+    return item.GetClass() == "PAD" and item.GetDrillSize().x > 0
 
 
 def _ring_mm(a, b) -> float:
@@ -630,6 +638,21 @@ def _with_ends(board, item) -> list:
     return moved
 
 
+FREE_FLOOR_MM = 0.01  # with dragged ends free (D64) a kept collision may still never close to a short
+
+
+def _kept_ok(m, layer, before_hits: dict, after_hits: dict, gaps: dict, rules) -> bool:
+    """A moved item may keep only the collisions it had, and none of them closer than the router itself was
+    allowed (the rule less the slack) or than it was before, whichever is less; free (D64), only never within
+    FREE_FLOOR_MM of a short. crkbd's KEY5 was swung 0.28 mm into KEY10 by an end move that kept the pair's
+    0.006 mm violation and deepened it to an overlap (D70)."""
+    mid = m.m_Uuid.AsString()
+    if not set(after_hits) <= set(before_hits):
+        return False
+    floor = rules.clearance_mm - CLEARANCE_SLACK_MM - NUDGE_EXTRA_MM if DRAG_FLOOR else FREE_FLOOR_MM
+    return not any(_gap_mm(m, o, layer) < min(gaps.get((mid, oid), floor), floor) - 0.0002 for oid, o in after_hits.items())
+
+
 def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True,
                   allowed: frozenset | None = None) -> bool:
     """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
@@ -641,7 +664,7 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
     before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
     layer_of = {m.m_Uuid.AsString(): (m.GetLayer() if m.GetClass() != "PCB_VIA" else pcbnew.F_Cu) for m in moved}
     gaps = {(mid, oid): _gap_mm(next(m for m in moved if m.m_Uuid.AsString() == mid), o, layer_of[mid])
-            for mid, hits in before.items() for oid, o in hits.items() if mid != own}
+            for mid, hits in before.items() for oid, o in hits.items()}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
@@ -649,21 +672,16 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
     for m in moved:
         mid = m.m_Uuid.AsString()
         after = _hits(obstacles, m, rules)
-        if mid == own:
-            if not set(after) <= (allowed if allowed is not None else set(before[mid])):
+        if mid == own and allowed is not None:  # the caller vouches: it moves away from these
+            if not set(after) <= allowed:
                 clean = False
                 break
             continue
-        # a dragged end keeps only what it had, and none of it closer than the router itself was allowed (the
-        # rule less the slack): the repair never leaves copper worse than the router's own output. Measured
-        # through the DRC report this floor stalled open-book at two pairs; the report drops violations (D63),
-        # and under the index the measurement is repeated (scripts/repair_only.py on the three imported boards).
-        if not set(after) <= set(before[mid]):
-            clean = False
-            break
-        floor = rules.clearance_mm - CLEARANCE_SLACK_MM - NUDGE_EXTRA_MM
-        if DRAG_FLOOR and any(_gap_mm(m, o, layer_of[mid]) < min(gaps[(mid, oid)], floor) - 0.0002
-                              for oid, o in after.items()):
+        # a dragged end (or an item pushed with nothing vouched for) keeps only what it had, and none of it
+        # closer than the rule allows (_kept_ok): the repair never leaves copper worse than the router's own
+        # output. Measured through the DRC report this floor stalled open-book at two pairs; the report drops
+        # violations (D63), and under the index the measurement is repeated (scripts/repair_only.py).
+        if not _kept_ok(m, layer_of[mid], before[mid], after, gaps, rules):
             clean = False
             break
     if not clean or not keep:
@@ -741,6 +759,7 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
     moved += [o for o in kb.track_segments(board) if o.GetNetCode() == net and o.m_Uuid.AsString() not in {m.m_Uuid.AsString() for m in moved}
               and (o.GetStart() in far_ends or o.GetEnd() in far_ends)]
     before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
+    gaps = {(m.m_Uuid.AsString(), oid): _gap_mm(m, o, layer) for m in moved for oid, o in before[m.m_Uuid.AsString()].items()}
     for m in moved:
         obstacles.remove(m)
     dx, dy = kb.nm(dx_mm), kb.nm(dy_mm)
@@ -773,8 +792,15 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
         end.x, end.y = end.x + dx, end.y + dy
 
     apply(1)
-    clean = all(set(_hits(obstacles, m, rules)) <= (allowed if allowed is not None else set(before[m.m_Uuid.AsString()]))
-                for m in moved)
+    clean = True
+    for m in moved:
+        after = _hits(obstacles, m, rules)
+        if m is track and allowed is not None:
+            clean = set(after) <= allowed
+        else:
+            clean = _kept_ok(m, layer, before[m.m_Uuid.AsString()], after, gaps, rules)
+        if not clean:
+            break
     if not clean:
         apply(-1)
     for m in moved:
