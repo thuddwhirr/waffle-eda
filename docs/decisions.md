@@ -165,6 +165,15 @@ clearance violation's track moved away by the shortfall plus 0.002 mm, tracks sh
 up to four DRC rounds (kind 1; on the smoke board 9 violations to 0 in 3 rounds, 8 moves). Runs are
 deterministic per configuration; a subset of the gate is a rung, never the milestone. Measurement.
 
+**D61. A pad's pieces that touch are one connection to KiCad and separate pins to Freerouting.** KiCad exports
+the pieces of a pad with one number as `REF-N`, `REF-N@1`, ...; where their copper overlaps (the 0.2 mm fingers
+of `open-book-c1`'s buttons touch their round pad) KiCad's connectivity joins them, while Freerouting tried to
+route between the interleaved fingers of the two nets and left 14 GND connections open. Where they do not
+overlap (the smoke board's connector has two `EP` pads 11.6 mm apart) KiCad wants copper between them. So only
+the pieces joined by copper to another piece of the same number leave the router's pin lists
+(`freerouting.joined_pins`, `drop_pins`); dropping every suffixed pin cost the smoke board a net. With it,
+open-book's violations went from 47 to 0 under the cruder filter. Measurement, 2026-09-24.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
