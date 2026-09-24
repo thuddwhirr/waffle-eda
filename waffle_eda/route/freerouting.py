@@ -509,6 +509,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         if not violations:
             return report
         tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
+        via_ids = {v.m_Uuid.AsString() for v in kb.vias(board)}
         # per track: the shortfalls on each side of it, along its own normal
         sides: dict[str, list[float]] = {}
         normals: dict[str, tuple[float, float]] = {}
@@ -516,7 +517,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         for v in violations:
             ours = [(u, d, p) for u, d, p in v.items if u in tracks]
             if not ours or v.short_mm <= 0:
-                unfixable += 1
+                if not any(u in via_ids for u, _d, _p in v.items):
+                    unfixable += 1
                 continue
             for uuid, _d, _p in ours:  # every track in the violation is pushed by the other item
                 other = next(((u, d, p) for u, d, p in v.items if u != uuid), None)
@@ -554,7 +556,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 moved_now += 1
             else:
                 stuck.append(uuid)
-        # a track boxed in: whatever blocks its way on the far side is pushed instead, where that is ours
+        # a track boxed in: the item it violates, then whatever blocks its way on the far side, is pushed
+        # instead, where that is ours (a via or a track)
         vias = {v.m_Uuid.AsString(): v for v in kb.vias(board)}
         for uuid in stuck:
             track = tracks[uuid]
@@ -562,6 +565,20 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             nx, ny = normals[uuid]
             sign = 1 if plus >= minus else -1
             short = max(plus, minus)
+            pushed = False
+            for v in violations:  # the violating item, pushed away from the track
+                ids = [u for u, _d, _p in v.items]
+                if uuid not in ids:
+                    continue
+                other = next((vias.get(u) or tracks.get(u) for u in ids if u != uuid), None)
+                if other is None or other.m_Uuid.AsString() in sides:
+                    continue
+                step = v.short_mm + 2 * NUDGE_EXTRA_MM
+                if _move_checked(board, obstacles, other, -nx * sign * step, -ny * sign * step, rules):
+                    moved_now += 1
+                    pushed = True
+            if pushed:
+                continue
             blocker = _blocker(board, obstacles, track, nx * sign, ny * sign, short + NUDGE_EXTRA_MM, rules)
             if blocker is None:
                 continue
@@ -569,10 +586,30 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             other = vias.get(uid) or tracks.get(uid)
             if other is None or uid in sides:
                 continue
-            ax, ay = (nx * sign, ny * sign)  # push the blocker onward, out of the track's way
             step = short + 2 * NUDGE_EXTRA_MM
-            if _move_checked(board, obstacles, other, ax * step, ay * step, rules):
+            if _move_checked(board, obstacles, other, nx * sign * step, ny * sign * step, rules):
                 moved_now += 1
+        # a via against fixed copper: the via moves away from it
+        for v in violations:
+            ours_v = [(u, p) for u, _d, p in v.items if u in vias]
+            if not ours_v or any(u in tracks for u, _d, _p in v.items) or v.short_mm <= 0:
+                continue
+            uuid, _p = ours_v[0]
+            other = next(((u, p) for u, _d, p in v.items if u != uuid), None)
+            if other is None:
+                continue
+            via = vias[uuid]
+            at = via.GetPosition()
+            dx, dy = kb.mm(at.x) - other[1][0], kb.mm(at.y) - other[1][1]
+            length = (dx * dx + dy * dy) ** 0.5
+            if length < 1e-9:
+                continue
+            ux, uy = dx / length, dy / length
+            step = v.short_mm + NUDGE_EXTRA_MM
+            for attempt in (step, step / 2):
+                if _move_checked(board, obstacles, via, ux * attempt, uy * attempt, rules):
+                    moved_now += 1
+                    break
         report["moved"] += moved_now
         report["unfixable"] = unfixable
         if moved_now == 0:
