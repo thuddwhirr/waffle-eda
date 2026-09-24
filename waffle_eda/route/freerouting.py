@@ -426,16 +426,10 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
     """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
     makes no new collision under the exact collision index. The item may keep colliding only with ``allowed``:
     the copper it is moving away from, whose collision shrinks (with no ``allowed``, anything it collided with
-    before). A dragged end may keep the collisions it had, none of them closer than before. A collision the
-    move deepens is otherwise indistinguishable from one it resolves; open-book's repair drove one to 0.036 mm
-    that way, and the esp32c3's to 0.057 through a dragged end; holding dragged ends to ``allowed`` instead
-    stalled both boards."""
+    before). A dragged end may keep the collisions it had (D62)."""
     moved = _with_ends(board, item)
     own = item.m_Uuid.AsString()
     before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
-    layer_of = {m.m_Uuid.AsString(): (m.GetLayer() if m.GetClass() != "PCB_VIA" else pcbnew.F_Cu) for m in moved}
-    gaps = {(mid, oid): _gap_mm(next(m for m in moved if m.m_Uuid.AsString() == mid), o, layer_of[mid])
-            for mid, hits in before.items() for oid, o in hits.items() if mid != own}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
@@ -448,15 +442,11 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
                 clean = False
                 break
             continue
-        # a dragged end keeps only what it had, and none of it closer than the router itself was allowed
-        # (the rule less the slack): the repair never leaves copper worse than the router's own output, and a
-        # later round still reaches it. Held to "no closer than before" both boards stalled at two pairs;
-        # unbounded, kept collisions deepened to 0.057 mm on the esp32c3.
+        # a dragged end keeps only what it had (D62's rule, the one under which open-book is green). Holding it
+        # to "no closer than before" or to a floor at the router's own clearance stalled open-book at two
+        # pairs; unbounded, a kept collision deepened to 0.057 mm on the esp32c3, which is that board's
+        # failing case to fix without touching this rule.
         if not set(after) <= set(before[mid]):
-            clean = False
-            break
-        floor = rules.clearance_mm - CLEARANCE_SLACK_MM - NUDGE_EXTRA_MM
-        if any(_gap_mm(m, o, layer_of[mid]) < min(gaps[(mid, oid)], floor) - 0.0002 for oid, o in after.items()):
             clean = False
             break
     if not clean or not keep:
