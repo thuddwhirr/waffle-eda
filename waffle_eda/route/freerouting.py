@@ -465,6 +465,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 entry[side] = max(entry[side], v.short_mm)
         moved_now = 0
         obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
+        stuck: list[str] = []
         for uuid, (plus, minus) in sorted(sides.items()):
             nx, ny = normals[uuid]
             if plus > 0 and minus > 0:  # pressed from both sides: settle in the middle, no extra
@@ -474,11 +475,28 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             if abs(step) < 1e-6:
                 continue
             track = tracks[uuid]
-            for attempt in (step, step / 2):  # a move that lands on other copper is undone and halved once
-                moved = _move_checked(board, obstacles, track, nx * attempt, ny * attempt, rules)
-                if moved:
+            for attempt in (step, step / 2, step / 4, step / 8):  # a move that lands on other copper is halved
+                if abs(attempt) < 0.0003:
+                    break
+                if _move_checked(board, obstacles, track, nx * attempt, ny * attempt, rules):
                     moved_now += 1
                     break
+            else:
+                stuck.append(uuid)
+        # a track that cannot move at all: push what it collides with instead, where that is a track
+        for uuid in stuck:
+            for v in violations:
+                ids = [u for u, _d, _p in v.items]
+                if uuid not in ids:
+                    continue
+                other_uuid = next((u for u in ids if u != uuid and u in tracks and u not in sides), None)
+                if other_uuid is None:
+                    continue
+                other = tracks[other_uuid]
+                ax, ay = _away(other, next(p for u, _d, p in v.items if u == uuid))
+                step = v.short_mm + NUDGE_EXTRA_MM
+                if _move_checked(board, obstacles, other, ax * step, ay * step, rules):
+                    moved_now += 1
         report["moved"] += moved_now
         report["unfixable"] = unfixable
         if moved_now == 0:
