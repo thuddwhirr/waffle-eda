@@ -134,10 +134,11 @@ def gate_m4() -> list[tuple[str, bool, str]]:
             rows.append((ref.key, False, missing))
             continue
         try:
-            bare, _info = rebuild.strip_all(ref)
+            bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key)
+            result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
+                                             pours=info["pours"])
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue

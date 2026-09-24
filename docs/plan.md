@@ -29,7 +29,7 @@ wrapper as committed; the last three boards were still running at the commit and
 | Board | Nets | Electrical violations | Blocker |
 |---|---|---|---|
 | `tinkerforge-temperature` | **6 of 6, PASS** | 0 | none: green since D60 (items 1 to 3 below) |
-| `open-book-c1` | 34 of 35 | 59: 40 track width, 18 clearance, 1 edge | the router necks traces below the rule at pads (`automatic_neckdown` off changes nothing); GND, a pour on the reference, left as a track |
+| `open-book-c1` | 34 of 35 | 2: 1 clearance, 1 edge | GND, a pour on both layers of the reference, open between the buttons and the switch: item 4 (D61 removed the other 45 violations) |
 | `olimex-esp32c3-devkit` | 34 of 34 | 31: 16 hole clearance, 15 clearance | the typed via clearance is not honoured everywhere; clearance at pad exits |
 | `olimex-rp2040-pico-pc` | 53 of 60 | 20: 19 clearance, 1 hole clearance | clearance at pad exits; 7 nets unrouted, not yet diagnosed |
 | `crkbd-corne-cherry` | 0 of 152 | | 598 pins, 482 connections load; the run hits the 20-minute cap and Freerouting writes no session file when killed (as D51 found for 2.1.0): its `save_intermediate_stages` or a longer budget, measured when this rung comes |

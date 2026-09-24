@@ -361,7 +361,43 @@ def test_the_buttons_fingers_are_joined_and_the_connectors_two_eps_are_not():
     bare, _ = rebuild.strip_all(ref)
     joined = fr.joined_pins(kb.load_board(bare))
     b5 = sorted(n for n in joined if n.startswith("B5-"))
-    assert b5 == ["B5-1@1", "B5-1@2", "B5-1@3", "B5-1@4", "B5-2@1", "B5-2@2", "B5-2@3"], b5  # the fingers
+    assert len(b5) == 7, b5  # 9 pieces, two round pads stay as pins
+    board = kb.load_board(bare)
+    fp = board.FindFootprintByReference("B5")
+    names = fr._pin_names(fp)
+    round_pads = {f"B5-{names[i]}" for i, p in enumerate(fp.Pads()) if min(kb.mm(p.GetSize(p.GetLayerSet().CuStack()[0]).x), kb.mm(p.GetSize(p.GetLayerSet().CuStack()[0]).y)) > 2}
+    assert len(round_pads) == 2 and not (round_pads & set(b5)), (round_pads, b5)
     ref = _ref("tinkerforge-temperature")
     bare, _ = rebuild.strip_all(ref)
     assert fr.joined_pins(kb.load_board(bare)) == set()  # P1's two EP pads are 11.6 mm apart: both routed
+
+
+# --- supply nets as pours (item 4) ----------------------------------------------------------------------------
+def test_the_problem_board_records_the_pours_it_strips():
+    """Stage 4 would specify the pours; the benchmark hands the router the reference's own (D17): the net, the
+    layers, the zone's clearance and minimum width, and its outline."""
+    ref = _ref("tinkerforge-temperature")
+    _bare, info = rebuild.strip_all(ref)
+    pours = info["pours"]
+    assert sorted((p["net"], p["layer"]) for p in pours) == [("GND", "Rückseite"), ("GND", "Vorderseite")]
+    for p in pours:
+        assert p["clearance_mm"] == pytest.approx(0.249, abs=1e-3) and p["min_thickness_mm"] == pytest.approx(0.249, abs=1e-3)
+        assert len(p["outline_mm"]) >= 4 and p["pad_connection"] == 1
+
+
+def test_the_pours_are_laid_after_the_import_with_the_hole_rule_in_their_clearance():
+    """Laid before the export the router trusted the plane for a pad the fill cannot reach (D62)."""
+    ref = _ref("tinkerforge-temperature")
+    bare, info = rebuild.strip_all(ref)
+    board = kb.load_board(bare)
+    assert len(list(board.Zones())) == 0
+    made = fr.add_pours(board, info["pours"], _rules(), ring_mm=0.226)
+    assert len(made) == 2
+    zones = {(z.GetNetname(), board.GetLayerName(z.GetFirstLayer())) for z in board.Zones()}
+    assert zones == {("GND", "Vorderseite"), ("GND", "Rückseite")}
+    for z in board.Zones():
+        assert kb.mm(z.GetMinThickness()) >= 0.2997  # never below the rule width
+        clearance = z.GetLocalClearance()
+        clearance = clearance.value() if hasattr(clearance, "value") else clearance
+        assert kb.mm(clearance) == pytest.approx(0.4964 - 0.226, abs=1e-4)  # the hole rule less the via ring
+        assert not z.GetIsRuleArea()

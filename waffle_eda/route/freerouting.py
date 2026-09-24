@@ -320,8 +320,8 @@ def widen_tracks(board, width_mm: float) -> int:
 # clearance violation that involves a track, move that track away from the other item by the shortfall plus a
 # hair, carrying the tracks that share its ends with it, then check again. A track end inside a pad or a via
 # stays connected after a move of a few micrometres; the DRC says whether the move made a new violation.
-NUDGE_EXTRA_MM = 0.002
-REPAIR_ROUNDS = 4
+NUDGE_EXTRA_MM = 0.0005
+REPAIR_ROUNDS = 8
 
 
 @dataclass(frozen=True)
@@ -378,6 +378,15 @@ def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
     track.SetEnd(pcbnew.VECTOR2I(ends[1].x + dx_nm, ends[1].y + dy_nm))
 
 
+def _normal(track) -> tuple[float, float]:
+    """A unit normal of the track (one of its two sides; the sign is fixed per track for a round)."""
+    import math
+    s, e = track.GetStart(), track.GetEnd()
+    ax, ay = kb.mm(e.x - s.x), kb.mm(e.y - s.y)
+    length = math.hypot(ax, ay)
+    return (0.0, 0.0) if length < 1e-9 else (-ay / length, ax / length)
+
+
 def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
     """Unit vector perpendicular to ``track`` pointing away from ``other_pos_mm``."""
     import math
@@ -396,10 +405,10 @@ def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
 def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
     """Move tracks a few micrometres away from what they violate, under KiCad's own DRC, until it is clean.
 
-    Every violation's push on a track is summed within a round and the track moved once, so a track squeezed
-    from both sides settles between its neighbours and the outcome does not depend on the order KiCad lists
-    the violations (D25). The smoke board's middle SOT-563 exit oscillated between its two neighbours under
-    one move per violation and stopped at zero or one violation by order alone."""
+    A track is moved once per round, by the largest shortfall on its open side plus a hair, or, when it is
+    pressed from both sides, by half the difference of the two shortfalls, so it settles between its
+    neighbours; the outcome does not depend on the order KiCad lists the violations (D25). The smoke board's
+    three parallel SOT-563 exits oscillated under one move per violation, and overshot under a summed push."""
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
@@ -409,28 +418,38 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         if not violations:
             return report
         tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
-        pushes: dict[str, list[float]] = {}
+        # per track: the shortfalls on each side of it, along its own normal
+        sides: dict[str, list[float]] = {}
+        normals: dict[str, tuple[float, float]] = {}
         unfixable = 0
         for v in violations:
             ours = [(u, d, p) for u, d, p in v.items if u in tracks]
             if not ours or v.short_mm <= 0:
                 unfixable += 1
                 continue
-            uuid, _d, _p = ours[0]
-            other = next(((u, d, p) for u, d, p in v.items if u != uuid), None)
-            if other is None:
-                unfixable += 1
-                continue
-            nx, ny = _away(tracks[uuid], other[2])
-            step = v.short_mm + NUDGE_EXTRA_MM
-            push = pushes.setdefault(uuid, [0.0, 0.0])
-            push[0] += nx * step
-            push[1] += ny * step
+            for uuid, _d, _p in ours:  # every track in the violation is pushed by the other item
+                other = next(((u, d, p) for u, d, p in v.items if u != uuid), None)
+                if other is None:
+                    unfixable += 1
+                    continue
+                track = tracks[uuid]
+                if uuid not in normals:
+                    normals[uuid] = _normal(track)
+                nx, ny = normals[uuid]
+                ax, ay = _away(track, other[2])
+                side = 0 if ax * nx + ay * ny > 0 else 1  # which side of the track the push points to
+                entry = sides.setdefault(uuid, [0.0, 0.0])
+                entry[side] = max(entry[side], v.short_mm)
         moved_now = 0
-        for uuid, (px, py) in sorted(pushes.items()):
-            if abs(px) < 1e-6 and abs(py) < 1e-6:
+        for uuid, (plus, minus) in sorted(sides.items()):
+            nx, ny = normals[uuid]
+            if plus > 0 and minus > 0:  # pressed from both sides: settle in the middle, no extra
+                step = (plus - minus) / 2
+            else:
+                step = plus + NUDGE_EXTRA_MM if plus > 0 else -(minus + NUDGE_EXTRA_MM)
+            if abs(step) < 1e-6:
                 continue
-            _move_track(board, tracks[uuid], kb.nm(px), kb.nm(py))
+            _move_track(board, tracks[uuid], kb.nm(nx * step), kb.nm(ny * step))
             moved_now += 1
         report["moved"] += moved_now
         report["unfixable"] = unfixable
@@ -495,14 +514,23 @@ def joined_pins(board) -> set[str]:
                 for b in idx:
                     if a < b and _touch(pads[a], pads[b]):
                         parent[find(b)] = find(a)
-            first: dict[int, int] = {}
-            for i in idx:  # the first piece of each component stays a pin
-                root = find(i)
-                if root in first:
-                    out.add(f"{fp.GetReference()}-{names[i]}")
-                else:
-                    first[root] = i
+            comps: dict[int, list[int]] = {}
+            for i in idx:
+                comps.setdefault(find(i), []).append(i)
+            for members in comps.values():  # the largest piece stays the pin: a plane reaches a round pad, not
+                if len(members) < 2:  # a 0.2 mm finger walled in by the other net's fingers
+                    continue
+                keep = max(members, key=lambda i: _area(pads[i]))
+                for i in members:
+                    if i != keep:
+                        out.add(f"{fp.GetReference()}-{names[i]}")
     return out
+
+
+def _area(pad) -> float:
+    layers = pad.GetLayerSet().CuStack()
+    size = pad.GetSize(layers[0] if layers else pcbnew.F_Cu)
+    return kb.mm(size.x) * kb.mm(size.y)
 
 
 def drop_pins(dsn_text: str, names: set[str]) -> str:
@@ -516,6 +544,57 @@ def drop_pins(dsn_text: str, names: set[str]) -> str:
         return "(pins " + " ".join(kept) + ")"
 
     return dsn_text[:start] + _PINS.sub(strip, dsn_text[start:])
+
+
+# --- supply nets as pours (plan, milestone A) -------------------------------------------------------------------
+def design_rules(board, rules) -> None:
+    """Write the measured rules into the board's design settings, which is what the zone filler keeps: filled
+    under KiCad's defaults the pours came within 0.25 mm of holes against a measured 0.4964 (13 hole-clearance
+    violations on the smoke board, 8 on open-book)."""
+    ds = board.GetDesignSettings()
+    ds.m_MinClearance = kb.nm(rules.clearance_mm)
+    ds.m_HoleClearance = kb.nm(rules.hole_to_copper_mm)
+    ds.m_CopperEdgeClearance = kb.nm(rules.edge_clearance_mm)
+    ds.m_TrackMinWidth = kb.nm(rules.min_track_mm)
+
+
+def add_pours(board, pours: list[dict], rules, ring_mm: float | None = None) -> list:
+    """Lay the recorded pours (`bench.rebuild.pour_facts`) as zones after the import, over the routed tracks.
+
+    Laid before the export they become `(plane ...)` entries the router trusts: it left the SOT-563's middle GND
+    pad to the plane, which KiCad's fill cannot reach past the neighbouring pads (D62). Routed as tracks first,
+    GND is connected whatever the fill reaches, and the pour adds its copper on top; the gate says what that
+    costs. The zone clearance is the larger of the reference's and the hole rule less the smallest ring on the
+    board, since the fill keeps its clearance from a via's pad, not its hole (13 violations at 0.475 mm against
+    0.4964). Returns the zones, unfilled; the gate fills them."""
+    names = {name: lid for lid, name in kb.copper_layers(board)}
+    nets = board.GetNetsByName()
+    design_rules(board, rules)
+    made = []
+    for pour in pours:
+        layer = names.get(pour["layer"])
+        if layer is None or pour["net"] not in nets or len(pour["outline_mm"]) < 3:
+            continue
+        zone = pcbnew.ZONE(board)
+        zone.SetNet(nets[pour["net"]])
+        zone.SetLayer(layer)
+        outline = zone.Outline()
+        outline.NewOutline()
+        for x, y in pour["outline_mm"]:
+            outline.Append(kb.nm(x), kb.nm(y))
+        clearance = max(pour["clearance_mm"], rules.clearance_mm)
+        if ring_mm is not None:
+            clearance = max(clearance, rules.hole_to_copper_mm - ring_mm)
+        zone.SetLocalClearance(kb.nm(round(clearance, 4)))
+        zone.SetMinThickness(kb.nm(max(pour["min_thickness_mm"], rules.min_track_mm)))
+        try:
+            zone.SetPadConnection(pcbnew.ZONE_CONNECTION_THERMAL if pour["pad_connection"] == 1
+                                  else pcbnew.ZONE_CONNECTION_FULL)
+        except AttributeError:  # binding variants
+            pass
+        board.Add(zone)
+        made.append(zone)
+    return made
 
 
 # --- escape stubs for fine-pitch rows (D51/D52) --------------------------------------------------------------
@@ -703,6 +782,7 @@ class FreeroutingResult:
     rules: DsnRules
     renamed: int
     stubs: int = 0
+    pours: int = 0
     widened: int = 0  # tracks the router necked below the rule, set back to it
     repair: dict = field(default_factory=dict)  # what repair_clearances did
     exported_layers: list = field(default_factory=list)
@@ -781,7 +861,7 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
-                say=lambda _m: None) -> FreeroutingResult:
+                pours: list[dict] | None = None, say=lambda _m: None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log."""
     t0 = time.time()
@@ -808,6 +888,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         result.widened = widen_tracks(board, d.width_mm)
         result.repair = repair_clearances(board, rules, work_dir / "repair")
         say(f"repair: {result.repair}")
+        via_ring, pin_ring = smallest_ring_mm(board)
+        rings = [r for r in (via_ring, pin_ring) if r is not None]
+        result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None))
+        say(f"pours: {result.pours}")
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
         result.vias = len(kb.vias(board))
         say(f"imported {ses.name}: tracks+vias {before} -> {result.tracks + result.vias}")

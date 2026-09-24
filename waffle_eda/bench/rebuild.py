@@ -44,9 +44,23 @@ def rules_path(ref: refs.Reference) -> Path:
 
 
 # --- the problem board ----------------------------------------------------------------------------------------
+def pour_facts(board, zone) -> dict:
+    """What stage 4 would specify about a copper zone, and what the router is handed instead (D17): the net, the
+    layer, the zone's own clearance and minimum width, how pads connect, and its outline in mm."""
+    outline = zone.Outline()
+    pts = [(kb.mm(outline.CVertex(i).x), kb.mm(outline.CVertex(i).y)) for i in range(outline.VertexCount(0))] \
+        if outline.OutlineCount() else []
+    local = zone.GetLocalClearance()
+    clearance = local.value() if hasattr(local, "value") else (local or 0)
+    return {"net": zone.GetNetname(), "layer": board.GetLayerName(zone.GetFirstLayer()),
+            "clearance_mm": round(kb.mm(clearance), 4), "min_thickness_mm": round(kb.mm(zone.GetMinThickness()), 4),
+            "pad_connection": int(zone.GetPadConnection()), "outline_mm": [(round(x, 4), round(y, 4)) for x, y in pts]}
+
+
 def _strip(board, delete: bool = False) -> dict:
-    """Count (and with ``delete`` remove) every piece of routed copper: tracks, arcs, vias and zones."""
-    removed = {"tracks": 0, "arcs": 0, "vias": 0, "zones": 0}
+    """Count (and with ``delete`` remove) every piece of routed copper: tracks, arcs, vias and zones. The zones
+    stripped are recorded as the pours the router is to lay (`pours`)."""
+    removed = {"tracks": 0, "arcs": 0, "vias": 0, "zones": 0, "pours": []}
     for item in list(board.GetTracks()):
         cls = item.GetClass()
         removed["tracks" if cls == "PCB_TRACK" else "arcs" if cls == "PCB_ARC" else "vias"] += 1
@@ -56,6 +70,10 @@ def _strip(board, delete: bool = False) -> dict:
         if zone.GetIsRuleArea():
             continue  # a keepout is part of the specification handed to the router, not copper it laid
         removed["zones"] += 1
+        for layer in zone.GetLayerSet().CuStack():
+            facts = pour_facts(board, zone)
+            facts["layer"] = board.GetLayerName(layer)
+            removed["pours"].append(facts)
         if delete:
             board.Delete(zone)
     return removed
@@ -67,7 +85,9 @@ def strip_all(ref: refs.Reference, out_path: Path | None = None, reuse: bool = T
     manifest = out_path.with_name(out_path.stem + ".strip.json")
     if reuse and out_path.is_file() and manifest.is_file() \
             and out_path.stat().st_mtime > refs.board_path(ref).stat().st_mtime:
-        return out_path, {**json.loads(manifest.read_text()), "reused": True}
+        info = json.loads(manifest.read_text())
+        if "pours" in info:  # a manifest from before the pours were recorded is re-made
+            return out_path, {**info, "reused": True}
     board = kb.load_board(refs.board_path(ref))
     removed = _strip(board, delete=True)
     info = {"reference": ref.key, "nets": len(all_nets(board)), "routable_nets": len(routable_nets(board)),
