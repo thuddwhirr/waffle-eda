@@ -243,6 +243,16 @@ GND routed last around the signals (signals as obstacles, then fixed or shoveabl
 but `/SPI0_CSn1` then fails at insertion, U3's pad 10 GND piece (in a no-pour area) is left, and the placer
 made a short between the two I2C1 tracks: 58 of 60 either way. Measurements; the choice is the owner's.
 
+**D69. Four rungs green: `olimex-rp2040-pico-pc` passes the class A gate** (2026-09-24: `gate.py a` on the
+four, PASS 4 of 4; 60 of 60 nets, 0 violations, 265 s; the three below unchanged at 6, 35, 34 of their nets, 15
+to 44 s). What it took after D67: the router keeps 0.30 mm from the board edge (`ROUTER_EDGE_MM`, D68) with
+the DRC and the repair at the measured rule, and three placer defects the leftovers exposed, each with a test:
+a track pressed from both sides of a corridor too narrow for it settled 0.0002 mm a round and counted as
+moving, so the via pressing it was never asked to give way; of two vias too close only the first was asked,
+though only the second could move; and the edge clearance was measured to the stroke the edge is drawn with
+(0.127 mm of it) and capped at 0.25 mm, so a track KiCad passed at 0.539 mm read as 0.25 short. The repair
+alone (`repair_only.py --twice`) reproduces to the digest `42389e3b93`, the gate's final. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

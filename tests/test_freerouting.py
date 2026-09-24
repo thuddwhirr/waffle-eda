@@ -574,3 +574,102 @@ def test_the_rp2040_boards_no_pour_areas_leave_its_tssop_pads_to_the_router():
     text = out.read_text()
     assert '(keepout "" (polygon' not in text
     assert len(list(board.Zones())) == 4 and len(fr.pour_only_rule_areas(board)) == 4
+
+
+# --- what the placer left on rp2040 (D68) ---------------------------------------------------------------------
+def test_a_track_squeezed_between_a_pad_and_our_via_makes_the_via_give_way(tmp_path):
+    """The track can only settle in the middle of a corridor 0.011 mm too narrow; it stayed short on both
+    sides for twelve rounds, counted as moving, and the via was never asked to move."""
+    import pcbnew
+    path = _two_track_board(tmp_path, gap_mm=0.30)  # A at y 5.0 and B well away; A is the squeezed one
+    board = kb.load_board(path)
+    nets = {n: board.FindNet(n) for n in ("A", "B")}
+    nets["C"] = pcbnew.NETINFO_ITEM(board, "C")
+    board.Add(nets["C"])
+    fp = pcbnew.FOOTPRINT(board)  # a pad of net C above A, 0.005 too close
+    fp.SetFPID(pcbnew.LIB_ID("test", "pad"))
+    fp.SetReference("P1")
+    pad = pcbnew.PAD(fp)
+    pad.SetNumber("1")
+    pad.SetShape(pcbnew.PAD_SHAPE_RECT)
+    pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+    pad.SetSize(pcbnew.VECTOR2I(kb.nm(2.0), kb.nm(0.5)))
+    y_pad = 5.0 - 0.125 - (0.1972 - 0.005) - 0.25
+    pad.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(y_pad)))
+    fp.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(y_pad)))
+    ls = pcbnew.LSET()
+    ls.AddLayer(pcbnew.F_Cu)
+    pad.SetLayerSet(ls)
+    pad.SetNet(nets["C"])
+    fp.Add(pad)
+    board.Add(fp)
+    via = pcbnew.PCB_VIA(board)  # our via of net B below A, 0.006 too close
+    via.SetWidth(kb.nm(0.701))
+    via.SetDrill(kb.nm(0.249))
+    via.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(5.0 + 0.125 + (0.1972 - 0.006) + 0.3505)))
+    via.SetNet(nets["B"])
+    board.Add(via)
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    from waffle_eda.route.obstacles import Obstacles
+    before = fr.index_violations(board, Obstacles(board), rules)
+    assert sorted(v.short_mm for v in before) == pytest.approx([0.005, 0.006], abs=5e-4)
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report["remaining"] == 0, report
+    assert fr.index_violations(board, Obstacles(board), rules) == []
+    moved_via = next(v for v in kb.vias(board))
+    assert kb.mm(moved_via.GetPosition().y) > 5.0 + 0.125 + 0.1972 + 0.3505 - 1e-6  # the via gave way
+
+
+def test_the_edge_clearance_is_measured_to_the_outline_not_its_stroke(tmp_path):
+    """KiCad's DRC passed rp2040's LED1 track at 0.539 mm from the edge under a 0.4776 rule; the index read it
+    0.25 short, measuring to the 0.254 mm stroke the edge is drawn with and stopping at 0.25 mm."""
+    import pcbnew
+    path = _two_track_board(tmp_path, gap_mm=0.30)
+    board = kb.load_board(path)
+    for d in board.GetDrawings():
+        if d.GetLayer() == pcbnew.Edge_Cuts:
+            d.SetWidth(kb.nm(0.254))
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.4776, min_track_mm=0.25)
+    from waffle_eda.route.obstacles import Obstacles
+    # track A runs from x 2.0 to 8.0 at y 5.0 on a 10 mm board: its end caps are 2.0 - 0.125 = 1.875 from the
+    # left and right edges, and its sides 5.0 - 0.125 = 4.875 from the top and bottom: clear
+    assert fr.index_violations(board, Obstacles(board), rules) == []
+    a = next(t for t in kb.track_segments(board) if t.GetNetname() == "A")
+    a.SetStart(pcbnew.VECTOR2I(kb.nm(0.6), kb.nm(5.0)))  # the end cap 0.475 from the left edge: 0.0026 short
+    found = fr.index_violations(board, Obstacles(board), rules)
+    assert [(v.type, v.short_mm) for v in found] == [("copper_edge_clearance", pytest.approx(0.0026, abs=5e-4))]  # 0.4776 - 0.475
+    a.SetStart(pcbnew.VECTOR2I(kb.nm(0.61), kb.nm(5.0)))  # 0.485: clear, though 0.358 from the stroke
+    assert fr.index_violations(board, Obstacles(board), rules) == []
+
+
+def test_of_two_vias_too_close_whichever_can_give_way_does(tmp_path):
+    """rp2040's SPI0_CSn1 via was 0.0055 short of MICRO_SD1's and boxed on its far side by a track; the placer
+    asked only the first via of the pair to move and left the violation for nine rounds."""
+    import pcbnew
+    path = _two_track_board(tmp_path, gap_mm=0.30)
+    board = kb.load_board(path)
+    nets = {n: board.FindNet(n) for n in ("A", "B")}
+    y_a = 5.0 - 0.125 - 0.1972 - 0.3505 - 1.0  # via A of net A well above track A, via B above it, 0.006 short
+    for net, y in (("A", y_a), ("B", y_a - 0.701 - 0.1972 + 0.006)):
+        via = pcbnew.PCB_VIA(board)
+        via.SetWidth(kb.nm(0.701))
+        via.SetDrill(kb.nm(0.249))
+        via.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(y)))
+        via.SetNet(nets[net])
+        board.Add(via)
+    wall = pcbnew.PCB_TRACK(board)  # net B's own track boxes via A from below, exactly at the rule
+    wall.SetStart(pcbnew.VECTOR2I(kb.nm(3.0), kb.nm(y_a + 0.3505 + 0.1972 + 0.125)))
+    wall.SetEnd(pcbnew.VECTOR2I(kb.nm(7.0), kb.nm(y_a + 0.3505 + 0.1972 + 0.125)))
+    wall.SetWidth(kb.nm(0.25))
+    wall.SetLayer(pcbnew.F_Cu)
+    wall.SetNet(nets["B"])
+    board.Add(wall)
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    from waffle_eda.route.obstacles import Obstacles
+    before = fr.index_violations(board, Obstacles(board), rules)
+    assert [v.short_mm for v in before] == [pytest.approx(0.006, abs=5e-4)]
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report["remaining"] == 0, report
+    ys = {v.GetNetname(): kb.mm(v.GetPosition().y) for v in kb.vias(board)}
+    assert ys["A"] == pytest.approx(y_a, abs=1e-6)  # boxed: stayed
+    assert ys["B"] < y_a - 0.701 - 0.1972 + 1e-6  # gave way

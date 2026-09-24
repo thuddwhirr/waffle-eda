@@ -180,8 +180,10 @@ class Obstacles:
                 except Exception:  # text and unusual shapes: the bounding box already intersects
                     return True
         elif kind == "edge":
+            # KiCad measures the edge clearance to the outline itself, not to the stroke it is drawn with: a
+            # 0.254 mm line on Edge.Cuts is 0.127 mm of drawing either side of the board's edge
             try:
-                if other.GetEffectiveShape(other.GetLayer()).Collide(shape, max(clr, self.edge_clearance_nm)):
+                if other.GetEffectiveShape(other.GetLayer()).Collide(shape, max(0, max(clr, self.edge_clearance_nm) - other.GetWidth() // 2)):
                     return True
             except Exception:
                 return True

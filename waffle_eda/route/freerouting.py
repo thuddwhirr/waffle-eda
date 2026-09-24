@@ -511,11 +511,13 @@ def index_violations(board, obstacles, rules) -> list[Violation]:
             if pair in seen:
                 continue
             seen.add(pair)
-            gap = _gap_mm(item, other, layer if not is_via else (other.GetLayer() if other.GetClass() == "PCB_TRACK" else pcbnew.F_Cu))
+            other_layer = layer if not is_via else (other.GetLayer() if other.GetClass() == "PCB_TRACK" else pcbnew.F_Cu)
             if other.GetClass() == "PCB_SHAPE" and other.GetLayer() == pcbnew.Edge_Cuts:
                 vtype, rule = "copper_edge_clearance", rules.edge_clearance_mm
+                gap = _gap_mm(item, other, other_layer, limit_mm=rule + 0.05) + kb.mm(other.GetWidth()) / 2
                 short = round(rule - gap, 4)
             else:
+                gap = _gap_mm(item, other, other_layer)
                 rule, vtype = rules.clearance_mm, "clearance"
                 short = round(rule - gap, 4)
                 if short <= 0:  # copper clears; the index answered for a hole
@@ -577,16 +579,18 @@ def _hit_ids(obstacles, item, rules) -> set[str]:
     return set(_hits(obstacles, item, rules))
 
 
-def _gap_mm(a, b, layer: int) -> float:
+def _gap_mm(a, b, layer: int, limit_mm: float = 0.25) -> float:
     """The copper-to-copper distance between two items on ``layer``, by bisection of the clearance at which
-    KiCad's shapes collide (the shapes answer collide-or-not, never a distance)."""
+    KiCad's shapes collide (the shapes answer collide-or-not, never a distance); ``limit_mm`` when they are
+    further apart than that. An edge line is measured to its stroke; the caller adds half its width, since
+    KiCad measures to the outline itself (rp2040's LED1 track read 0.25 short at 0.539 from the edge)."""
     def shape(item):
         return item.GetEffectiveShape(layer) if item.GetClass() == "PAD" else item.GetEffectiveShape()
     sa, sb = shape(a), shape(b)
-    lo, hi = 0.0, 0.25
+    lo, hi = 0.0, limit_mm
     if not sa.Collide(sb, kb.nm(hi)):
         return hi
-    for _ in range(9):
+    for _ in range(12):  # 0.25 mm to 0.06 um; an edge rule of 0.5 to 0.12 um
         mid = (lo + hi) / 2
         if sa.Collide(sb, kb.nm(mid)):
             hi = mid
@@ -1041,37 +1045,44 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
         # a via against copper it cannot wait for (fixed copper, or a track that did not move this round): the
         # via moves away, straight or along whichever axis still gains the distance, since a via boxed on the
         # straight line is often free along an axis (the esp32c3's +5V vias either side of a diagonal USB_DP)
-        moved_ids = set(u for u in sides if u not in balanced and u not in stuck)
+        # a track pressed from both sides only settles between them; when the corridor is too narrow it stays
+        # short on both, so it counts as waiting, and the via pressing it gives way (rp2040's +5V track between
+        # U1's pad and a +BATT via, 0.011 mm narrow, settled 0.0002 mm a round for twelve rounds)
+        moved_ids = set(u for u in sides if u not in balanced and u not in stuck and not (sides[u][0] > 0 and sides[u][1] > 0))
         for v in violations:
             ours_v = [(u, p) for u, _d, p in v.items if u in vias]
             if not ours_v or v.short_mm <= 0:
                 continue
             if any(u in moved_ids for u, _d, _p in v.items if u in tracks):
                 continue
-            uuid, _p = ours_v[0]
-            other = next(((u, p) for u, _d, p in v.items if u != uuid), None)
-            if other is None:
-                continue
-            via = vias[uuid]
-            at = via.GetPosition()
-            dx, dy = kb.mm(at.x) - other[1][0], kb.mm(at.y) - other[1][1]
-            if other[0] in tracks:  # away from a track is along its normal, whichever side the via is on
-                nx, ny = _normal(tracks[other[0]])
-                sx, sy = _away(tracks[other[0]], (kb.mm(at.x), kb.mm(at.y)))
-                dx, dy = -sx, -sy
-            length = (dx * dx + dy * dy) ** 0.5
-            if length < 1e-9:
-                continue
-            ux, uy = dx / length, dy / length
-            candidates = [(ux, uy, 1.0)]
-            for ax, ay in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
-                gain = ax * ux + ay * uy  # distance gained per unit moved along the axis
-                if gain > 0.3:
-                    candidates.append((ax, ay, gain))
-            for cx, cy, gain in candidates:
-                step = (v.short_mm + NUDGE_EXTRA_MM) / gain
-                if _move_checked(board, obstacles, via, cx * step, cy * step, rules, allowed=frozenset({other[0]})):
-                    moved_now += 1
+            for uuid, _p in ours_v:  # two vias of ours: whichever can give way (rp2040's SPI0_CSn1 against
+                other = next(((u, p) for u, _d, p in v.items if u != uuid), None)  # MICRO_SD1's, boxed itself)
+                if other is None:
+                    continue
+                via = vias[uuid]
+                at = via.GetPosition()
+                dx, dy = kb.mm(at.x) - other[1][0], kb.mm(at.y) - other[1][1]
+                if other[0] in tracks:  # away from a track is along its normal, whichever side the via is on
+                    nx, ny = _normal(tracks[other[0]])
+                    sx, sy = _away(tracks[other[0]], (kb.mm(at.x), kb.mm(at.y)))
+                    dx, dy = -sx, -sy
+                length = (dx * dx + dy * dy) ** 0.5
+                if length < 1e-9:
+                    continue
+                ux, uy = dx / length, dy / length
+                candidates = [(ux, uy, 1.0)]
+                for ax, ay in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
+                    gain = ax * ux + ay * uy  # distance gained per unit moved along the axis
+                    if gain > 0.3:
+                        candidates.append((ax, ay, gain))
+                done = False
+                for cx, cy, gain in candidates:
+                    step = (v.short_mm + NUDGE_EXTRA_MM) / gain
+                    if _move_checked(board, obstacles, via, cx * step, cy * step, rules, allowed=frozenset({other[0]})):
+                        moved_now += 1
+                        done = True
+                        break
+                if done:
                     break
         # a track ending at a pad on the board edge: its end cap is what the edge rule sees; the end is pulled
         # back along the track into the pad's copper (open-book's BTN_LOCK at a castellated pad)
