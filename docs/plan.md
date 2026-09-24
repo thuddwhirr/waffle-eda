@@ -134,7 +134,8 @@ inside the repairs of `route/freerouting.py`, D56 to D66) passes `tinkerforge-te
 `open-book-c1` (35 of 35) and `olimex-esp32c3-devkit` (34 of 34), 0 violations each, in under a minute a
 board; `olimex-rp2040-pico-pc` connected 52 of 60 before the repairs; `crkbd-corne-cherry` and
 `libresolar-mppt-2420` were killed at the 20-minute cap with no session file, before the optimiser was off.
-Numbers per board in the next-step section's table. Tests: 203 passed at 02:53, 27 in the wrapper's file since. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
+Numbers per board in the next-step section's table. Tests: the class A suite, 81 passed in 24 s (the parked
+classes' 128 deselected; the whole suite, 209, last passed in full at 02:53). Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
 pass on all six (D50). Tests: 192 passed, 0 failed.
 
 ### B. A class B board, end to end
@@ -184,7 +185,7 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java |
 | `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
-| `tests/` | 195 tests, 0 failed on 2026-09-23 (192 passed, 3 skips guarding unbuilt artifacts) |
+| `tests/` | 209 tests; the class A suite is 81 of them, 24 s (`pytest`); the parked classes' tests carry the `parked` marker and run with `pytest -m parked` |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)
