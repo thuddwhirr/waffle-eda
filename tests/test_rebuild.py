@@ -15,6 +15,10 @@ LADDER = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "l
 # its sanity pair is the first thing class B measures (docs/plan.md, "B. A class B board", first task).
 LADDER_B = ["pico-ice-rev3", "upduino-v3.01", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
             "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
+# The class B boards cost minutes each here (one DRC of mch2022-badge takes 158 s, D77), so their cases carry the
+# `bench` marker: run by default, left out of a quick run with `pytest -m "not parked and not bench"` (a
+# `-m` on the command line replaces the one in pyproject, so the parked marker is named again).
+SANITY = LADDER + [pytest.param(k, marks=pytest.mark.bench) for k in LADDER_B]
 
 
 def _ref(key):
@@ -24,7 +28,7 @@ def _ref(key):
     return ref
 
 
-@pytest.mark.parametrize("key", LADDER + LADDER_B)
+@pytest.mark.parametrize("key", SANITY)
 def test_the_original_copper_scores_full_marks(key):
     """The answer passes its own benchmark, or the benchmark is measuring something the board does not do.
     The answer is the reference as the benchmark reads it (`answer_board`, D76): its zones refilled by KiCad 9
@@ -39,7 +43,7 @@ def test_the_original_copper_scores_full_marks(key):
     assert s.connected == s.nets
 
 
-@pytest.mark.parametrize("key", LADDER + LADDER_B)
+@pytest.mark.parametrize("key", SANITY)
 def test_the_stripped_board_scores_zero(key):
     """The do-nothing tool scores zero. Anything above zero here is the benchmark crediting work nobody did."""
     ref = _ref(key)

@@ -23,8 +23,9 @@ python3 scripts/gate.py b pico-ice-rev3               # class B's first rung (D7
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays
-python3 -m pytest -q -rs                # class A only (the parked classes' tests carry a marker pyproject deselects;
-                                        # `-m parked` runs them); expect 0 failed
+python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
+                                        # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
+                                        # board, so `-m "not parked and not bench"` is the quick run, about a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
@@ -216,7 +217,7 @@ rising order; the target board to fab outputs.
 | `designs/temperature-sensor/` | the class A synthetic design: `design.md`, `bom.csv`, `kicad/` (schematic and board in one project), `netlist.net`, `spec.toml`, `reports/`, `out/` |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
 | `scripts/design.py` | `run <name>` (stages in order, stopping at a failing gate), `status <name>` (each gate, what waits on the owner) |
-| `tests/` | 244 tests; the class A suite is 116 of them, 31 s (`pytest`); the parked classes' tests carry the `parked` marker and run with `pytest -m parked` |
+| `tests/` | 263 tests: 117 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)
