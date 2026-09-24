@@ -30,15 +30,17 @@ wrapper as committed; the last three boards were still running at the commit and
 |---|---|---|---|
 | `tinkerforge-temperature` | **6 of 6, PASS** | 0 | none: green since D60 (items 1 to 3 below) |
 | `open-book-c1` | **35 of 35, PASS** | 0 | none: green since D62 |
-| `olimex-esp32c3-devkit` | 34 of 34 | 31: 16 hole clearance, 15 clearance | the typed via clearance is not honoured everywhere; clearance at pad exits |
+| `olimex-esp32c3-devkit` | 34 of 34 | 2 clearance | Pad 17 [unconnected-(U3-NC-Pad17)] of U3 vs Track [/USB_DN] short 0.0053 mm; Pad A7 [/USB_DN] of USB-C1 vs Track [/USB_DP] short 0.0054 mm: the repair's placer stalls on these two (every stricter drag rule that fixed them cost open-book its green, D62) |
 | `olimex-rp2040-pico-pc` | 53 of 60 | 20: 19 clearance, 1 hole clearance | clearance at pad exits; 7 nets unrouted, not yet diagnosed |
 | `crkbd-corne-cherry` | 0 of 152 | | 598 pins, 482 connections load; the run hits the 20-minute cap and Freerouting writes no session file when killed (as D51 found for 2.1.0): its `save_intermediate_stages` or a longer budget, measured when this rung comes |
 | `libresolar-mppt-2420` | 0 of 102 | | the 20-minute cap, no session file (as crkbd); an earlier run inside the cap gave 101 of 102 with 201 clearance violations of the slack, before the repair existed |
 
-**Where it stands (2026-09-24):** items 1 to 4 below are built; the smoke test and `open-book-c1` are green
-(D60, D62). The next rung is `olimex-esp32c3-devkit` alone (`gate.py a olimex-esp32c3-devkit`, about 7
-minutes): its last measurement, before items 2 to 4 and the repair's placer, was 34 of 34 nets with 28
-clearance violations under 0.011 mm, which is what the repair now removes. Then `olimex-rp2040-pico-pc`
+**Where it stands (2026-09-24, 02:50 UTC):** items 1 to 4 below are built; the smoke test and `open-book-c1`
+are green (D60, D62). The rung in progress is `olimex-esp32c3-devkit` (`gate.py a olimex-esp32c3-devkit`,
+about 12 minutes): 34 of 34 nets, 2 clearance violations of 0.005 mm left after the repair, both a track
+along a pad row (the table names them). Three rules for dragged track ends that removed them each turned
+open-book red, so the fix is a failing test for exactly those two pairs, not another rule on the shared
+placer. Then `olimex-rp2040-pico-pc`
 (53 of 60 before the repairs; 7 nets unrouted, not yet diagnosed), then `crkbd-corne-cherry` and
 `libresolar-mppt-2420`, which both hit the 20-minute cap with no session file: Freerouting's
 `save_intermediate_stages` setting or a larger budget, measured then. Climb one board at a time; the milestone
