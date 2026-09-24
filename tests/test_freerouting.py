@@ -3,6 +3,7 @@
 Each test here guards a way the wrapper was found wrong by running it. None of them needs the jar: what the jar
 does is measured by the class A gate, and its numbers are in the decisions log, not asserted here.
 """
+import pcbnew
 import pytest
 
 from waffle_eda.bench import rebuild, references as refs
@@ -508,3 +509,68 @@ def test_dangling_spurs_and_duplicate_segments_are_pruned(tmp_path):
     removed = fr.prune_dangling(board)
     assert removed == {"duplicates": 1, "dangling": 2}, removed
     assert len(kb.track_segments(board)) == 1
+
+
+# --- rule areas the export gets wrong -------------------------------------------------------------------------
+def _rule_area_board(tmp_path):
+    """Four rule areas, one of each kind KiCad can forbid, on an otherwise empty 20 mm board."""
+    board = pcbnew.BOARD()
+    for ax, ay, bx, by in ((0, 0, 20, 0), (20, 0, 20, 20), (20, 20, 0, 20), (0, 20, 0, 0)):
+        s = pcbnew.PCB_SHAPE(board)
+        s.SetShape(pcbnew.SHAPE_T_SEGMENT)
+        s.SetLayer(pcbnew.Edge_Cuts)
+        s.SetStart(pcbnew.VECTOR2I(kb.nm(ax), kb.nm(ay)))
+        s.SetEnd(pcbnew.VECTOR2I(kb.nm(bx), kb.nm(by)))
+        board.Add(s)
+    for x, flags, name in ((2, {"pour"}, "pour-only"), (6, {"tracks"}, "tracks-only"), (10, {"vias"}, "vias-only"),
+                           (14, {"tracks", "vias", "pour"}, "all")):
+        z = pcbnew.ZONE(board)
+        z.SetIsRuleArea(True)
+        z.SetLayer(pcbnew.F_Cu)
+        z.SetZoneName(name)
+        z.SetDoNotAllowCopperPour("pour" in flags)
+        z.SetDoNotAllowTracks("tracks" in flags)
+        z.SetDoNotAllowVias("vias" in flags)
+        o = z.Outline()
+        o.NewOutline()
+        for px, py in ((x, 5), (x + 3, 5), (x + 3, 8), (x, 8)):
+            o.Append(kb.nm(px), kb.nm(py))
+        board.Add(z)
+    return board
+
+
+def test_a_rule_area_that_forbids_only_the_pour_is_not_a_keepout_to_the_router(tmp_path):
+    """KiCad writes it as a plain (keepout), the same as one forbidding tracks and vias; the router then avoids
+    the pads it covers. `olimex-rp2040-pico-pc` draws no-pour areas over both pad rows of its TSSOP-14."""
+    board = _rule_area_board(tmp_path)
+    assert [z.GetZoneName() for z in fr.pour_only_rule_areas(board)] == ["pour-only"]
+    fr.export_dsn(board, _rules(), tmp_path / "board.dsn")
+    text = (tmp_path / "board.dsn").read_text()
+    assert text.count("(wire_keepout") == 1 and text.count("(via_keepout") == 1
+    assert text.count('(keepout "" (polygon') == 1  # the one forbidding everything stays a keepout
+    assert "2000 -5000" not in text  # the pour-only area's corner is in no keepout
+    # and the area is back on the board for the fill, as it was
+    names = {z.GetZoneName(): z for z in board.Zones()}
+    assert sorted(names) == ["all", "pour-only", "tracks-only", "vias-only"]
+    back = names["pour-only"]
+    assert back.GetIsRuleArea() and back.GetDoNotAllowCopperPour() and not back.GetDoNotAllowTracks()
+    ring = back.Outline().Outline(0)
+    assert [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y)) for k in range(ring.PointCount())] == \
+        [(2, 5), (5, 5), (5, 8), (2, 8)]
+    assert back.IsOnLayer(pcbnew.F_Cu)
+
+
+def test_the_rp2040_boards_no_pour_areas_leave_its_tssop_pads_to_the_router():
+    ref = _ref("olimex-rp2040-pico-pc")
+    bare, _ = rebuild.strip_all(ref)
+    board = kb.load_board(bare)
+    areas = fr.pour_only_rule_areas(board)
+    assert len(areas) == 4 and len(list(board.Zones())) == 4
+    u3 = {p.GetNumber(): p.GetPosition() for fp in board.GetFootprints() if fp.GetReference() == "U3" for p in fp.Pads()}
+    covered = sum(1 for pos in u3.values() if any(z.Outline().Contains(pos) for z in areas))
+    assert covered == 12  # 12 of the TSSOP-14's pad centres lie in a no-pour area; pads 2 and 3 are 0.3 mm from one
+    out = refs.repo_root() / "build" / "fr" / "test-rp2040-areas" / "board.dsn"
+    fr.export_dsn(board, rebuild.measure_rules(ref), out)
+    text = out.read_text()
+    assert '(keepout "" (polygon' not in text
+    assert len(list(board.Zones())) == 4 and len(fr.pour_only_rule_areas(board)) == 4

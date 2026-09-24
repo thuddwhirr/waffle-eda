@@ -310,6 +310,71 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+# --- rule areas the export gets wrong -------------------------------------------------------------------------
+def pour_only_rule_areas(board) -> list:
+    """The rule areas that forbid the copper pour and nothing the router lays (no tracks, no vias)."""
+    return [z for z in board.Zones() if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()
+            and not z.GetDoNotAllowTracks() and not z.GetDoNotAllowVias()]
+
+
+def lift_pour_only_rule_areas(board) -> list[dict]:
+    """Take the pour-only rule areas off the board for the export and return what lays them back.
+
+    KiCad's Specctra export writes a rule area that forbids only the pour as a plain ``(keepout ...)``, the same
+    as one forbidding tracks and vias (tracks alone give ``wire_keepout``, vias alone ``via_keepout``). The
+    router then treats it as ground it may not enter: `olimex-rp2040-pico-pc` draws no-pour areas over both pad
+    rows of its TSSOP-14 and the router could not start a search from any of its 14 pins (13 of the board's 14
+    open connections). The pour never reaches the router, so the areas are its business only after the import.
+    """
+    facts = []
+    for zone in pour_only_rule_areas(board):
+        poly = zone.Outline()
+        outlines = []
+        for i in range(poly.OutlineCount()):
+            ring = poly.Outline(i)
+            pts = [(ring.CPoint(k).x, ring.CPoint(k).y) for k in range(ring.PointCount())]
+            holes = []
+            for h in range(poly.HoleCount(i)):
+                hole = poly.Hole(i, h)
+                holes.append([(hole.CPoint(k).x, hole.CPoint(k).y) for k in range(hole.PointCount())])
+            outlines.append((pts, holes))
+        facts.append({"name": zone.GetZoneName(), "layers": list(zone.GetLayerSet().Seq()), "outlines": outlines,
+                      "pads": zone.GetDoNotAllowPads(), "footprints": zone.GetDoNotAllowFootprints()})
+        board.Delete(zone)
+    return facts
+
+
+def lay_rule_areas(board, facts: list[dict]) -> list:
+    """Lay back the rule areas :func:`lift_pour_only_rule_areas` took off, as new zones (board.py: a zone is
+    replaced, never reshaped)."""
+    made = []
+    for f in facts:
+        zone = pcbnew.ZONE(board)
+        zone.SetIsRuleArea(True)
+        zone.SetDoNotAllowCopperPour(True)
+        zone.SetDoNotAllowTracks(False)
+        zone.SetDoNotAllowVias(False)
+        zone.SetDoNotAllowPads(f["pads"])
+        zone.SetDoNotAllowFootprints(f["footprints"])
+        zone.SetZoneName(f["name"])
+        layers = pcbnew.LSET()
+        for lid in f["layers"]:
+            layers.AddLayer(lid)
+        zone.SetLayerSet(layers)
+        poly = zone.Outline()
+        for pts, holes in f["outlines"]:
+            i = poly.NewOutline()
+            for x, y in pts:
+                poly.Append(x, y, i)
+            for hole in holes:
+                h = poly.NewHole(i)
+                for x, y in hole:
+                    poly.Append(x, y, i, h)
+        board.Add(zone)
+        made.append(zone)
+    return made
+
+
 # --- what the router leaves behind (D66) ---------------------------------------------------------------------
 def prune_dangling(board) -> dict:
     """Remove duplicate track segments and, repeatedly, every segment with an end on nothing of its net (no
@@ -1481,7 +1546,11 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.is_file():
         out.unlink()
-    ok = pcbnew.ExportSpecctraDSN(board, str(out))
+    lifted = lift_pour_only_rule_areas(board)  # exported as full keepouts otherwise
+    try:
+        ok = pcbnew.ExportSpecctraDSN(board, str(out))
+    finally:
+        lay_rule_areas(board, lifted)
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
