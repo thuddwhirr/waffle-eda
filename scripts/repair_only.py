@@ -23,7 +23,9 @@ def once(ref, src: Path, work: Path) -> tuple[str, dict, str]:
     work.mkdir(parents=True, exist_ok=True)
     board = kb.load_board(src)
     rules = rebuild.measure_rules(ref)
+    pruned = fr.prune_dangling(board)
     report = fr.repair_clearances(board, rules, work / "repair")
+    report["pruned"] = pruned
     digest = fr.geometry_digest(board)
     _bare, info = rebuild.strip_all(ref)
     via_ring, pin_ring = fr.smallest_ring_mm(board)

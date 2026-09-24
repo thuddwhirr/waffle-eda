@@ -29,21 +29,24 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 |---|---|---|---|
 | `tinkerforge-temperature` | **6 of 6, PASS** | 0 | none: green since D60 (items 1 to 3 below) |
 | `open-book-c1` | **35 of 35, PASS** | 0 | none: green since D62 |
-| `olimex-esp32c3-devkit` | 34 of 34 | 2 clearance | Pad 17 [unconnected-(U3-NC-Pad17)] of U3 vs Track [/USB_DN] short 0.0053 mm; Pad A7 [/USB_DN] of USB-C1 vs Track [/USB_DP] short 0.0054 mm: the repair's placer stalls on these two (every stricter drag rule that fixed them cost open-book its green, D62) |
+| `olimex-esp32c3-devkit` | **34 of 34, PASS** | 0 | none: green since D66 |
 | `olimex-rp2040-pico-pc` | 52 of 60 | 1 clearance | GND: 9 connections the router cannot make as tracks, at the mounting holes' GND pieces and the RP2040's ground pads, which the reference's pour joins; the rung's measurement is GND handed to the router as a plane (D62 laid the pours after the import because a plane hid the SOT-563's middle pad on the smoke board; a plane for GND alone with the pad pieces reduced, D61, is the case to try) |
 | `crkbd-corne-cherry` | 0 of 152 | | 598 pins, 482 connections load; the run hits the 20-minute cap and Freerouting writes no session file when killed (as D51 found for 2.1.0): its `save_intermediate_stages` or a longer budget, measured when this rung comes |
 | `libresolar-mppt-2420` | 0 of 102 | | the 20-minute cap, no session file (as crkbd); an earlier run inside the cap gave 101 of 102 with 201 clearance violations of the slack, before the repair existed |
 
-**Where it stands (2026-09-24, 02:50 UTC):** items 1 to 4 below are built; the smoke test and `open-book-c1`
-are green (D60, D62). The rung in progress is `olimex-esp32c3-devkit` (`gate.py a olimex-esp32c3-devkit`,
-about 12 minutes): 34 of 34 nets, 2 clearance violations of 0.005 mm left after the repair, both a track
-along a pad row (the table names them). Three rules for dragged track ends that removed them each turned
-open-book red, so the fix is a failing test for exactly those two pairs, not another rule on the shared
-placer. Then `olimex-rp2040-pico-pc`
-(53 of 60 before the repairs; 7 nets unrouted, not yet diagnosed), then `crkbd-corne-cherry` and
-`libresolar-mppt-2420`, which both hit the 20-minute cap with no session file: Freerouting's
-`save_intermediate_stages` setting or a larger budget, measured then. Climb one board at a time, and run one Freerouting at a time: two at once have left an empty session file
-(`route/freerouting.py`, pitfalls); the milestone is the whole gate.
+**Where it stands (2026-09-24, 04:30 UTC):** three rungs green through the gate in a few minutes each (D60,
+D62, D66): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`. The loop that gets a rung green: run its
+gate row once (the wrapper saves the router's output as `build/fr/<key>/imported.kicad_pcb`), then
+`python3 scripts/repair_only.py <key> --twice` to measure a repair change in a minute without the router, and
+the gate row again to confirm. Freerouting's optimiser is off (D65): routing takes seconds and repeats to the
+digest, which every gate row prints. The next rung is `olimex-rp2040-pico-pc`: 52 of 60 before tonight's
+repairs, GND open at the mounting holes' GND pieces and the RP2040's ground pads, which the reference's pour
+joins; the case to try is GND handed to the router as a plane with the pad pieces reduced (D61), the pours
+otherwise laid after the import (D62). Then `crkbd-corne-cherry` and `libresolar-mppt-2420`, both killed at
+the 20-minute cap with no session file before the optimiser was off; measure them again first, then
+Freerouting's `job_timeout` and `save_intermediate_stages` if they still need it. Climb one board at a time,
+and run one Freerouting at a time: two at once have left an empty session file (`route/freerouting.py`,
+pitfalls); the milestone is the whole gate.
 
 **Why it failed, measured (D57, D59), and the repair order the owner agreed on 2026-09-23.** The router connects
 nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
@@ -125,11 +128,12 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-24, 03:05 UTC):* gate FAIL, 2 of 6. Stage 5's baseline (Freerouting 2.4.1 inside the repairs
-of `route/freerouting.py`, D56 to D62) passes `tinkerforge-temperature` (6 of 6, 0 violations, 25 s) and
-`open-book-c1` (35 of 35, 0 violations, 129 s); `olimex-esp32c3-devkit` connects 34 of 34 with 2 violations,
-`olimex-rp2040-pico-pc` 52 of 60 with 1; `crkbd-corne-cherry` and `libresolar-mppt-2420` are killed at the
-20-minute cap with no session file. Numbers per board in the next-step section's table. Tests: 203 passed. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
+*State (2026-09-24, 04:30 UTC):* gate FAIL, 3 of 6. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
+inside the repairs of `route/freerouting.py`, D56 to D66) passes `tinkerforge-temperature` (6 of 6),
+`open-book-c1` (35 of 35) and `olimex-esp32c3-devkit` (34 of 34), 0 violations each, in under a minute a
+board; `olimex-rp2040-pico-pc` connected 52 of 60 before the repairs; `crkbd-corne-cherry` and
+`libresolar-mppt-2420` were killed at the 20-minute cap with no session file, before the optimiser was off.
+Numbers per board in the next-step section's table. Tests: 203 passed at 02:53, 27 in the wrapper's file since. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
 pass on all six (D50). Tests: 192 passed, 0 failed.
 
 ### B. A class B board, end to end

@@ -129,9 +129,11 @@ def test_typed_clearances_go_into_the_structures_rule_block_only():
 
 def test_the_via_cost_goes_into_the_settings_file(tmp_path):
     import json
-    path = fr.settings_json(tmp_path, threads=1, passes=30)
+    path = fr.settings_json(tmp_path, threads=1, passes=30, edge_clearance_mm=0.5948)
     cfg = json.loads(path.read_text())
     assert cfg["router"]["scoring"]["via_costs"] == fr.VIA_COSTS
+    assert cfg["router"]["copper_to_edge_clearance_um"] == 594.8  # the measured rule, not the router's 0.5 mm
+    assert cfg["router"]["optimizer"]["enabled"] is False
     assert cfg["router"]["fanout"]["enabled"] is False
     assert cfg["version"] == fr.VERSION and cfg["profile"]["id"]
     assert cfg["usage_and_diagnostic_data"]["disable_analytics"] is True
@@ -470,3 +472,39 @@ def test_the_digest_ignores_order_and_sees_geometry(tmp_path):
     t = kb.track_segments(board)[0]
     t.SetStart(pcbnew_vec := __import__("pcbnew").VECTOR2I(t.GetStart().x + 1, t.GetStart().y))
     assert fr.geometry_digest(board) != a
+
+
+# --- what the router leaves behind (D66) ---------------------------------------------------------------------
+def test_dangling_spurs_and_duplicate_segments_are_pruned(tmp_path):
+    """open-book's BTN_LOCK carried a 13 mm spur ending on nothing 0.1 mm from the board edge, with a second
+    identical segment on top of it; KiCad's DRC reports a dangling track only as a warning."""
+    import pcbnew
+    board = pcbnew.BOARD()
+    net = pcbnew.NETINFO_ITEM(board, "N")
+    board.Add(net)
+    via0 = pcbnew.PCB_VIA(board)  # stands for the pad end: a via of the net at (1, 1)
+    via0.SetPosition(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+    via0.SetNet(net)
+    board.Add(via0)
+    via = pcbnew.PCB_VIA(board)
+    via.SetPosition(pcbnew.VECTOR2I(kb.nm(5.0), kb.nm(1.0)))
+    via.SetNet(net)
+    board.Add(via)
+
+    def seg(x0, y0, x1, y1):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(y1)))
+        t.SetWidth(kb.nm(0.25))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(net)
+        board.Add(t)
+        return t
+
+    seg(1.0, 1.0, 5.0, 1.0)  # via to via: stays
+    seg(1.0, 1.0, 5.0, 1.0)  # its duplicate: goes
+    seg(5.0, 1.0, 5.0, 3.0)  # a spur off the via: goes
+    seg(5.0, 3.0, 7.0, 3.0)  # the spur's continuation: goes too, in the second pass
+    removed = fr.prune_dangling(board)
+    assert removed == {"duplicates": 1, "dangling": 2}, removed
+    assert len(kb.track_segments(board)) == 1

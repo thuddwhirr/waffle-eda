@@ -66,6 +66,8 @@ DRILL_STEP_MM = 0.001
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
 FANOUT = False  # the fanout stage necks its stubs to 75 % of the width, below the rule, and is fragile (D57)
+OPTIMIZER_PASSES = 0  # the optimiser reworks copper for length and via count, which the gate does not score; it took
+# 11 of the esp32c3's 12 minutes and, drawing on Java's random generator, gave a different board each run (D65)
 
 
 def repo_root() -> Path:
@@ -308,6 +310,48 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+# --- what the router leaves behind (D66) ---------------------------------------------------------------------
+def prune_dangling(board) -> dict:
+    """Remove duplicate track segments and, repeatedly, every segment with an end on nothing of its net (no
+    pad containing it, no via at it, no other segment ending or passing there). Freerouting leaves such spurs
+    and counts them among its own violations; KiCad's DRC reports them only as warnings, and one of
+    open-book's ended 0.1 mm from the board edge."""
+    removed = {"duplicates": 0, "dangling": 0}
+    seen: set[tuple] = set()
+    doomed = []
+    for t in kb.track_segments(board):
+        s, e = t.GetStart(), t.GetEnd()
+        key = (t.GetNetCode(), t.GetLayer(), t.GetWidth()) + tuple(sorted(((s.x, s.y), (e.x, e.y))))
+        if key in seen:
+            doomed.append(t)
+        else:
+            seen.add(key)
+    for t in doomed:  # deleted after the scan: a deleted item's proxy must not be touched again
+        board.Delete(t)
+        removed["duplicates"] += 1
+    pads = [p for fp in board.GetFootprints() for p in fp.Pads() if p.GetNetCode()]
+    while True:
+        tracks = kb.track_segments(board)
+        vias = kb.vias(board)
+        victim = None
+        for t in tracks:
+            net, layer = t.GetNetCode(), t.GetLayer()
+            for end in (t.GetStart(), t.GetEnd()):
+                attached = any(p.GetNetCode() == net and p.IsOnLayer(layer) and p.HitTest(end) for p in pads) \
+                    or any(v.GetNetCode() == net and v.GetPosition() == end for v in vias) \
+                    or any(o.GetNetCode() == net and o.GetLayer() == layer and o.m_Uuid.AsString() != t.m_Uuid.AsString()
+                           and (o.GetStart() == end or o.GetEnd() == end or o.HitTest(end)) for o in tracks)
+                if not attached:
+                    victim = t
+                    break
+            if victim is not None:
+                break
+        if victim is None:
+            return removed
+        board.Delete(victim)  # then the lists are rebuilt: nothing holds the deleted proxy
+        removed["dangling"] += 1
+
+
 # --- necked traces (D59, kind 2) -------------------------------------------------------------------------------
 def widen_tracks(board, width_mm: float) -> int:
     """Set every track narrower than the rule back to it; returns how many. Freerouting narrows a trace where it
@@ -402,15 +446,19 @@ def index_violations(board, obstacles, rules) -> list[Violation]:
                 continue
             seen.add(pair)
             gap = _gap_mm(item, other, layer if not is_via else (other.GetLayer() if other.GetClass() == "PCB_TRACK" else pcbnew.F_Cu))
-            short = round(rules.clearance_mm - gap, 4)
-            vtype = "clearance"
-            if short <= 0:  # copper clears; the index answered for a hole
-                vtype, short = "hole_clearance", round(rules.hole_to_copper_mm - gap - _ring_mm(other, item), 4)
+            if other.GetClass() == "PCB_SHAPE" and other.GetLayer() == pcbnew.Edge_Cuts:
+                vtype, rule = "copper_edge_clearance", rules.edge_clearance_mm
+                short = round(rule - gap, 4)
+            else:
+                rule, vtype = rules.clearance_mm, "clearance"
+                short = round(rule - gap, 4)
+                if short <= 0:  # copper clears; the index answered for a hole
+                    vtype, rule = "hole_clearance", rules.hole_to_copper_mm
+                    short = round(rule - gap - _ring_mm(other, item), 4)
             if short <= 0:
                 continue
-            out.append(Violation(type=vtype, rule_mm=rules.clearance_mm if vtype == "clearance" else rules.hole_to_copper_mm,
-                                 actual_mm=round((rules.clearance_mm if vtype == "clearance" else rules.hole_to_copper_mm) - short, 4),
-                                 items=(_item_ref(item), _item_ref(other))))
+            out.append(Violation(type=vtype, rule_mm=rule, actual_mm=round(rule - short, 4),
+                                 items=(_item_ref(item), _item_ref(other, near=item))))
     return sorted(out, key=_violation_key)
 
 
@@ -426,9 +474,21 @@ def _ring_mm(a, b) -> float:
     return 0.0
 
 
-def _item_ref(item) -> tuple:
-    """(uuid, description, position) as the DRC report would give them, for an item of the board."""
+def _item_ref(item, near=None) -> tuple:
+    """(uuid, description, position) as the DRC report would give them, for an item of the board. For a board
+    edge the position is the point of it nearest ``near``, so a push away from it is perpendicular to it."""
     cls = item.GetClass()
+    if cls == "PCB_SHAPE":
+        s, e = item.GetStart(), item.GetEnd()
+        px, py = kb.mm(s.x), kb.mm(s.y)
+        if near is not None:
+            n = near.GetPosition() if near.GetClass() == "PCB_VIA" else near.GetStart()
+            ax, ay, bx, by = kb.mm(s.x), kb.mm(s.y), kb.mm(e.x), kb.mm(e.y)
+            dx, dy = bx - ax, by - ay
+            length2 = dx * dx + dy * dy
+            t = 0.0 if length2 < 1e-12 else max(0.0, min(1.0, ((kb.mm(n.x) - ax) * dx + (kb.mm(n.y) - ay) * dy) / length2))
+            px, py = ax + t * dx, ay + t * dy
+        return (item.m_Uuid.AsString(), f"{item.GetShapeStr()} on {item.GetLayerName()}", (px, py))
     if cls == "PCB_TRACK":
         p = item.GetStart()
         return (item.m_Uuid.AsString(), f"Track [{item.GetNetname()}] on {item.GetLayerName()}, length {kb.mm(item.GetLength()):.4f} mm", (kb.mm(p.x), kb.mm(p.y)))
@@ -593,6 +653,94 @@ def _item_key(item) -> tuple:
     return (1, p.x, p.y)
 
 
+def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_mm: float, rules,
+                      allowed: frozenset | None = None) -> bool:
+    """Move one end of ``track`` (with what sits on that end: short neighbours carried whole, long ones by
+    their shared end), keeping the other end where it is, if the moved copper makes no new collision. The
+    move for a violation near one end of a long track, where translating the whole track drags its far end
+    into something (open-book's 13 mm BTN_LOCK diagonal turning too early at an edge pad)."""
+    end = pcbnew.VECTOR2I(track.GetStart() if end_index == 0 else track.GetEnd())
+    net, layer = track.GetNetCode(), track.GetLayer()
+    own = track.m_Uuid.AsString()
+    neighbours = [o for o in kb.track_segments(board) if o.GetNetCode() == net and o.GetLayer() == layer
+                  and o.m_Uuid.AsString() != own and (o.GetStart() == end or o.GetEnd() == end)]
+    moved = [track] + neighbours
+    far_ends = [pcbnew.VECTOR2I(o.GetEnd() if o.GetStart() == end else o.GetStart())
+                for o in neighbours if o.GetLength() < kb.nm(CARRY_MM)]
+    moved += [o for o in kb.track_segments(board) if o.GetNetCode() == net and o.m_Uuid.AsString() not in {m.m_Uuid.AsString() for m in moved}
+              and (o.GetStart() in far_ends or o.GetEnd() in far_ends)]
+    before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
+    for m in moved:
+        obstacles.remove(m)
+    dx, dy = kb.nm(dx_mm), kb.nm(dy_mm)
+
+    def shift(item, points):
+        if item.GetStart() in points:
+            item.SetStart(pcbnew.VECTOR2I(item.GetStart().x + dx, item.GetStart().y + dy))
+        if item.GetEnd() in points:
+            item.SetEnd(pcbnew.VECTOR2I(item.GetEnd().x + dx, item.GetEnd().y + dy))
+
+    def apply(sign):
+        nonlocal dx, dy
+        dx, dy = sign * abs(dx) * (1 if dx_mm >= 0 else -1), sign * abs(dy) * (1 if dy_mm >= 0 else -1)
+        anchors = [end]
+        if end_index == 0:
+            track.SetStart(pcbnew.VECTOR2I(track.GetStart().x + dx, track.GetStart().y + dy))
+        else:
+            track.SetEnd(pcbnew.VECTOR2I(track.GetEnd().x + dx, track.GetEnd().y + dy))
+        for o in neighbours:
+            if o.GetLength() < kb.nm(CARRY_MM):
+                anchors.append(pcbnew.VECTOR2I(o.GetEnd() if o.GetStart() == end else o.GetStart()))
+                o.SetStart(pcbnew.VECTOR2I(o.GetStart().x + dx, o.GetStart().y + dy))
+                o.SetEnd(pcbnew.VECTOR2I(o.GetEnd().x + dx, o.GetEnd().y + dy))
+            else:
+                shift(o, [end])
+        for o in moved:
+            if o is track or o in neighbours:
+                continue
+            shift(o, anchors[1:])
+        end.x, end.y = end.x + dx, end.y + dy
+
+    apply(1)
+    clean = all(set(_hits(obstacles, m, rules)) <= (allowed if allowed is not None else set(before[m.m_Uuid.AsString()]))
+                for m in moved)
+    if not clean:
+        apply(-1)
+    for m in moved:
+        obstacles.add(m)
+    return clean
+
+
+def _retract_into_pad(board, obstacles, track, by_mm: float, rules) -> bool:
+    """Pull whichever end of ``track`` lies inside a pad of its net back along the track by ``by_mm``, if the
+    new end still lies inside that pad (connected by overlap) and the track makes no new collision."""
+    import math
+    s, e = track.GetStart(), track.GetEnd()
+    length = math.hypot(kb.mm(e.x - s.x), kb.mm(e.y - s.y))
+    if length <= by_mm + 0.05:
+        return False
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetCode() != track.GetNetCode() or not pad.IsOnLayer(track.GetLayer()):
+                continue
+            for end, other_end, setter in ((s, e, track.SetStart), (e, s, track.SetEnd)):
+                if not pad.HitTest(end):
+                    continue
+                ux, uy = kb.mm(other_end.x - end.x) / length, kb.mm(other_end.y - end.y) / length
+                new_end = pcbnew.VECTOR2I(end.x + kb.nm(ux * by_mm), end.y + kb.nm(uy * by_mm))
+                if not pad.HitTest(new_end):
+                    continue
+                before = _hit_ids(obstacles, track, rules)
+                obstacles.remove(track)
+                setter(new_end)
+                ok = _hit_ids(obstacles, track, rules) <= before
+                if not ok:
+                    setter(end)
+                obstacles.add(track)
+                return ok
+    return False
+
+
 def _move(board, item, moved, dx_nm: int, dy_nm: int) -> None:
     """Translate ``item``; carry every neighbour in ``moved`` shorter than ``CARRY_MM`` whole; for the rest
     move only the end that sits on a moved point."""
@@ -717,7 +865,7 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
         report["rounds"] = round_no
         tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
         obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
-        violations = index_violations(board, obstacles, rules)
+        violations = index_violations(board, obstacles, rules)  # clearance, hole and edge alike
         report["remaining"] = len(violations)
         if not violations:
             return report
@@ -802,19 +950,37 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
             if pushed:
                 continue
             blocker = _blocker(board, obstacles, track, nx * sign, ny * sign, short + NUDGE_EXTRA_MM, rules)
-            if blocker is None:
-                continue
-            uid = blocker.m_Uuid.AsString()
-            other = movable.get(uid)
-            if other is None or (uid in sides and uid not in balanced):
-                continue
-            step = short + 2 * NUDGE_EXTRA_MM
-            if _push_chain(board, obstacles, other, nx * sign, ny * sign, step, rules, movable, None):
-                moved_now += 1
-        # a via against fixed copper: the via moves away from it
+            if blocker is not None:
+                uid = blocker.m_Uuid.AsString()
+                other = movable.get(uid)
+                if other is not None and (uid not in sides or uid in balanced):
+                    step = short + 2 * NUDGE_EXTRA_MM
+                    if _push_chain(board, obstacles, other, nx * sign, ny * sign, step, rules, movable, None):
+                        moved_now += 1
+                        continue
+            # last: move only the end of the track nearer the violation, the other end staying put
+            allowed = frozenset(partners[uuid][0 if sign > 0 else 1])
+            for v in violations:
+                ids = [u for u, _d, _p in v.items]
+                if uuid not in ids:
+                    continue
+                pos = next(p for u, _d, p in v.items if u != uuid)
+                s0, e0 = track.GetStart(), track.GetEnd()
+                d_start = (kb.mm(s0.x) - pos[0]) ** 2 + (kb.mm(s0.y) - pos[1]) ** 2
+                d_end = (kb.mm(e0.x) - pos[0]) ** 2 + (kb.mm(e0.y) - pos[1]) ** 2
+                step = (short + NUDGE_EXTRA_MM) * 2  # an end move gains half its size at the far side of the segment
+                if _move_end_checked(board, obstacles, track, 0 if d_start <= d_end else 1, nx * sign * step, ny * sign * step, rules, allowed=allowed):
+                    moved_now += 1
+                    break
+        # a via against copper it cannot wait for (fixed copper, or a track that did not move this round): the
+        # via moves away, straight or along whichever axis still gains the distance, since a via boxed on the
+        # straight line is often free along an axis (the esp32c3's +5V vias either side of a diagonal USB_DP)
+        moved_ids = set(u for u in sides if u not in balanced and u not in stuck)
         for v in violations:
             ours_v = [(u, p) for u, _d, p in v.items if u in vias]
-            if not ours_v or any(u in tracks for u, _d, _p in v.items) or v.short_mm <= 0:
+            if not ours_v or v.short_mm <= 0:
+                continue
+            if any(u in moved_ids for u, _d, _p in v.items if u in tracks):
                 continue
             uuid, _p = ours_v[0]
             other = next(((u, p) for u, _d, p in v.items if u != uuid), None)
@@ -823,16 +989,34 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
             via = vias[uuid]
             at = via.GetPosition()
             dx, dy = kb.mm(at.x) - other[1][0], kb.mm(at.y) - other[1][1]
+            if other[0] in tracks:  # away from a track is along its normal, whichever side the via is on
+                nx, ny = _normal(tracks[other[0]])
+                sx, sy = _away(tracks[other[0]], (kb.mm(at.x), kb.mm(at.y)))
+                dx, dy = -sx, -sy
             length = (dx * dx + dy * dy) ** 0.5
             if length < 1e-9:
                 continue
             ux, uy = dx / length, dy / length
-            step = v.short_mm + NUDGE_EXTRA_MM
-            for attempt in (step, step / 2):
-                if _move_checked(board, obstacles, via, ux * attempt, uy * attempt, rules,
-                                 allowed=frozenset({other[0]})):
+            candidates = [(ux, uy, 1.0)]
+            for ax, ay in ((1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)):
+                gain = ax * ux + ay * uy  # distance gained per unit moved along the axis
+                if gain > 0.3:
+                    candidates.append((ax, ay, gain))
+            for cx, cy, gain in candidates:
+                step = (v.short_mm + NUDGE_EXTRA_MM) / gain
+                if _move_checked(board, obstacles, via, cx * step, cy * step, rules, allowed=frozenset({other[0]})):
                     moved_now += 1
                     break
+        # a track ending at a pad on the board edge: its end cap is what the edge rule sees; the end is pulled
+        # back along the track into the pad's copper (open-book's BTN_LOCK at a castellated pad)
+        for v in violations:
+            if v.type != "copper_edge_clearance":
+                continue
+            ours_t = [u for u, _d, _p in v.items if u in tracks]
+            if not ours_t:
+                continue
+            if _retract_into_pad(board, obstacles, tracks[ours_t[0]], v.short_mm + NUDGE_EXTRA_MM, rules):
+                moved_now += 1
         report["moved"] += moved_now
         report["unfixable"] = unfixable
         if moved_now == 0:
@@ -1190,7 +1374,8 @@ def fix_wires(dsn_text: str) -> str:
     return dsn_text.replace("(type route)", "(type fix)")
 
 
-def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANOUT) -> Path:
+def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANOUT,
+                  edge_clearance_mm: float | None = None) -> Path:
     """Freerouting's settings file for this run, in the work directory: telemetry off, the log there, the fanout
     stage as configured. The file must carry a version and a profile id or the jar stops with an exception."""
     import json
@@ -1200,7 +1385,12 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
            "gui": {"enabled": True, "input_directory": "", "dialog_confirmation_timeout": 5,
                    "show_routing_summary": False},
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
-                      "optimizer": {"max_threads": threads}, "scoring": {"via_costs": VIA_COSTS}},
+                      "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
+                                    "enabled": OPTIMIZER_PASSES > 0},
+                      "scoring": {"via_costs": VIA_COSTS},
+                      # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
+                      # button pad cut the corner of a step in the edge at 0.25 mm (D66)
+                      **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
            "usage_and_diagnostic_data": {"disable_analytics": True, "track_window_changed": False,
                                          "track_button_clicked": False},
            "feature_flags": {"multi_threading": False},
@@ -1238,6 +1428,7 @@ class FreeroutingResult:
     stubs: int = 0
     pours: int = 0
     widened: int = 0  # tracks the router necked below the rule, set back to it
+    pruned: dict = field(default_factory=dict)  # duplicate and dangling segments removed
     repair: dict = field(default_factory=dict)  # what repair_clearances did
     digest: str = ""  # geometry_digest of the board handed back
     dsn_md5: str = ""  # of the DSN handed to the router: the same DSN must give the same session
@@ -1260,7 +1451,8 @@ class FreeroutingResult:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
                 f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
-                f"{self.widened} widened, repair {self.repair or 'none'}; dsn {self.dsn_md5} imported {self.imported} "
+                f"{self.widened} widened, pruned {self.pruned or 'none'}, repair {self.repair or 'none'}; dsn {self.dsn_md5} "
+                f"imported {self.imported} "
                 f"final {self.digest}; "
                 f"{self.seconds:.0f}s")
 
@@ -1298,11 +1490,12 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
     return d, renamed
 
 
-def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float) -> tuple[int | None, bool]:
+def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float,
+            edge_clearance_mm: float | None = None) -> tuple[int | None, bool]:
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes)
+    settings_json(dsn.parent, threads, passes, edge_clearance_mm=edge_clearance_mm)
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
@@ -1335,7 +1528,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s)
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=rules.edge_clearance_mm)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exported_layers=layers,
@@ -1345,6 +1538,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
+        result.pruned = prune_dangling(board)
         result.widened = widen_tracks(board, d.width_mm)
         result.imported = geometry_digest(board)
         kb.save_board(board, work_dir / "imported.kicad_pcb")  # the router's output as imported: the repair

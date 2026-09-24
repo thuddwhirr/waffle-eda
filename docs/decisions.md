@@ -213,6 +213,17 @@ routes in 34 s and two runs agree to the digest (imported c0c904b4ac); the smoke
 scores connectivity and DRC, which the optimiser does not change; it costs vias (107 to 71 there) and stays off
 until a gate scores what it buys. Measurement, 2026-09-24.
 
+**D66. Three rungs green through the gate in a few minutes** (`gate.py a tinkerforge-temperature open-book-c1
+olimex-esp32c3-devkit`, 2026-09-24: PASS 3 of 3; 6 of 6, 35 of 35, 34 of 34 nets, 0 violations each). What
+the last rung took: the router's copper-to-edge clearance handed over as the measured rule (its own default
+is 0.5 mm; open-book's rule is 0.5948 and a diagonal from a button pad cut the corner of a step in the edge at
+0.25 mm, which no move of the placer could fix); duplicate and dangling segments pruned after the import (the
+router leaves spurs and counts them among its own violations; KiCad's DRC reports them as warnings only); a
+short connected segment carried whole with a move; a via boxed on the straight line away from a track moved
+along an axis that still gains the distance; and an end-only move of a long track as the last fallback. The
+loop that found each of these: `scripts/repair_only.py` on the imported boards, a minute a board with no
+router run. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
