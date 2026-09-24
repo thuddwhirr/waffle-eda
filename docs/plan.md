@@ -52,8 +52,12 @@ refill of that board turned the class A gate red and came out again (D78); the l
 and the DRC report's unconnected list is capped at about 500 items, which credited the three largest boards
 stripped bare with a third of their nets, so connectivity now comes from KiCad's own graph (D79). **The pair
 passes on all nine** (both halves; it costs 39 minutes, 31 of them `mch2022-badge`'s rule measurement, so it
-carries the `bench` marker). The first rung of `gate.py b` (`pico-ice-rev3`) is the measurement this commit
-leaves running, and the next session starts by reading it: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+carries the `bench` marker). **The first rung of `gate.py b`, `pico-ice-rev3`, fails at the class A
+configuration (D80):** the router hits the 20-minute cap in its ninth pass with 27 items unrouted, because the
+ground and supplies the reference pours on its inner layers were being routed as tracks. The change that asks
+for is in: the reference's inner-layer pours are laid before the export as DSN planes (`route_board(planes=)`,
+the gate splits `info["pours"]` by layer), and pico-ice under a short budget is the measurement this commit
+leaves running. The next session starts by reading it, then the full-budget row: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
 tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
 pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
 the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B
@@ -178,9 +182,10 @@ four-layer board.
 design (an MCU with USB and a buck regulator) to fab outputs. *First task, in progress:* the sanity pair of
 `tests/test_rebuild.py` on the class B references (D76 is what it found first).
 
-*State (2026-09-24, 23:10 UTC):* the first task is done: the sanity pair passes on all nine references (D76
+*State (2026-09-24, 23:20 UTC):* the first task is done: the sanity pair passes on all nine references (D76
 to D79 are what it took). `gate.py b` exists (the class A gate's mechanics over the class B ladder); its first
-rung, `pico-ice-rev3`, is being measured (see the next-step section).
+rung, `pico-ice-rev3`, fails at the class A configuration (D80) and is being measured with the inner planes
+handed to the router (see the next-step section).
 
 ### B+. A BGA without a matched bus
 

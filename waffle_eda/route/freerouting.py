@@ -1734,15 +1734,24 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
-                router_edge_mm: float | None = None) -> FreeroutingResult:
+                router_edge_mm: float | None = None, planes: list[dict] | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
-    for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log."""
+    for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
+
+    ``pours`` are laid after the import (D62: on an outer layer the router trusted a plane its fill could not
+    reach); ``planes`` are laid before the export, on inner layers, where every via reaches the fill: KiCad
+    writes them as DSN `(plane ...)` entries and the router connects their nets by via instead of routing a
+    board's ground and supplies as tracks (D80: pico-ice's 313 items left 27 after nine two-minute passes)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = work_dir / "board.dsn", work_dir / "board.ses", work_dir / "run.log"
     laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm) if stubs else []
     lay_stubs(board, laid)
+    if planes:
+        hole_rule_areas(board, rules)
+        laid_planes = add_pours(board, planes, rules)
+        say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid:
         dsn.write_text(fix_wires(dsn.read_text()))
@@ -1772,9 +1781,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"repair: {result.repair}")
         via_ring, pin_ring = smallest_ring_mm(board)
         rings = [r for r in (via_ring, pin_ring) if r is not None]
-        if pours:
+        if pours and not planes:
             hole_rule_areas(board, rules)
-        result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None))
+        result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None)) + len(planes or [])
         say(f"pours: {result.pours}")
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
         result.vias = len(kb.vias(board))

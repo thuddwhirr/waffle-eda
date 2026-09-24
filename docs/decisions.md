@@ -371,6 +371,16 @@ for violations. Stripped `buspirate5-rev10`: 183 nets open of 183, 0.1 s; its an
 half passes on all nine class B boards and the four class A ones tested (5.5 minutes, 5 of them mch2022's two
 DRC runs), and the five class A routed boards re-score 1.000. Measurement.
 
+**D80. Class B's first rung, `pico-ice-rev3`, measured at the class A configuration** (`gate.py b
+pico-ice-rev3`, 2026-09-24): the router hit the 20-minute cap in its ninth pass and, killed, wrote no session
+(D70), so 0 of 95 nets; passes of about two minutes each left 313, 56, 57, 43, 47, 35, 27, 32, 27, 27 items
+unrouted after passes 0 to 9, with 13 standing violations from the first pass on. Every layer went to the router
+as `signal` and the reference's planes were stripped with the rest of its copper (D50), so the ground and
+supply nets that the reference pours on In1 and In2 (GND; +3V3, VBUS, VDC) were being routed as tracks. KiCad
+exports a zone laid before the export as a DSN `(plane NET (polygon LAYER ...))`, which Freerouting connects to
+by via (the salvaged exporter's way). The reference routes 273 tracks on In2 and 11 on In1 beside its planes,
+so the layers stay `signal`. Measurement; the change it asks for is the next step.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

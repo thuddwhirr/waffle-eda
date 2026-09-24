@@ -174,8 +174,11 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
+            outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
+            planes = [p for p in info["pours"] if p["layer"] not in outer]  # the inner planes go before the export (D80)
+            pours = [p for p in info["pours"] if p["layer"] in outer]
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=info["pours"], **budget)
+                                             pours=pours, planes=planes, **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
