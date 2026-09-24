@@ -174,6 +174,19 @@ the pieces joined by copper to another piece of the same number leave the router
 (`freerouting.joined_pins`, `drop_pins`); dropping every suffixed pin cost the smoke board a net. With it,
 open-book's violations went from 47 to 0 under the cruder filter. Measurement, 2026-09-24.
 
+**D62. Two rungs green: `open-book-c1` passes the class A gate after the smoke test** (2026-09-24: 35 of 35
+nets, 0 violations, score 1.000, 135 s; `tinkerforge-temperature` 6 of 6, 0, 25 s). What it took beyond D60:
+pours laid after the import, not before (as planes the router trusted them for the SOT-563's middle GND pad,
+which the fill cannot reach), with the hole rule less the smallest ring in their clearance and a no-pour rule
+area around every hole whose ring is under the rule (the fill keeps its clearance from a pad's copper, not its
+hole; open-book's four mounting holes); the router's pin lists reduced to one piece per pad where pieces touch
+(D61); a router keepout by the hole rule around holes with no net. And the repair became a small placer under
+the exact collision index: every track and via of a violation is pushed, a track pressed from both sides
+settles in the middle, a track moves to the middle of the corridor the index measures or is left as boxed in,
+a boxed track's violating item and then its far-side blocker are pushed instead where they are ours, a via
+against fixed copper moves away, and a move may keep only the collisions it moves away from, so none deepens
+(the rule that took open-book from 2 violations to 0). Runs are deterministic per configuration. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

@@ -326,7 +326,7 @@ def widen_tracks(board, width_mm: float) -> int:
 # hair, carrying the tracks that share its ends with it, then check again. A track end inside a pad or a via
 # stays connected after a move of a few micrometres; the DRC says whether the move made a new violation.
 NUDGE_EXTRA_MM = 0.0005
-REPAIR_ROUNDS = 8
+REPAIR_ROUNDS = 12
 
 
 @dataclass(frozen=True)
