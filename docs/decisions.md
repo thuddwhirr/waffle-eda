@@ -266,6 +266,16 @@ neighbouring pads. With a five-pass budget (24 min with the repair and the DRC):
 of which 25 on the two RP2040s' QFN-56 (0.4 mm pitch); 833 violations at import, none over 0.011 mm; after the repair 51
 by the index, up to 0.19 mm, four shorts, under either strategy. Measurement.
 
+**D71. Three placer defects crkbd's five-pass board exposed, fixed with tests** (2026-09-24). A gap within
+rounding of the rule (KEY3's stub, 0.18896 under 0.189) read as a hole violation of 0.0605 mm on a pad with no
+hole, which the placer then chased; an end move kept a track's 0.006 mm violation and swung its far end 0.28 mm
+into the neighbour (KEY5 into KEY10, a short), and a chain push could deepen the same way: both movers now hold
+one rule, a kept collision never closes below the router's own clearance floored, nor within 0.01 mm of a short
+free (D64); and the repair keeps the strategy whose deepest violation is shallowest before the fewest. Repair
+alone on `build/fr/crkbd-p5/imported.kicad_pcb`: 833 violations at import (none over 0.011 mm); before, 51 left
+up to 0.19 mm with 4 shorts (KiCad 40); after, 39 left none over 0.0075 mm (KiCad 32, no shorts), digest
+598d5f711d. The four green rungs pass; open-book now cleans under the floor. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
