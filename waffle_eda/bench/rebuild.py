@@ -60,7 +60,7 @@ def pour_facts(board, zone) -> dict:
 def _strip(board, delete: bool = False) -> dict:
     """Count (and with ``delete`` remove) every piece of routed copper: tracks, arcs, vias and zones. The zones
     stripped are recorded as the pours the router is to lay (`pours`)."""
-    removed = {"tracks": 0, "arcs": 0, "vias": 0, "zones": 0, "pours": []}
+    removed = {"tracks": 0, "arcs": 0, "vias": 0, "zones": 0, "teardrops": 0, "pours": []}
     for item in list(board.GetTracks()):
         cls = item.GetClass()
         removed["tracks" if cls == "PCB_TRACK" else "arcs" if cls == "PCB_ARC" else "vias"] += 1
@@ -69,6 +69,11 @@ def _strip(board, delete: bool = False) -> dict:
     for zone in list(board.Zones()):
         if zone.GetIsRuleArea():
             continue  # a keepout is part of the specification handed to the router, not copper it laid
+        if zone.IsTeardropArea():  # a fillet on a track of the reference's own routing: copper, not a pour
+            removed["teardrops"] += 1  # (crkbd carries 921 of them, and 4 pours)
+            if delete:
+                board.Delete(zone)
+            continue
         removed["zones"] += 1
         for layer in zone.GetLayerSet().CuStack():
             facts = pour_facts(board, zone)
@@ -86,7 +91,7 @@ def strip_all(ref: refs.Reference, out_path: Path | None = None, reuse: bool = T
     if reuse and out_path.is_file() and manifest.is_file() \
             and out_path.stat().st_mtime > refs.board_path(ref).stat().st_mtime:
         info = json.loads(manifest.read_text())
-        if "pours" in info:  # a manifest from before the pours were recorded is re-made
+        if "teardrops" in info:  # a manifest from before the pours, or the teardrops, were told apart is re-made
             return out_path, {**info, "reused": True}
     board = kb.load_board(refs.board_path(ref))
     removed = _strip(board, delete=True)

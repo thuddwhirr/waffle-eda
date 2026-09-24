@@ -117,3 +117,14 @@ def test_the_rules_apply_to_the_whole_board_and_not_to_a_net_list():
     for constraint in rebuild.QUIET_CONSTRAINTS:
         assert f"(constraint {constraint} (min 0mm))" in text
     assert "edge_clearance" in rebuild.QUIET_CONSTRAINTS
+
+
+def test_a_teardrop_is_the_references_routing_and_not_a_pour_to_lay():
+    """`crkbd-corne-cherry` fillets its tracks with 921 teardrop zones; recorded as pours they were laid on the
+    re-routed board as 921 slivers at the reference's own pad and via positions."""
+    ref = _ref("crkbd-corne-cherry")
+    bare, info = rebuild.strip_all(ref)
+    assert info["teardrops"] == 921 and info["zones"] == 4
+    assert sorted((p["net"], p["layer"]) for p in info["pours"]) == [("GND", "B.Cu"), ("GND", "F.Cu"), ("GNDR", "B.Cu"), ("GNDR", "F.Cu")]
+    board = kb.load_board(bare)
+    assert not any(z.IsTeardropArea() for z in board.Zones())
