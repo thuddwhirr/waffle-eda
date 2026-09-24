@@ -13,7 +13,10 @@ decision in `decisions.md`; nothing in the boards themselves is committed to thi
 | `olimex-rp2040-pico-pc` | 2 layers, 72 x 39 mm, Pico module socket, HDMI, microSD, audio. Through-hole heavy. GPL hardware licence. | 2 | 72 x 39 | 72 | 75 | 0.203 | GPL | [OLIMEX Ltd](https://github.com/OLIMEX/RP2040-PICO-PC) at `ed0402adcd`, `HARDWARE/RP2040-PICO-PC hardware revision D/RP2040-PICO-PC_rev_D.kicad_pcb` |
 | `open-book-c1` | 2 layers, 85 x 115 mm, Pico module, e-paper connector. CC-BY-SA. | 2 | 85 x 115 | 38 | 42 | 0.25 | CC-BY-SA | [Joey Castillo](https://github.com/joeycastillo/The-Open-Book) at `6bb483f92e`, `OSO-BOOK-C1/OSO-BOOK-C1.kicad_pcb` |
 | `libresolar-mppt-2420` | 2 layers, 115 x 61 mm, STM32 LQFP-48 and a 20 A power stage: power on continuous copper matters here. CC-BY-SA. | 2 | 115 x 61 | 149 | 104 | 0.25 | CC-BY-SA | [Libre Solar](https://github.com/LibreSolar/mppt-2420-lc) at `c2211beb36`, `MPPT_charger_20A.kicad_pcb` |
-| `crkbd-corne-cherry` | 2 layers, two keyboard halves on one 277 x 108 mm panel, RP2040 in QFN-56 0.4 mm pitch, many through-hole parts. MIT / CC-BY-4.0. | 2 | 277 x 108 | 180 | 159 | 0.203 | MIT | [foostan](https://github.com/foostan/crkbd) at `63366fb7f5`, `pcbs/corne-cherry/hotswap/corne-cherry.kicad_pcb` |
+
+Out of the ladder, kept in the registry for the measurements that cite it (D70, D71; owner's decision D72):
+
+| `crkbd-corne-cherry` (class `-`) | 2 layers, two keyboard halves on one 277 x 108 mm panel, RP2040 in QFN-56 0.4 mm pitch, many through-hole parts. MIT / CC-BY-4.0. | 2 | 277 x 108 | 180 | 159 | 0.203 | MIT | [foostan](https://github.com/foostan/crkbd) at `63366fb7f5`, `pcbs/corne-cherry/hotswap/corne-cherry.kicad_pcb` |
 
 ## Class B: four layers, fine-pitch QFN or small FPGA, USB, regulators, ground planes
 

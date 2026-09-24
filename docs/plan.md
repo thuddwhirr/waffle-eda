@@ -32,15 +32,14 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 | `open-book-c1` | **35 of 35, PASS** | 0 | none: green since D62 |
 | `olimex-esp32c3-devkit` | **34 of 34, PASS** | 0 | none: green since D66 |
 | `olimex-rp2040-pico-pc` | **60 of 60, PASS** | 0 | none: green since D69 (D67 to D69 are what it took) |
-| `crkbd-corne-cherry` | 119 of 152 | 32 clearance, none over 0.0075 mm | measured with a five-pass budget, the most that fit the cap (D70): 25 of the 39 open connections are on the two RP2040s (QFN-56, 0.4 mm pitch), a fine-pitch escape problem, not the key matrix; the router's copper had only its usual 0.011 mm shortfalls (833) and the placer leaves 32 of them on a board of 3105 tracks after D71's fixes. The 20-minute cap falls in the router's pass 6 and a killed run writes no session; passes take 170 to 230 s and leave 36 unrouted after twelve |
-| `libresolar-mppt-2420` | 0 of 102 | | the 20-minute cap, no session file (as crkbd); an earlier run inside the cap gave 101 of 102 with 201 clearance violations of the slack, before the repair existed |
+| `libresolar-mppt-2420` | 0 of 102 | | the 20-minute cap, no session file (D70's crkbd runs showed why: a killed run writes none); an earlier run inside the cap gave 101 of 102 with 201 clearance violations of the slack, before the repair existed |
 
 **Where it stands (2026-09-24, 07:30 UTC):** four rungs green through the gate in minutes each (D60,
 D62, D66, D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`. The loop that gets a rung green: run its
 gate row once (the wrapper saves the router's output as `build/fr/<key>/imported.kicad_pcb`), then
 `python3 scripts/repair_only.py <key> --twice` to measure a repair change in a minute without the router, and
 the gate row again to confirm. Freerouting's optimiser is off (D65): routing takes seconds and repeats to the
-digest, which every gate row prints. Four rungs are green (D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, in 15 to 265 s each. The rung in hand is `crkbd-corne-cherry` (D70, D71): 119 of 152 with a five-pass budget, 25 of its 39 open connections the QFN-56 escapes of its two RP2040s, and 32 shallow clearances the placer leaves on 3105 tracks (`repair_only.py crkbd-corne-cherry` on `build/fr/crkbd-p5/imported.kicad_pcb`, four minutes a run). The owner has called crkbd an outlier; the QFN escapes and the pass budget against the cap are the owner's call before more work goes into it. Then `libresolar-mppt-2420`, killed at the cap before the optimiser was off; measure it with a pass budget first. Climb one board at a time,
+digest, which every gate row prints. Four rungs are green (D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, in 15 to 265 s each. `crkbd-corne-cherry` left the ladder (D72; its measurements are D70 and D71, and the placer fixes they gave hold for every board). The next rung is `libresolar-mppt-2420`, killed at the cap before the optimiser was off; measure it with a pass budget first. Climb one board at a time,
 and run one Freerouting at a time: two at once have left an empty session file (`route/freerouting.py`,
 pitfalls); the milestone is the whole gate.
 
@@ -107,7 +106,7 @@ loads, a board that was manufactured and worked, a class the tool claims.
 
 | Class | Board | The routing problem | References |
 |---|---|---|---|
-| A | 2 layers, a microcontroller or module, passives, headers | connectivity; fine-pitch pad escapes; ground as a pour; one board with real current | `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420` |
+| A | 2 layers, a microcontroller or module, passives, headers | connectivity; fine-pitch pad escapes; ground as a pour; one board with real current | `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `libresolar-mppt-2420` (`crkbd-corne-cherry` left the ladder, D72) |
 | B | 4 layers, fine-pitch QFN MCU or small FPGA, USB 2.0 pair, switching regulator, ground planes | electrical intent: a differential pair, plane integrity and return paths, a switcher's loop, decoupling placement, width by net class | `pico-ice-rev3`, `upduino-v3.01`, `sensor-watch-c1`, `tinkerforge-master-v3.2`, `buspirate5-rev10`, `olimex-esp32-poe-m1`, `tinytapeout-demo`, `mch2022-badge`, `fomu-pvt` |
 | B+ | a BGA on 4 to 6 layers, with a slow bus or none | BGA escape, dog-bone and via-in-pad, 0.4 to 0.8 mm pitch, no length matching | `tinyfpga-bx`, `glasgow-revc3`, `ulx3s`, `cynthion` |
 | C | BGA FPGA with a DDR3 bus, 6 to 8 layers, rising order | escapes planned jointly with the bus, per-lane length matching, layer assignment, via budgets, meanders | `orangecrab-r0.2.1`, `logicbone`, `butterstick` |
@@ -124,12 +123,11 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-24, 18:30 UTC):* gate FAIL, 4 of 6. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
+*State (2026-09-24, 19:00 UTC):* gate FAIL, 4 of 5. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
 inside the repairs of `route/freerouting.py`, D56 to D69) passes `tinkerforge-temperature` (6 of 6),
 `open-book-c1` (35 of 35), `olimex-esp32c3-devkit` (34 of 34) and `olimex-rp2040-pico-pc` (60 of 60), 0
-violations each, in under a minute a board but rp2040's four and a half; `crkbd-corne-cherry` connects 119 of 152 with
-a five-pass budget and the placer leaves 32 shallow violations (D70, D71); `libresolar-mppt-2420` was killed at the 20-minute cap with
-no session file, before the optimiser was off. Numbers per board in the next-step section's table. Tests: the class A suite, 91 passed in 31 s (the parked
+violations each, in under a minute a board but rp2040's four and a half; `libresolar-mppt-2420` was killed at the
+20-minute cap with no session file, before the optimiser was off; `crkbd-corne-cherry` left the ladder (D72). Numbers per board in the next-step section's table. Tests: the class A suite, 91 passed in 31 s (the parked
 classes' 128 deselected; the whole suite, 209, last passed in full at 02:53). Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
 pass on all six (D50).
 

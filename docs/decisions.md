@@ -276,6 +276,10 @@ alone on `build/fr/crkbd-p5/imported.kicad_pcb`: 833 violations at import (none 
 up to 0.19 mm with 4 shorts (KiCad 40); after, 39 left none over 0.0075 mm (KiCad 32, no shorts), digest
 598d5f711d. The four green rungs pass; open-book now cleans under the floor. Measurement.
 
+**D72. `crkbd-corne-cherry` leaves the class A ladder.** A keyboard panel is a very unusual project, driven by
+its physical layout rather than a chip layout problem; it stays in the registry (class `-`) and fetched, for the
+measurements D70 and D71 cite. Class A is the other five, `libresolar-mppt-2420` last. Owner, 2026-09-24.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

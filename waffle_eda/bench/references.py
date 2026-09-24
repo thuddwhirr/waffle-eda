@@ -20,7 +20,7 @@ from pathlib import Path
 from waffle_eda.kicad import board as kb
 
 REGISTRY_FILE = Path(__file__).with_name("references.toml")
-CLASSES = ("A", "B", "B+", "C", "C'")
+CLASSES = ("A", "B", "B+", "C", "C'", "-")  # "-": in the registry, out of the ladder (crkbd, D72)
 BOARD_DIR_SUFFIXES = (".kicad_pcb", ".kicad_pro", ".kicad_dru", ".kicad_prl", ".pro")
 
 

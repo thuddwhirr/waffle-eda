@@ -124,7 +124,7 @@ notes = "2 layers, 115 x 61 mm, STM32 LQFP-48 and a 20 A power stage: power on c
 [[reference]]
 key = "crkbd-corne-cherry"
 title = "crkbd-corne-cherry"
-class = "A"
+class = "-"
 repo = "https://github.com/foostan/crkbd.git"
 commit = "63366fb7f51cf2a796462fdd90527e99dd126055"
 board = "pcbs/corne-cherry/hotswap/corne-cherry.kicad_pcb"
@@ -132,7 +132,7 @@ licence = "MIT"
 licence_file = "LICENSE_MIT"
 attribution = "foostan"
 key_parts = ["U1", "rU1"]
-notes = "2 layers, two keyboard halves on one 277 x 108 mm panel, RP2040 in QFN-56 0.4 mm pitch, many through-hole parts. MIT / CC-BY-4.0."
+notes = "2 layers, two keyboard halves on one 277 x 108 mm panel, RP2040 in QFN-56 0.4 mm pitch, many through-hole parts. MIT / CC-BY-4.0. Out of the ladder (D72): a keyboard panel, not a chip layout; kept for the measurements that cite it."
 
 [[reference]]
 key = "pico-ice-rev3"

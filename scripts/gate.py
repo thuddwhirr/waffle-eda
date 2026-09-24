@@ -42,7 +42,7 @@ def m4_references():
     """M4's ladder: class A, smallest first, as D49 sets it. `tinkerforge-temperature` is the registry's own
     smoke test for every stage; `libresolar-mppt-2420` is the one whose power on continuous copper matters."""
     order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
-             "crkbd-corne-cherry", "libresolar-mppt-2420"]
+             "libresolar-mppt-2420"]  # crkbd-corne-cherry left the ladder (D72)
     return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
