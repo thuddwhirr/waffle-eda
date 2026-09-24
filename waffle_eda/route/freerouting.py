@@ -360,6 +360,27 @@ def drc_violations(board, rules, work_dir: Path) -> list[Violation]:
     return out
 
 
+def _move_checked(board, obstacles, track, dx_mm: float, dy_mm: float, rules) -> bool:
+    """Move ``track`` (and the ends it shares) and keep the move only if none of the moved tracks then collides
+    with other-net copper under the exact collision index; otherwise put everything back."""
+    ends = (pcbnew.VECTOR2I(track.GetStart()), pcbnew.VECTOR2I(track.GetEnd()))
+    net, layer = track.GetNetCode(), track.GetLayer()
+    moved = [track] + [o for o in kb.track_segments(board)
+                       if o.GetNetCode() == net and o.GetLayer() == layer
+                       and o.m_Uuid.AsString() != track.m_Uuid.AsString()
+                       and (o.GetStart() in ends or o.GetEnd() in ends)]
+    for item in moved:
+        obstacles.remove(item)
+    _move_track(board, track, kb.nm(dx_mm), kb.nm(dy_mm))
+    clean = all(obstacles.clear(item, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm) is None
+                for item in moved)
+    if not clean:
+        _move_track(board, track, -kb.nm(dx_mm), -kb.nm(dy_mm))
+    for item in moved:
+        obstacles.add(item)
+    return clean
+
+
 def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
     """Translate a track and the ends of every track of its net and layer that shares one of its ends."""
     ends = (track.GetStart(), track.GetEnd())
@@ -409,6 +430,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
     pressed from both sides, by half the difference of the two shortfalls, so it settles between its
     neighbours; the outcome does not depend on the order KiCad lists the violations (D25). The smoke board's
     three parallel SOT-563 exits oscillated under one move per violation, and overshot under a summed push."""
+    from waffle_eda.route.obstacles import Obstacles
+    design_rules(board, rules)  # the index reads the edge clearance from the design settings
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
@@ -441,6 +464,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 entry = sides.setdefault(uuid, [0.0, 0.0])
                 entry[side] = max(entry[side], v.short_mm)
         moved_now = 0
+        obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
         for uuid, (plus, minus) in sorted(sides.items()):
             nx, ny = normals[uuid]
             if plus > 0 and minus > 0:  # pressed from both sides: settle in the middle, no extra
@@ -449,8 +473,12 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 step = plus + NUDGE_EXTRA_MM if plus > 0 else -(minus + NUDGE_EXTRA_MM)
             if abs(step) < 1e-6:
                 continue
-            _move_track(board, tracks[uuid], kb.nm(nx * step), kb.nm(ny * step))
-            moved_now += 1
+            track = tracks[uuid]
+            for attempt in (step, step / 2):  # a move that lands on other copper is undone and halved once
+                moved = _move_checked(board, obstacles, track, nx * attempt, ny * attempt, rules)
+                if moved:
+                    moved_now += 1
+                    break
         report["moved"] += moved_now
         report["unfixable"] = unfixable
         if moved_now == 0:
