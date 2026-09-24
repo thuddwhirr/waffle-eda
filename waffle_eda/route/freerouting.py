@@ -365,14 +365,15 @@ def drc_violations(board, rules, work_dir: Path) -> list[Violation]:
     return out
 
 
-def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float = 0.05) -> float:
+def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float = 0.05,
+          allowed: frozenset | None = None) -> float:
     """How far ``track`` can move along the unit vector (ux, uy) before colliding, by bisection of trial moves."""
     lo, hi = 0.0, limit_mm
-    if _move_checked(board, obstacles, track, ux * hi, uy * hi, rules, keep=False):
+    if _move_checked(board, obstacles, track, ux * hi, uy * hi, rules, keep=False, allowed=allowed):
         return hi
     for _ in range(8):
         mid = (lo + hi) / 2
-        if _move_checked(board, obstacles, track, ux * mid, uy * mid, rules, keep=False):
+        if _move_checked(board, obstacles, track, ux * mid, uy * mid, rules, keep=False, allowed=allowed):
             lo = mid
         else:
             hi = mid
@@ -398,16 +399,21 @@ def _with_ends(board, item) -> list:
                      and (o.GetStart() in ends or o.GetEnd() in ends)]
 
 
-def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
+def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True,
+                  allowed: frozenset | None = None) -> bool:
     """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
-    makes no new collision under the exact collision index. A collision that exists before the move is what
-    the move is there to resolve, and may persist until a later round finishes the job."""
+    makes no new collision under the exact collision index. The item itself may keep colliding only with
+    ``allowed``: the copper it is moving away from, whose collision shrinks (with no ``allowed``, anything it
+    collided with before). The dragged track ends may keep what they had. A collision the move deepens is
+    otherwise indistinguishable from one it resolves, and open-book's repair drove one to 0.036 mm that way."""
     moved = _with_ends(board, item)
     before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
+    own = item.m_Uuid.AsString()
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
-    clean = all(_hit_ids(obstacles, m, rules) <= before[m.m_Uuid.AsString()] for m in moved)
+    clean = all(_hit_ids(obstacles, m, rules) <= (allowed if (allowed is not None and m.m_Uuid.AsString() == own)
+                                                 else before[m.m_Uuid.AsString()]) for m in moved)
     if not clean or not keep:
         _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
     for m in moved:
@@ -514,6 +520,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         via_ids = {v.m_Uuid.AsString() for v in kb.vias(board)}
         # per track: the shortfalls on each side of it, along its own normal
         sides: dict[str, list[float]] = {}
+        partners: dict[str, list[set]] = {}  # per track and side: the copper it is pushed away from
         normals: dict[str, tuple[float, float]] = {}
         unfixable = 0
         for v in violations:
@@ -535,6 +542,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 side = 0 if ax * nx + ay * ny > 0 else 1  # which side of the track the push points to
                 entry = sides.setdefault(uuid, [0.0, 0.0])
                 entry[side] = max(entry[side], v.short_mm)
+                partners.setdefault(uuid, [set(), set()])[side].add(other[0])
         moved_now = 0
         obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
         stuck: list[str] = []
@@ -549,12 +557,14 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             track = tracks[uuid]
             short = abs(step) - NUDGE_EXTRA_MM if not (plus > 0 and minus > 0) else abs(step)
             sign = 1 if step > 0 else -1
-            room = _room(board, obstacles, track, nx * sign, ny * sign, rules)  # free travel that way
+            both = plus > 0 and minus > 0
+            allowed = frozenset(partners[uuid][0] | partners[uuid][1]) if both else frozenset(partners[uuid][0 if sign > 0 else 1])
+            room = _room(board, obstacles, track, nx * sign, ny * sign, rules, allowed=allowed)  # free travel
             if room < short - 1e-6:  # boxed in: no translation clears both sides
                 stuck.append(uuid)
                 continue
             move = min(abs(step), (short + room) / 2)  # the middle of the corridor, or the step if there is room
-            if _move_checked(board, obstacles, track, nx * sign * move, ny * sign * move, rules):
+            if _move_checked(board, obstacles, track, nx * sign * move, ny * sign * move, rules, allowed=allowed):
                 moved_now += 1
             else:
                 stuck.append(uuid)
@@ -576,7 +586,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 if other is None or other.m_Uuid.AsString() in sides:
                     continue
                 step = v.short_mm + 2 * NUDGE_EXTRA_MM
-                if _move_checked(board, obstacles, other, -nx * sign * step, -ny * sign * step, rules):
+                if _move_checked(board, obstacles, other, -nx * sign * step, -ny * sign * step, rules,
+                                 allowed=frozenset({uuid})):
                     moved_now += 1
                     pushed = True
             if pushed:
@@ -609,7 +620,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             ux, uy = dx / length, dy / length
             step = v.short_mm + NUDGE_EXTRA_MM
             for attempt in (step, step / 2):
-                if _move_checked(board, obstacles, via, ux * attempt, uy * attempt, rules):
+                if _move_checked(board, obstacles, via, ux * attempt, uy * attempt, rules,
+                                 allowed=frozenset({other[0]})):
                     moved_now += 1
                     break
         report["moved"] += moved_now
