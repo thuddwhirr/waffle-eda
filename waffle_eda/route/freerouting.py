@@ -24,6 +24,9 @@ What the wrapper has to know, each found by running it (`docs/decisions.md` D56)
   where the board has them) equal to the measured hole clearance less the smallest ring on the board.
 * **Freerouting writes `logs/freerouting.log` into the working directory** on every run; the jar runs with the
   work directory as its cwd so nothing lands in the repository.
+* **Two Freerouting runs at once can leave an empty session file.** Twice, with other instances routing other
+  boards on the same machine, a run finished its passes, logged "Saving", and wrote 0 bytes (2026-09-24); no
+  run alone has ever done that, and memory was not short. Run one board at a time; the gate does.
 
 Salvaged mechanics (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `staged_route.sh`) that class A does not
 need yet and that are not implemented here: plane layers typed `power` (class B), rule areas dropped from the

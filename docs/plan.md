@@ -42,8 +42,8 @@ open-book red, so the fix is a failing test for exactly those two pairs, not ano
 placer. Then `olimex-rp2040-pico-pc`
 (53 of 60 before the repairs; 7 nets unrouted, not yet diagnosed), then `crkbd-corne-cherry` and
 `libresolar-mppt-2420`, which both hit the 20-minute cap with no session file: Freerouting's
-`save_intermediate_stages` setting or a larger budget, measured then. Climb one board at a time; the milestone
-is the whole gate.
+`save_intermediate_stages` setting or a larger budget, measured then. Climb one board at a time, and run one Freerouting at a time: two at once have left an empty session file
+(`route/freerouting.py`, pitfalls); the milestone is the whole gate.
 
 **Why it failed, measured (D57, D59), and the repair order the owner agreed on 2026-09-23.** The router connects
 nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
