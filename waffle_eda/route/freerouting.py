@@ -394,7 +394,12 @@ def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
 
 
 def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
-    """Move tracks a few micrometres away from what they violate, under KiCad's own DRC, until it is clean."""
+    """Move tracks a few micrometres away from what they violate, under KiCad's own DRC, until it is clean.
+
+    Every violation's push on a track is summed within a round and the track moved once, so a track squeezed
+    from both sides settles between its neighbours and the outcome does not depend on the order KiCad lists
+    the violations (D25). The smoke board's middle SOT-563 exit oscillated between its two neighbours under
+    one move per violation and stopped at zero or one violation by order alone."""
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
@@ -404,25 +409,28 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         if not violations:
             return report
         tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
-        moved_now, unfixable = 0, 0
-        seen: set[str] = set()
+        pushes: dict[str, list[float]] = {}
+        unfixable = 0
         for v in violations:
             ours = [(u, d, p) for u, d, p in v.items if u in tracks]
             if not ours or v.short_mm <= 0:
                 unfixable += 1
                 continue
             uuid, _d, _p = ours[0]
-            if uuid in seen:  # one move per track per round; the next round re-measures
-                continue
             other = next(((u, d, p) for u, d, p in v.items if u != uuid), None)
             if other is None:
                 unfixable += 1
                 continue
-            track = tracks[uuid]
-            nx, ny = _away(track, other[2])
+            nx, ny = _away(tracks[uuid], other[2])
             step = v.short_mm + NUDGE_EXTRA_MM
-            _move_track(board, track, kb.nm(nx * step), kb.nm(ny * step))
-            seen.add(uuid)
+            push = pushes.setdefault(uuid, [0.0, 0.0])
+            push[0] += nx * step
+            push[1] += ny * step
+        moved_now = 0
+        for uuid, (px, py) in sorted(pushes.items()):
+            if abs(px) < 1e-6 and abs(py) < 1e-6:
+                continue
+            _move_track(board, tracks[uuid], kb.nm(px), kb.nm(py))
             moved_now += 1
         report["moved"] += moved_now
         report["unfixable"] = unfixable
@@ -432,6 +440,82 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                   if v.type in ("clearance", "hole_clearance")]
     report["remaining"] = len(violations)
     return report
+
+
+# --- pads with the same number (D61) ------------------------------------------------------------------------
+# KiCad exports the pieces of a pad with the same number as `REF-N`, `REF-N@1`, ... Where the pieces' copper
+# overlaps (the fingers of `open-book-c1`'s buttons touch their round pad) KiCad's connectivity already joins
+# them; Freerouting sees separate pins, cannot get between the interleaved fingers of the other net, and
+# leaves 14 GND connections open. Where they do not overlap (the two `EP` pads of the smoke board's connector,
+# 11.6 mm apart) KiCad wants copper between them, and so must the router. So only the overlapping pieces
+# leave the net's pin list; they stay in the image as obstacles.
+_PINS = re.compile(r"\(pins ([^)]*)\)")
+
+
+def _pin_names(fp) -> list[str]:
+    """The pin names KiCad's exporter gives a footprint's pads, in pad order: N, then N@1, N@2 for repeats."""
+    seen: Counter = Counter()
+    names = []
+    for pad in fp.Pads():
+        n = pad.GetNumber()
+        names.append(n if seen[n] == 0 else f"{n}@{seen[n]}")
+        seen[n] += 1
+    return names
+
+
+def _touch(a, b) -> bool:
+    """Whether two pads' copper overlaps on a shared layer (board.py: the effective shape is the receiver)."""
+    shared = [l for l in a.GetLayerSet().CuStack() if b.IsOnLayer(l)]
+    if not shared:
+        return False
+    return bool(a.GetEffectiveShape(shared[0]).Collide(b.GetEffectiveShape(shared[0]), 0))
+
+
+def joined_pins(board) -> set[str]:
+    """Pin names (`REF-N@k`) of pad pieces joined by copper to another piece of the same number: one pin per
+    connected group of pieces stays, the rest leave the router's pin lists."""
+    out: set[str] = set()
+    for fp in board.GetFootprints():
+        pads = list(fp.Pads())
+        names = _pin_names(fp)
+        groups: dict[str, list[int]] = {}
+        for i, pad in enumerate(pads):
+            groups.setdefault(pad.GetNumber(), []).append(i)
+        for idx in groups.values():
+            if len(idx) < 2:
+                continue
+            parent = {i: i for i in idx}
+
+            def find(i):
+                while parent[i] != i:
+                    i = parent[i]
+                return i
+
+            for a in idx:
+                for b in idx:
+                    if a < b and _touch(pads[a], pads[b]):
+                        parent[find(b)] = find(a)
+            first: dict[int, int] = {}
+            for i in idx:  # the first piece of each component stays a pin
+                root = find(i)
+                if root in first:
+                    out.add(f"{fp.GetReference()}-{names[i]}")
+                else:
+                    first[root] = i
+    return out
+
+
+def drop_pins(dsn_text: str, names: set[str]) -> str:
+    """Remove the named pins from every net's pin list in the network section."""
+    start = dsn_text.find("(network")
+    if start < 0 or not names:
+        return dsn_text
+
+    def strip(m: re.Match) -> str:
+        kept = [pin for pin in m.group(1).split() if pin.replace('"', "") not in names]
+        return "(pins " + " ".join(kept) + ")"
+
+    return dsn_text[:start] + _PINS.sub(strip, dsn_text[start:])
 
 
 # --- escape stubs for fine-pitch rows (D51/D52) --------------------------------------------------------------
@@ -671,7 +755,7 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
-    text = typed_clearances(out.read_text(), d)
+    text = drop_pins(typed_clearances(out.read_text(), d), joined_pins(board))
     out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm)))
     return d, renamed
 

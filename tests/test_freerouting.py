@@ -299,9 +299,69 @@ def test_a_track_a_few_micrometres_too_close_is_moved_away_and_the_drc_then_pass
     assert ys[1] - ys[0] >= 0.25 + 0.1972 - 1e-6  # moved apart, not narrowed
 
 
+def test_a_track_squeezed_from_both_sides_settles_between_its_neighbours(tmp_path):
+    """One move per violation oscillated the smoke board's middle SOT-563 exit between its two neighbours and
+    ended at zero or one violation by the order KiCad listed them. The pushes are summed per track."""
+    import pcbnew
+    path = _two_track_board(tmp_path, gap_mm=0.19)
+    board = kb.load_board(path)
+    net = pcbnew.NETINFO_ITEM(board, "C")
+    board.Add(net)
+    t = pcbnew.PCB_TRACK(board)  # a third track above A, leaving A's corridor 0.19 on both sides
+    t.SetStart(pcbnew.VECTOR2I(kb.nm(2.0), kb.nm(5.0 - 0.25 - 0.19)))
+    t.SetEnd(pcbnew.VECTOR2I(kb.nm(8.0), kb.nm(5.0 - 0.25 - 0.19)))
+    t.SetWidth(kb.nm(0.25))
+    t.SetLayer(pcbnew.F_Cu)
+    t.SetNet(net)
+    board.Add(t)
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report["remaining"] == 0, report
+    ys = sorted(kb.mm(t.GetStart().y) for t in kb.track_segments(board))
+    assert ys[1] - ys[0] >= 0.25 + 0.1972 - 1e-6 and ys[2] - ys[1] >= 0.25 + 0.1972 - 1e-6
+
+
 def test_a_clean_board_needs_no_repair(tmp_path):
     path = _two_track_board(tmp_path, gap_mm=0.25)
     rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
     board = kb.load_board(path)
     report = fr.repair_clearances(board, rules, tmp_path / "repair")
     assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0}
+
+
+# --- pads with the same number (D61) ------------------------------------------------------------------------
+NETWORK = """  (network
+    (net GND
+      (pins B3-2 B3-2@1 B3-2@2 C1-2 "USB-C1"-0 "USB-C1"-0@1 U3-49 U3-49@3)
+    )
+    (net /BTN_LEFT
+      (pins B5-1 B5-1@1 B5-1@2
+        B5-1@3 R1-1)
+    )
+    (class kicad_default GND /BTN_LEFT
+      (circuit
+        (use_via "Via[0-1]_600:300_um")
+      )
+    )
+  )
+"""
+
+
+def test_only_pad_pieces_that_touch_leave_the_pin_list():
+    """The named pins go, quoted references included; everything else stays, class lists untouched."""
+    text = fr.drop_pins(NETWORK, {"B3-2@1", "B3-2@2", "USB-C1-0@1", "B5-1@1", "B5-1@2", "B5-1@3"})
+    assert '(pins B3-2 C1-2 "USB-C1"-0 U3-49 U3-49@3)' in text
+    assert "(pins B5-1 R1-1)" in text
+    assert text.count("(class kicad_default") == 1
+    assert fr.drop_pins(NETWORK, set()) == NETWORK
+
+
+def test_the_buttons_fingers_are_joined_and_the_connectors_two_eps_are_not():
+    ref = _ref("open-book-c1")
+    bare, _ = rebuild.strip_all(ref)
+    joined = fr.joined_pins(kb.load_board(bare))
+    b5 = sorted(n for n in joined if n.startswith("B5-"))
+    assert b5 == ["B5-1@1", "B5-1@2", "B5-1@3", "B5-1@4", "B5-2@1", "B5-2@2", "B5-2@3"], b5  # the fingers
+    ref = _ref("tinkerforge-temperature")
+    bare, _ = rebuild.strip_all(ref)
+    assert fr.joined_pins(kb.load_board(bare)) == set()  # P1's two EP pads are 11.6 mm apart: both routed
