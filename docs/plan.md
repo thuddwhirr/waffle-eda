@@ -32,7 +32,7 @@ wrapper as committed; the last three boards were still running at the commit and
 | `open-book-c1` | 34 of 35 | 59: 40 track width, 18 clearance, 1 edge | the router necks traces below the rule at pads (`automatic_neckdown` off changes nothing); GND, a pour on the reference, left as a track |
 | `olimex-esp32c3-devkit` | 34 of 34 | 31: 16 hole clearance, 15 clearance | the typed via clearance is not honoured everywhere; clearance at pad exits |
 | `olimex-rp2040-pico-pc` | 53 of 60 | 20: 19 clearance, 1 hole clearance | clearance at pad exits; 7 nets unrouted, not yet diagnosed |
-| `crkbd-corne-cherry` | measuring | | first run: empty session for the same reason (fixed) |
+| `crkbd-corne-cherry` | 0 of 152 | | 598 pins, 482 connections load; the run hits the 20-minute cap and Freerouting writes no session file when killed (as D51 found for 2.1.0): its `save_intermediate_stages` or a longer budget, measured when this rung comes |
 | `libresolar-mppt-2420` | measuring | | first run 101 of 102 and 201 clearance violations of exactly the global slack (scoped since) |
 
 **Where it stands (2026-09-24):** items 1 to 3 below are built and the smoke test is green (D60). The next rung
