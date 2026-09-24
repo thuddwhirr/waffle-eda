@@ -257,7 +257,7 @@ def _local_clearance_mm(item) -> float:
     return kb.mm(value)
 
 
-def pad_keepouts(board, clearance_mm: float) -> list[PadKeepout]:
+def pad_keepouts(board, clearance_mm: float, hole_clearance_mm: float = 0.0) -> list[PadKeepout]:
     """Every pad whose own clearance override exceeds the clearance the router is asked for."""
     names = {lid: name for lid, name in kb.copper_layers(board)}
     out = []
@@ -265,6 +265,11 @@ def pad_keepouts(board, clearance_mm: float) -> list[PadKeepout]:
         fp_clr = _local_clearance_mm(fp)
         for pad in fp.Pads():
             override = max(fp_clr, _local_clearance_mm(pad))
+            drill = pad.GetDrillSize()
+            if not pad.GetNetname() and max(drill.x, drill.y) > 0:
+                # a hole with no net (a mounting hole): the router keeps its clearance from the keepout KiCad
+                # exports for it, not the hole rule; open-book's pour and a track came 0.06 mm too close
+                override = max(override, hole_clearance_mm)
             if override <= clearance_mm:
                 continue
             layers = tuple(names[l] for l in pad.GetLayerSet().CuStack() if l in names)
@@ -374,25 +379,74 @@ def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float 
     return lo
 
 
-def _move_checked(board, obstacles, track, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
-    """Move ``track`` (and the ends it shares) and keep the move only if none of the moved tracks then collides
-    with other-net copper under the exact collision index; otherwise put everything back."""
-    ends = (pcbnew.VECTOR2I(track.GetStart()), pcbnew.VECTOR2I(track.GetEnd()))
-    net, layer = track.GetNetCode(), track.GetLayer()
-    moved = [track] + [o for o in kb.track_segments(board)
-                       if o.GetNetCode() == net and o.GetLayer() == layer
-                       and o.m_Uuid.AsString() != track.m_Uuid.AsString()
-                       and (o.GetStart() in ends or o.GetEnd() in ends)]
-    for item in moved:
-        obstacles.remove(item)
-    _move_track(board, track, kb.nm(dx_mm), kb.nm(dy_mm))
-    clean = all(obstacles.clear(item, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm) is None
-                for item in moved)
+def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
+    """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if none
+    of the moved copper then collides with other-net copper under the exact collision index."""
+    is_via = item.GetClass() == "PCB_VIA"
+    net = item.GetNetCode()
+    if is_via:
+        ends = (pcbnew.VECTOR2I(item.GetPosition()),)
+        moved = [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
+                          and (o.GetStart() in ends or o.GetEnd() in ends)]
+    else:
+        ends = (pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd()))
+        layer = item.GetLayer()
+        moved = [item] + [o for o in kb.track_segments(board)
+                          if o.GetNetCode() == net and o.GetLayer() == layer
+                          and o.m_Uuid.AsString() != item.m_Uuid.AsString()
+                          and (o.GetStart() in ends or o.GetEnd() in ends)]
+    for m in moved:
+        obstacles.remove(m)
+    _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
+    clean = all(obstacles.clear(m, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm) is None
+                for m in moved)
     if not clean or not keep:
-        _move_track(board, track, -kb.nm(dx_mm), -kb.nm(dy_mm))
-    for item in moved:
-        obstacles.add(item)
+        _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
+    for m in moved:
+        obstacles.add(m)
     return clean
+
+
+def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, rules):
+    """The first other-net copper ``item`` meets when moved ``distance_mm`` along (ux, uy), or None."""
+    is_via = item.GetClass() == "PCB_VIA"
+    net = item.GetNetCode()
+    if is_via:
+        ends = (pcbnew.VECTOR2I(item.GetPosition()),)
+    else:
+        ends = (pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd()))
+    moved = [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
+                      and o.m_Uuid.AsString() != item.m_Uuid.AsString()
+                      and (is_via or o.GetLayer() == item.GetLayer())
+                      and (o.GetStart() in ends or o.GetEnd() in ends)]
+    for m in moved:
+        obstacles.remove(m)
+    _move(board, item, moved, kb.nm(ux * distance_mm), kb.nm(uy * distance_mm))
+    hit = None
+    for m in moved:
+        hit = obstacles.clear(m, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm)
+        if hit is not None:
+            break
+    _move(board, item, moved, -kb.nm(ux * distance_mm), -kb.nm(uy * distance_mm))
+    for m in moved:
+        obstacles.add(m)
+    return hit
+
+
+def _move(board, item, moved, dx_nm: int, dy_nm: int) -> None:
+    """Translate ``item`` and the ends of ``moved`` that sit on it."""
+    if item.GetClass() == "PCB_VIA":
+        at = item.GetPosition()
+        for o in moved:
+            if o is item:
+                continue
+            if o.GetStart() == at:
+                o.SetStart(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
+            if o.GetEnd() == at:
+                o.SetEnd(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
+        item.SetPosition(pcbnew.VECTOR2I(at.x + dx_nm, at.y + dy_nm))
+    else:
+        _move_track(board, item, dx_nm, dy_nm)
 
 
 def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
@@ -500,20 +554,25 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 moved_now += 1
             else:
                 stuck.append(uuid)
-        # a track that cannot move at all: push what it collides with instead, where that is a track
+        # a track boxed in: whatever blocks its way on the far side is pushed instead, where that is ours
+        vias = {v.m_Uuid.AsString(): v for v in kb.vias(board)}
         for uuid in stuck:
-            for v in violations:
-                ids = [u for u, _d, _p in v.items]
-                if uuid not in ids:
-                    continue
-                other_uuid = next((u for u in ids if u != uuid and u in tracks and u not in sides), None)
-                if other_uuid is None:
-                    continue
-                other = tracks[other_uuid]
-                ax, ay = _away(other, next(p for u, _d, p in v.items if u == uuid))
-                step = v.short_mm + NUDGE_EXTRA_MM
-                if _move_checked(board, obstacles, other, ax * step, ay * step, rules):
-                    moved_now += 1
+            track = tracks[uuid]
+            plus, minus = sides[uuid]
+            nx, ny = normals[uuid]
+            sign = 1 if plus >= minus else -1
+            short = max(plus, minus)
+            blocker = _blocker(board, obstacles, track, nx * sign, ny * sign, short + NUDGE_EXTRA_MM, rules)
+            if blocker is None:
+                continue
+            uid = blocker.m_Uuid.AsString()
+            other = vias.get(uid) or tracks.get(uid)
+            if other is None or uid in sides:
+                continue
+            ax, ay = (nx * sign, ny * sign)  # push the blocker onward, out of the track's way
+            step = short + 2 * NUDGE_EXTRA_MM
+            if _move_checked(board, obstacles, other, ax * step, ay * step, rules):
+                moved_now += 1
         report["moved"] += moved_now
         report["unfixable"] = unfixable
         if moved_now == 0:
@@ -938,7 +997,7 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
     text = drop_pins(typed_clearances(out.read_text(), d), joined_pins(board))
-    out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm)))
+    out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm)))
     return d, renamed
 
 
