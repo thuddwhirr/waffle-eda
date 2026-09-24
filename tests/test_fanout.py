@@ -6,6 +6,8 @@ from waffle_eda.kicad import board as kb
 from waffle_eda.route import fanout as fo
 from waffle_eda.route.lattice import Lattice
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 def _rules(case, board):
     names = [n for _, n in kb.copper_layers(board)]

@@ -5,6 +5,8 @@ from waffle_eda.bench import harness, synthetic
 from waffle_eda.kicad import board as kb
 from waffle_eda.route import bus as busr, escape as esc, fanout as fo, length as lengthr
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 # The reversed pair is not a bus case: every pair of its nets crosses, and with layer changes only inside the
 # packages a fully reversed order needs one layer per net. It stays an escape (M2) case.

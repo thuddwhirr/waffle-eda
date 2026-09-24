@@ -9,30 +9,65 @@ Everything else in this file serves that sentence.
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none.
 
-**Confirm the state first.** A fresh container has no references and no `build/`; fetching takes a few minutes.
+**Confirm the state first.** A fresh container has no references, no tools and no `build/`; fetching takes a few
+minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver numpy shapely pytest`).
 
 ```
-python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java, Xvfb: all present on 2026-09-23
+python3 scripts/fetch_tools.py          # Freerouting 2.4.1 and a Java 25 into build/tools/ (D56)
+python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar, Xvfb: all present on 2026-09-23
 python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
-python3 scripts/gate.py a               # expect FAIL: the parked router reaches 4 of 6 nets on the smoke test
-python3 -m pytest -q -rs                # expect 0 failed; a skip is a guard for a build artifact, never a pass
+python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 25 minutes; the first three boards alone
+                                        # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
+python3 -m pytest -q -rs                # class A only (the parked classes' tests carry a marker pyproject deselects;
+                                        # `-m parked` runs them); expect 0 failed; a skip guards a build artifact
 ```
 
-**Milestone A, task 1: a baseline stage 5 behind the gate.** `scripts/gate.py a` strips each class A reference to
-placement (`bench/rebuild.strip_all`), calls `route.board_router.route_board(board, rules)`, refills zones and
-scores the result (`bench/rebuild.score`). Replace what that call does with a wrapper around Freerouting:
-export the problem board with `pcbnew.ExportSpecctraDSN`, run the jar headless under `xvfb-run`, import the
-session with `pcbnew.ImportSpecctraSES`, then refill and score exactly as now. The salvaged scripts show the
-mechanics and the pitfalls (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `import_ses.py`, `staged_route.sh`:
-rule areas export as keepouts, plane layers must be typed `power`, a `fix`-typed wire freezes its whole net in
-1.9). Supply nets on a two-layer board are pours, not tracks: pour them before routing, or let the router route
-them and measure what that costs; either way the gate decides. Score the smoke test first, then walk the ladder.
+**Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
+reference to placement, routes it with `route.freerouting.route_board` (Freerouting 2.4.1 headless: export DSN,
+run the jar under `xvfb-run`, import the session; D56, D57), refills zones and scores it. Every board's DSN,
+session and logs are under `build/fr/<key>/`. The failing cases, first (each row from the latest run of that board on the committed wrapper, 2026-09-24 20:15 UTC):
 
-Obtaining the jar, measured 2026-09-23: `git ls-remote` on `freerouting/freerouting` works from here (latest tag
-v2.4.1), a GitHub release asset answered with a redirect, Maven Central answered 429. Try the current release
-first; the old project settled on 1.9.0 because 2.1.0 ignored `-mp` and wrote no session file when killed
-(`lessons/waffle-fpga-decisions.md` D51). Record the version and flags that worked as a decision. If no route
-works, say so and the owner supplies the jar; do not spend the session on it.
+| Board | Nets | Electrical violations | Blocker |
+|---|---|---|---|
+| `tinkerforge-temperature` | **6 of 6, PASS** | 0 | none: green since D60 (items 1 to 3 below) |
+| `open-book-c1` | **35 of 35, PASS** | 0 | none: green since D62 |
+| `olimex-esp32c3-devkit` | **34 of 34, PASS** | 0 | none: green since D66 |
+| `olimex-rp2040-pico-pc` | **60 of 60, PASS** | 0 | none: green since D69 (D67 to D69 are what it took) |
+| `libresolar-mppt-2420` | **102 of 102, PASS** | 0 | none: green since D73 (the USB shield's pad pieces) |
+
+**Where it stands (2026-09-24, 07:30 UTC):** four rungs green through the gate in minutes each (D60,
+D62, D66, D69): the smoke test, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`. The loop that gets a rung green: run its
+gate row once (the wrapper saves the router's output as `build/fr/<key>/imported.kicad_pcb`), then
+`python3 scripts/repair_only.py <key> --twice` to measure a repair change in a minute without the router, and
+the gate row again to confirm. Freerouting's optimiser is off (D65): routing takes seconds and repeats to the
+digest, which every gate row prints. All five rungs are green (D73): `python3 scripts/gate.py a` PASS 5 of 5 in about 25 minutes, libresolar's 10 the longest. `crkbd-corne-cherry` left the ladder (D72). What remains of milestone A is its other half: the synthetic temperature-sensor design through all six stages to fab outputs the owner reviews (stages 1 to 4 and 6 have nothing written), and the owner's review of one board's fab outputs. Climb one board at a time,
+and run one Freerouting at a time: two at once have left an empty session file (`route/freerouting.py`,
+pitfalls); the milestone is the whole gate.
+
+**Why it failed, measured (D57, D59), and the repair order the owner agreed on 2026-09-23.** The router connects
+nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
+than 0.011 mm, the error of the router's octagonal model of round copper against KiCad's exact DRC; (2) traces
+necked below the rule where they enter a pad, the router's own behaviour, which its setting does not switch
+off; (3) per-pad clearance overrides (mounting holes at 1.85 mm, fiducials at 1.016 mm) that KiCad's Specctra
+export does not carry, so the router never saw them; (4) ground routed as tracks where every class A reference
+pours it. Our copper fails the designers' own project rules the same way (open-book 48, esp32c3 31), so the
+criterion is not the problem and is not loosened. **One more session, as repair, not tuning**, in this order,
+each item behind a failing gate or test case that names the board and the violation kind, every lower item
+kept green:
+
+1. *done:* every pad with a clearance override exported as a keepout grown by the override less the clearance
+   (`freerouting.pad_keepouts`; the esp32c3's 16 hole violations to 0);
+2. *done:* necked traces restored to the rule width after the import (`widen_tracks`; open-book's 40 to 0);
+3. *done:* each remaining clearance shortfall nudged away under KiCad's own DRC (`repair_clearances`; the
+   smoke board's 9 to 0, and green);
+4. *done:* the reference's pours laid after the import, with the hole rule in their clearance and no-pour
+   rule areas around holes without a ring (`add_pours`, `hole_rule_areas`; D62);
+5. then, and only then, the fine-pitch exits again (`freerouting.escape_stubs`), whose only measurement so far
+   was confounded by 1 to 4.
+
+**The stop:** if `tinkerforge-temperature` and `open-book-c1` are not green after that session, Freerouting is
+not the baseline; the session after writes the review the ladder rules call for, with two options: our own
+router for exits and pours with Freerouting between them, or our own router outright. No fifth tuning session.
 
 **Milestone A, alongside task 1: the design directory and stages 1 to 4 and 6 for one class A design.** See
 "Interface" below for the directory. The synthetic design is a temperature-sensor breakout (an I2C sensor, a
@@ -72,7 +107,7 @@ loads, a board that was manufactured and worked, a class the tool claims.
 
 | Class | Board | The routing problem | References |
 |---|---|---|---|
-| A | 2 layers, a microcontroller or module, passives, headers | connectivity; fine-pitch pad escapes; ground as a pour; one board with real current | `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `crkbd-corne-cherry`, `libresolar-mppt-2420` |
+| A | 2 layers, a microcontroller or module, passives, headers | connectivity; fine-pitch pad escapes; ground as a pour; one board with real current | `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`, `olimex-rp2040-pico-pc`, `libresolar-mppt-2420` (`crkbd-corne-cherry` left the ladder, D72) |
 | B | 4 layers, fine-pitch QFN MCU or small FPGA, USB 2.0 pair, switching regulator, ground planes | electrical intent: a differential pair, plane integrity and return paths, a switcher's loop, decoupling placement, width by net class | `pico-ice-rev3`, `upduino-v3.01`, `sensor-watch-c1`, `tinkerforge-master-v3.2`, `buspirate5-rev10`, `olimex-esp32-poe-m1`, `tinytapeout-demo`, `mch2022-badge`, `fomu-pvt` |
 | B+ | a BGA on 4 to 6 layers, with a slow bus or none | BGA escape, dog-bone and via-in-pad, 0.4 to 0.8 mm pitch, no length matching | `tinyfpga-bx`, `glasgow-revc3`, `ulx3s`, `cynthion` |
 | C | BGA FPGA with a DDR3 bus, 6 to 8 layers, rising order | escapes planned jointly with the bus, per-lane length matching, layer assignment, via budgets, meanders | `orangecrab-r0.2.1`, `logicbone`, `butterstick` |
@@ -89,9 +124,13 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-23):* gate FAIL. The parked homegrown router: 4 of 6 nets on `tinkerforge-temperature`, 25 of
-35 on `open-book-c1`, 29 of 34 on `olimex-esp32c3-devkit`, the other three not attemptable (D51/D52). Stages 1
-to 4 and 6: nothing written. The benchmark and its sanity pair pass on all six (D50).
+*State (2026-09-24, 20:15 UTC):* gate PASS, 5 of 5. Stage 5's baseline (Freerouting 2.4.1, optimiser off,
+inside the repairs of `route/freerouting.py`, D56 to D73) passes all five: `tinkerforge-temperature` (6 of 6),
+`open-book-c1` (35 of 35), `olimex-esp32c3-devkit` (34 of 34), `olimex-rp2040-pico-pc` (60 of 60) and
+`libresolar-mppt-2420` (102 of 102), 0 violations each, in 12 s to 10 min a board; `crkbd-corne-cherry` left the
+ladder (D72). Numbers per board in the next-step section's table. Tests: the class A suite, 92 passed in 31 s (the parked
+classes' 128 deselected; the whole suite, 209, last passed in full at 02:53). Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
+pass on all six (D50).
 
 ### B. A class B board, end to end
 
@@ -137,9 +176,10 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/escape.py`, `fanout.py`, `lattice.py`, `obstacles.py` | BGA escape router, gate `escape` PASS 9 of 9 (D20); the exact collision index every router uses |
 | `waffle_eda/route/busplan.py`, `busplanner.py` | the bus plan and its check, gate `busplan` PASS 3 of 3 (D41) |
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
-| `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands |
+| `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java |
+| `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
-| `tests/` | 183 tests, 0 failed on 2026-09-21 |
+| `tests/` | 209 tests; the class A suite is 81 of them, 24 s (`pytest`); the parked classes' tests carry the `parked` marker and run with `pytest -m parked` |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)

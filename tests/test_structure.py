@@ -8,6 +8,8 @@ from waffle_eda.kicad import board as kb
 from waffle_eda.route import bus as busr
 from waffle_eda.route.lattice import Lattice
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 DIAGONAL = ((0.0, 0.0), (0.5, 0.5), (0.5, -0.5), (-0.5, 0.5), (-0.5, -0.5))
 
 

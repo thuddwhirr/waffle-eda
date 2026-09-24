@@ -19,6 +19,8 @@
 
 The milestone names of the first five days (m1, m2, m3a, m3b, m4) still work and mean the same gates.
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
+Reference keys after the gate name (`gate.py a tinkerforge-temperature`) run those rows only, for climbing the
+ladder one board at a time; the milestone is the whole gate, never a subset.
 """
 from __future__ import annotations
 
@@ -33,12 +35,15 @@ def bus_references():
     return [r for r in refs.REFERENCES.values() if r.has_bus]
 
 
+ONLY: list[str] = []  # reference keys named on the command line; empty means every reference of the gate
+
+
 def m4_references():
     """M4's ladder: class A, smallest first, as D49 sets it. `tinkerforge-temperature` is the registry's own
     smoke test for every stage; `libresolar-mppt-2420` is the one whose power on continuous copper matters."""
     order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
-             "crkbd-corne-cherry", "libresolar-mppt-2420"]
-    return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES]
+             "libresolar-mppt-2420"]  # crkbd-corne-cherry left the ladder (D72)
+    return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
 def gate_m1() -> list[tuple[str, bool, str]]:
@@ -110,27 +115,30 @@ def gate_m3a() -> list[tuple[str, bool, str]]:
 
 
 def gate_m4() -> list[tuple[str, bool, str]]:
-    """M4: a full re-route of each class A reference from placement, DRC clean (plan.md, M4; D49).
+    """Class A: a full re-route of each class A reference from placement, DRC clean (plan.md, milestone A; D49).
 
     The ladder rises as class C's does: the smallest board first. The benchmark is `waffle_eda.bench.rebuild`,
     whose two sanity checks (the stripped board scores 0.000, the original 1.000) are asserted by the tests. This
-    gate judges only what the tool produces, so while M4's router is unbuilt every row fails with that reason.
+    gate judges only what the tool produces: stage 5's baseline, Freerouting behind `route.freerouting` (D55,
+    D56), with the DSN, session and log of every board left under `build/fr/<key>/`.
     """
     from waffle_eda.bench import rebuild
-    from waffle_eda.route import board_router
+    from waffle_eda.route import freerouting
     rows = []
+    missing = freerouting.available()
     for ref in m4_references():
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
             continue
+        if missing:
+            rows.append((ref.key, False, missing))
+            continue
         try:
-            bare, _info = rebuild.strip_all(ref)
+            bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            result = board_router.route_board(board, rules)
-        except board_router.RoutingTooLarge as why:
-            rows.append((ref.key, False, str(why).split(". ")[0]))
-            continue
+            result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
+                                             pours=info["pours"])
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
@@ -138,10 +146,8 @@ def gate_m4() -> list[tuple[str, bool, str]]:
         kb.refill_zones(board)
         kb.save_board(board, out)
         s = rebuild.score(ref, out)
-        detail = s.summary()
-        if result.failed:
-            detail += f" | first failure: {sorted(result.failed.items())[0][1]}"
-        rows.append((ref.key, s.passed, detail))
+        rebuild.write_score(s)
+        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary()))
     return rows
 
 
@@ -175,9 +181,14 @@ GATES = {
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or argv[0] not in GATES:
+    if not argv or argv[0] not in GATES:
         print(__doc__)
         return 2
+    unknown = [k for k in argv[1:] if k not in refs.REFERENCES]
+    if unknown:
+        print(f"not a reference: {unknown}")
+        return 2
+    ONLY[:] = argv[1:]
     rows = GATES[argv[0]]()
     failed = [r for r in rows if not r[1]]
     print(f"\n=== GATE {argv[0].upper()}: {'PASS' if not failed else 'FAIL'} ({len(rows) - len(failed)} of {len(rows)} cases pass) ===")

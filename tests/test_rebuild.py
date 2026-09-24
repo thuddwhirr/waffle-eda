@@ -119,8 +119,12 @@ def test_the_rules_apply_to_the_whole_board_and_not_to_a_net_list():
     assert "edge_clearance" in rebuild.QUIET_CONSTRAINTS
 
 
-def test_m4s_router_is_not_built_and_says_so():
-    """M4 is a failing milestone, not a pending one. When the router exists this test is the one to delete."""
-    from waffle_eda.route import board_router
-    with pytest.raises(NotImplementedError):
-        board_router.route_board(None, None)
+def test_a_teardrop_is_the_references_routing_and_not_a_pour_to_lay():
+    """`crkbd-corne-cherry` fillets its tracks with 921 teardrop zones; recorded as pours they were laid on the
+    re-routed board as 921 slivers at the reference's own pad and via positions."""
+    ref = _ref("crkbd-corne-cherry")
+    bare, info = rebuild.strip_all(ref)
+    assert info["teardrops"] == 921 and info["zones"] == 4
+    assert sorted((p["net"], p["layer"]) for p in info["pours"]) == [("GND", "B.Cu"), ("GND", "F.Cu"), ("GNDR", "B.Cu"), ("GNDR", "F.Cu")]
+    board = kb.load_board(bare)
+    assert not any(z.IsTeardropArea() for z in board.Zones())

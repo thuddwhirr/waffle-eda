@@ -62,6 +62,31 @@ interface is a separate project that consumes this one's files, renders and repo
 router spec and full log are archived (`archive/`); this log is condensed to what stands; CLAUDE.md is
 rewritten to the rules in it.
 
+**D56. Stage 5's baseline is Freerouting 2.4.1 on Java 25, fetched, not installed.** The current release needs
+Java 25 (class file 69); the container has 21. `scripts/fetch_tools.py` puts the jar and a Temurin 25 JDK under
+`build/tools/` from GitHub releases (Maven Central answers 429, Adoptium's API 403 through the proxy);
+`scripts/check_env.py` requires both. The wrapper is `route/freerouting.py`; the class A gate runs it.
+Owner (the version), 2026-09-23; the rest measured the same day.
+
+**D57. What the wrapper had to learn, each by running it** (`route/freerouting.py`, 2026-09-23).
+`pcbnew.ExportSpecctraDSN` returns False and writes nothing when two footprints share a reference (five of six
+class A boards); duplicates are renamed for the export and restored after the import. The DSN carries the
+board's net-class values, not the measured rules; written in, the router asked for `tinkerforge-temperature`'s
+measured clearance (0.1972 mm, 0.003 under its SOT-563's pad gap) attaches nothing to that part: its maze finds
+the path and its exact insertion check rejects the last segment; at 0.190 it routes the whole board in 2 passes.
+So the wire-to-SMD-pad clearance is handed over as the rule less 0.0072 (4 of 6 nets, 2 clearance violations);
+the same slack on every clearance gives 6 of 6 there and 175 violations of exactly that slack on
+`libresolar-mppt-2420`, so it stays scoped. The default via cost of 50 stops the router placing any via of its
+own on a 15 x 25 mm board (0 vias, 18 passes alternating between two top-layer solutions); `router.scoring
+.via_costs` 1 in its settings file gives 14 to the reference's 15. The same setting as an `(autoroute_settings)`
+block in the DSN made the loader drop every pin of `olimex-rp2040-pico-pc` (0 unrouted items) when placed
+before the structure's rule block and was not read after it. The fanout stage necks its stubs to 75 % of the
+width, below the rule, and is off. The session file truncates via drills to whole micrometres (248.9 became
+248), so the drill is rounded up to one. Hole-to-copper is not a Specctra rule: typed via and pin clearances of
+the rule less the smallest ring carry it. Escape stubs laid by the wrapper (D51's finding, the reference's own
+exit pattern) made the smoke test worse (2 of 6 against 6 of 6 under the global slack) and stay off. Runs are
+deterministic per configuration.
+
 ## Benchmark and measurement
 
 **D10. Strip-and-score.** `bench/harness.py` strips the bus nets' tracks and vias, keeps everything else as
@@ -108,6 +133,163 @@ routable net connected and zero electrical violations under rules measured off t
 defects: single-pad nets counted as connected; violations between two fixed items charged to the router; an
 `Arc` on `Edge.Cuts` read as copper; net names escaped in the API and unescaped in the DRC report
 (`kb.unescape_net`). `harness.drc_facts` has the fourth defect latent. Measurement, 2026-09-21.
+
+**D58. A KiCad 5 board's legacy zone fills fail KiCad 9's DRC until refilled; its net-class rules survive the
+conversion, its project rules do not.** Under the rules KiCad 9 applies with no project file, the three KiCad 5
+class A references show 19, 4 and 241 violations, almost all "zone clearance" of the zone's own setting short by
+0.01 mm: the legacy fill converted "best effort". After `ZONE_FILLER` in KiCad 9: 0, and 15 on
+`libresolar-mppt-2420` (3 at KiCad 9's default 0.2 mm, which its designer never used, 12 edge). `kicad-cli pcb
+drc` never refills. The designers' net-class clearance and width are in the board file and load (tinkerforge
+0.150 / 0.300 mm); the project-level rules of KiCad 5's `.pro` are not read. The benchmark's measured rules are
+unaffected: they are measured off the copper and every converted original passes them (`tests/test_rebuild.py`).
+Measurement, 2026-09-23.
+
+**D59. Why Freerouting's copper fails the rules the reference meets** (four class A boards, 2026-09-23,
+`build/bench/rebuild/*/candidate.json`). Same widths and vias as the reference; the copper is placed
+differently. (1) 48 clearance violations short by under 0.011 mm: the router keeps every coordinate as an
+integer at 0.1 um and every round shape as an octagon (`geometry/planar/IntOctagon`), which lies inside the
+true circle by up to 7.6 % of the radius (0.011 mm on a 0.30 mm trace end, 0.027 on a 0.70 mm via); its own
+check passes, KiCad's exact one does not. (2) 40 width violations by 0.03 mm or more on `open-book-c1`: traces
+necked where they enter a pad; `automatic_neckdown` off changes nothing. (3) 26 violations of 1.016 and
+1.85 mm: per-pad clearance overrides on fiducials and mounting holes, which the Specctra export does not carry.
+(4) Ground left as tracks where every class A reference pours it. Under the designers' own project rules our
+copper fails the same way (open-book 48, esp32c3 31; the originals 0). Measurement.
+
+**D60. The smoke test passes the class A gate with Freerouting inside three repairs** (`gate.py a
+tinkerforge-temperature`, 2026-09-24, commit of this entry): 6 of 6 nets, 0 violations, score 1.000, 28 s.
+The router is handed every clearance less 0.0072 mm (D57) and its output is repaired under KiCad's own DRC
+(`route/freerouting.py`): pads with a clearance override exported as keepouts grown by the override less the
+clearance (D59 kind 3; on `olimex-esp32c3-devkit` 16 hole violations to 0); tracks the router necked set back
+to the rule width (kind 2; on `open-book-c1` 40 width violations to 0, 40 clearance ones in their place); each
+clearance violation's track moved away by the shortfall plus 0.002 mm, tracks sharing its ends carried along,
+up to four DRC rounds (kind 1; on the smoke board 9 violations to 0 in 3 rounds, 8 moves). Runs are
+deterministic per configuration; a subset of the gate is a rung, never the milestone. Measurement.
+
+**D61. A pad's pieces that touch are one connection to KiCad and separate pins to Freerouting.** KiCad exports
+the pieces of a pad with one number as `REF-N`, `REF-N@1`, ...; where their copper overlaps (the 0.2 mm fingers
+of `open-book-c1`'s buttons touch their round pad) KiCad's connectivity joins them, while Freerouting tried to
+route between the interleaved fingers of the two nets and left 14 GND connections open. Where they do not
+overlap (the smoke board's connector has two `EP` pads 11.6 mm apart) KiCad wants copper between them. So only
+the pieces joined by copper to another piece of the same number leave the router's pin lists
+(`freerouting.joined_pins`, `drop_pins`); dropping every suffixed pin cost the smoke board a net. With it,
+open-book's violations went from 47 to 0 under the cruder filter. Measurement, 2026-09-24.
+
+**D62. Two rungs green: `open-book-c1` passes the class A gate after the smoke test** (2026-09-24: 35 of 35
+nets, 0 violations, score 1.000, 135 s; `tinkerforge-temperature` 6 of 6, 0, 25 s). What it took beyond D60:
+pours laid after the import, not before (as planes the router trusted them for the SOT-563's middle GND pad,
+which the fill cannot reach), with the hole rule less the smallest ring in their clearance and a no-pour rule
+area around every hole whose ring is under the rule (the fill keeps its clearance from a pad's copper, not its
+hole; open-book's four mounting holes); the router's pin lists reduced to one piece per pad where pieces touch
+(D61); a router keepout by the hole rule around holes with no net. And the repair became a small placer under
+the exact collision index: every track and via of a violation is pushed, a track pressed from both sides
+settles in the middle, a track moves to the middle of the corridor the index measures or is left as boxed in,
+a boxed track's violating item and then its far-side blocker are pushed instead where they are ours, a via
+against fixed copper moves away, and a move may keep only the collisions it moves away from, so none deepens
+(the rule that took open-book from 2 violations to 0). Runs are deterministic per configuration. Measurement.
+
+**D63. `kicad-cli pcb drc` does not report the same violations on every run of one file.** Eight runs on a
+saved board of eight parallel tracks with seven pairs 0.19 mm apart under a 0.1972 rule: seven runs report 7
+clearance violations, one reports 6 (2026-09-24). D18 recorded the same for counts near the cap; this is far
+below it. Consequences: the gate's scoring DRC runs twice and a violation either run reports counts
+(`bench/rebuild.DRC_RUNS`); the repair steers by the exact collision index (`freerouting.index_violations`)
+and not by the report, which also removes one DRC per repair round; and the order test
+(`tests/test_freerouting.py`) found this through a digest that differed between insertion orders of the same
+copper. Measurement.
+
+**D64. The repair runs under two rules in turn and keeps the clean result.** Whether a track end dragged by a
+neighbour's move may come closer to old copper than the router's own clearance decides two boards opposite
+ways: floored, `olimex-esp32c3-devkit` repairs to 0 violations and `open-book-c1` keeps 5; free, open-book
+repairs to 0 and the esp32c3 keeps 2 (a pair deepened to 0.039 mm). One rule serves neither; the repair now
+tries the floor first and, if the index is not clean, restores the imported copper and tries free
+(`freerouting.STRATEGIES`). Measured with `scripts/repair_only.py` on the three imported boards, 2026-09-24:
+smoke 0 (floor, digest c30c3f3d1e), open-book 0 (free, d6ec360560), esp32c3 0 (floor, b9c2ad5f17), each
+reproducible run to run. Measurement.
+
+**D65. Freerouting's optimiser is off: it is where the time and the variation were.** Its maze search, rip-up
+resolver, pass runner and optimiser draw on Java's random generator with no seed setting; on
+`olimex-esp32c3-devkit` the same DSN (md5 40ee4f1c09) gave three different boards in three runs, the optimiser
+taking 11 of each run's 12 minutes for a score it never improved. With `optimizer.max_passes` 0 the same board
+routes in 34 s and two runs agree to the digest (imported c0c904b4ac); the smoke test routes in 21 s. The gate
+scores connectivity and DRC, which the optimiser does not change; it costs vias (107 to 71 there) and stays off
+until a gate scores what it buys. Measurement, 2026-09-24.
+
+**D66. Three rungs green through the gate in a few minutes** (`gate.py a tinkerforge-temperature open-book-c1
+olimex-esp32c3-devkit`, 2026-09-24: PASS 3 of 3; 6 of 6, 35 of 35, 34 of 34 nets, 0 violations each). What
+the last rung took: the router's copper-to-edge clearance handed over as the measured rule (its own default
+is 0.5 mm; open-book's rule is 0.5948 and a diagonal from a button pad cut the corner of a step in the edge at
+0.25 mm, which no move of the placer could fix); duplicate and dangling segments pruned after the import (the
+router leaves spurs and counts them among its own violations; KiCad's DRC reports them as warnings only); a
+short connected segment carried whole with a move; a via boxed on the straight line away from a track moved
+along an axis that still gains the distance; and an end-only move of a long track as the last fallback. The
+loop that found each of these: `scripts/repair_only.py` on the imported boards, a minute a board with no
+router run. Measurement.
+
+**D67. A rule area that forbids only the copper pour leaves the router's DSN.** KiCad's Specctra export writes
+it as a plain `(keepout)`, the same as one forbidding tracks and vias (tracks alone give `wire_keepout`, vias
+alone `via_keepout`; measured on a board of one area of each kind, `tests/test_freerouting.py`).
+`olimex-rp2040-pico-pc` draws no-pour areas over both pad rows of its TSSOP-14 (U3), and the router could not
+start a search from any of its pins: 13 of the board's 14 open connections were on U3. The wrapper lifts the
+pour-only areas off the board for the export and lays them back for the fill (`lift_pour_only_rule_areas`).
+Gate row before and after (2026-09-24): 52 of 60 nets, 0 violations, 650 s; 59 of 60, 0 violations, 214 s.
+Measurement.
+
+**D68. `olimex-rp2040-pico-pc`'s last open net, `Net-(LED1-Pad1)`, and what was measured** (2026-09-24). Its
+only corridor runs along the bottom edge; the router's GND track and via take it, and the router then rejects
+its own path at insertion ("could not be inserted", 18 passes). The router keeps the edge setting plus 0.03 mm
+(slot board: at 0.4776 a 0.86 mm slot routes and 0.84 does not; at 0.30, 0.68 and 0.66); its maze accepts
+about 0.03 mm less than its inserter. Handing the router 0.30 at the edge (DRC and repair at the 0.4776 rule):
+60 of 60, no edge violation (closest copper 0.5389), 1 clearance the placer left (via to track, 0.0054 short).
+GND routed last around the signals (signals as obstacles, then fixed or shoveable): LED1 routes at the rule,
+but `/SPI0_CSn1` then fails at insertion, U3's pad 10 GND piece (in a no-pour area) is left, and the placer
+made a short between the two I2C1 tracks: 58 of 60 either way. Measurements; the choice is the owner's.
+
+**D69. Four rungs green: `olimex-rp2040-pico-pc` passes the class A gate** (2026-09-24: `gate.py a` on the
+four, PASS 4 of 4; 60 of 60 nets, 0 violations, 265 s; the three below unchanged at 6, 35, 34 of their nets, 15
+to 44 s). What it took after D67: the router keeps 0.30 mm from the board edge (`ROUTER_EDGE_MM`, D68) with
+the DRC and the repair at the measured rule, and three placer defects the leftovers exposed, each with a test:
+a track pressed from both sides of a corridor too narrow for it settled 0.0002 mm a round and counted as
+moving, so the via pressing it was never asked to give way; of two vias too close only the first was asked,
+though only the second could move; and the edge clearance was measured to the stroke the edge is drawn with
+(0.127 mm of it) and capped at 0.25 mm, so a track KiCad passed at 0.539 mm read as 0.25 short. The repair
+alone (`repair_only.py --twice`) reproduces to the digest `42389e3b93`, the gate's final. Measurement.
+
+**D70. `crkbd-corne-cherry`, measured** (2026-09-24). 277 x 108 mm, 950 pads (344 plated, 302 with no net),
+158 nets; the reference lays 3027 tracks and 452 vias. The router's passes take 170 to 230 s each and leave
+96, 73, 49, 51, 39, ... 36 unrouted after passes 1 to 12; the 20-minute cap falls in pass 6 and a killed run
+writes no session. Freerouting's `job_timeout` does not stop its auto-routing stage (only its fanout and
+optimiser stages read it; a 14-minute setting routed on to the cap), so a run that must finish gets a pass
+budget instead. Two defects found on the way, fixed with tests: the cap killed `xvfb-run` and orphaned the
+JVM, which routed on beside the next run (D57's empty session file); and the benchmark recorded the
+reference's 921 teardrop zones as pours (esp32c3 had 154; it still passes without them). The router's 12
+standing violations are conflicts among fixed items, four of them EXLED1's override keepouts over its
+neighbouring pads. With a five-pass budget (24 min with the repair and the DRC): 119 of 152 nets, 39 open connections
+of which 25 on the two RP2040s' QFN-56 (0.4 mm pitch); 833 violations at import, none over 0.011 mm; after the repair 51
+by the index, up to 0.19 mm, four shorts, under either strategy. Measurement.
+
+**D71. Three placer defects crkbd's five-pass board exposed, fixed with tests** (2026-09-24). A gap within
+rounding of the rule (KEY3's stub, 0.18896 under 0.189) read as a hole violation of 0.0605 mm on a pad with no
+hole, which the placer then chased; an end move kept a track's 0.006 mm violation and swung its far end 0.28 mm
+into the neighbour (KEY5 into KEY10, a short), and a chain push could deepen the same way: both movers now hold
+one rule, a kept collision never closes below the router's own clearance floored, nor within 0.01 mm of a short
+free (D64); and the repair keeps the strategy whose deepest violation is shallowest before the fewest. Repair
+alone on `build/fr/crkbd-p5/imported.kicad_pcb`: 833 violations at import (none over 0.011 mm); before, 51 left
+up to 0.19 mm with 4 shorts (KiCad 40); after, 39 left none over 0.0075 mm (KiCad 32, no shorts), digest
+598d5f711d. The four green rungs pass; open-book now cleans under the floor. Measurement.
+
+**D72. `crkbd-corne-cherry` leaves the class A ladder.** A keyboard panel is a very unusual project, driven by
+its physical layout rather than a chip layout problem; it stays in the registry (class `-`) and fetched, for the
+measurements D70 and D71 cite. Class A is the other five, `libresolar-mppt-2420` last. Owner, 2026-09-24.
+
+**D73. Class A's gate passes on all five boards** (`gate.py a`, 2026-09-24: PASS 5 of 5; 6 of 6, 35 of 35, 34 of
+34, 60 of 60, 102 of 102 nets, 0 violations each; 12 to 590 s a board). What `libresolar-mppt-2420` took: its USB
+connector's shield is twelve pad pieces in six overlapping groups that the reference joins with short tracks,
+and D61's rule left the router one pin per group with the other pieces as pads of no net, obstacles walling the
+pin in: 1 of 6 connections routed. Every piece as a pin with a fixed wire across each overlap measured worse
+(open-book 32 of 35, esp32c3 33 of 34, rp2040 58 of 60) and was reverted. What holds: a plated piece stays the
+group's pin where there is one (the router reaches it on either layer), the groups the router leaves apart are
+joined after the import by a straight track where the run clears every other net (4 laid), and a via boxed
+between a pad and a track pushes the track as a boxed track would (its two 0.002 and 0.004 mm leftovers).
+Measurement; the milestone's other half, the synthetic design through the six stages, is untouched.
 
 ## Class A (in progress)
 

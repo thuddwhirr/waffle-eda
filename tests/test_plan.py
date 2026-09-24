@@ -1,7 +1,10 @@
 """The bus planner: crossings between cell paths, capacities from fixed copper, and the negotiation's layer choice."""
+import pytest
 import pcbnew
 
 from waffle_eda.route import plan as planr
+
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
 
 
 def test_crossing_through_one_shared_cell():

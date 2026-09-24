@@ -4,6 +4,8 @@ import pytest
 
 from waffle_eda.bench import harness, synthetic
 
+pytestmark = pytest.mark.parked  # class B+/C machinery: not run until its class is reached (docs/plan.md)
+
 
 def test_rules_file_text():
     text = harness.rules_file({"BUS01", "BUS00"}, {"clearance": 0.1, "track_width": 0.089})

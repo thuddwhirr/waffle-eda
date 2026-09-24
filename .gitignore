@@ -2,6 +2,8 @@
 references/
 # generated outputs
 build/
+# Freerouting writes logs/freerouting.log into the working directory on every run
+logs/
 # python
 __pycache__/
 *.pyc

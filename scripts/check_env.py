@@ -2,7 +2,8 @@
 """Verify the tools this project depends on. Exit 1 if a required one is missing.
 
 Required: Python >= 3.11, KiCad 9 (`kicad-cli`) and its `pcbnew` bindings on this interpreter, z3, numpy, shapely,
-pytest. Optional: Java and Xvfb (only if Freerouting is ever used, decision D2), git (fetching references).
+pytest, Xvfb, and stage 5's router: Freerouting 2.4.1 with a Java 25 to run it (D56; `scripts/fetch_tools.py`
+puts both under build/tools/). Optional: git (fetching references).
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ import importlib
 import shutil
 import subprocess
 import sys
+
+import _path  # noqa: F401
 
 
 def run(cmd: list[str]) -> str | None:
@@ -48,9 +51,14 @@ def main() -> int:
         v = module_version(mod)
         rows.append((mod, v is not None and (mod != "pcbnew" or v.startswith("9.")), v or "import failed", True))
 
-    java = run(["java", "-version"]) if shutil.which("java") else None
-    rows.append(("java", java is not None, java or "not found", False))
-    rows.append(("xvfb-run", shutil.which("xvfb-run") is not None, shutil.which("xvfb-run") or "not found", False))
+    from waffle_eda.route import freerouting as fr
+    java = fr.java_path()
+    major = fr.java_major(java) if java else None
+    rows.append(("java", major is not None and major >= fr.JAVA_MAJOR,
+                 f"{major} at {java}" if major else "not found", True))
+    rows.append(("freerouting", fr.jar_path().is_file(), str(fr.jar_path()) if fr.jar_path().is_file()
+                 else f"not found at {fr.jar_path()} (python3 scripts/fetch_tools.py)", True))
+    rows.append(("xvfb-run", shutil.which("xvfb-run") is not None, shutil.which("xvfb-run") or "not found", True))
     git = run(["git", "--version"]) if shutil.which("git") else None
     rows.append(("git", git is not None, git or "not found", False))
 

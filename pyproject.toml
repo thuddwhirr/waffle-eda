@@ -27,3 +27,7 @@ include = ["waffle_eda*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The parked classes' tests (BGA escape, bus plan, bus routing: B+ and C) stay out of a session's run until
+# their class is reached (docs/plan.md, D55); `pytest -m parked` runs them. Durations show where the time goes.
+addopts = "-m 'not parked' --durations=10"
+markers = ["parked: class B+/C machinery, not run until its class is reached"]
