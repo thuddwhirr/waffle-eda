@@ -380,9 +380,31 @@ def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float 
     return lo
 
 
+def _hits(obstacles, item, rules) -> dict:
+    """The other-net copper ``item`` collides with under the rules, by uuid."""
+    return {o.m_Uuid.AsString(): o for o in obstacles._collisions(item, rules.clearance_mm, rules.hole_to_copper_mm)}
+
+
 def _hit_ids(obstacles, item, rules) -> set[str]:
-    """The uuids of the other-net copper ``item`` collides with under the rules."""
-    return {o.m_Uuid.AsString() for o in obstacles._collisions(item, rules.clearance_mm, rules.hole_to_copper_mm)}
+    return set(_hits(obstacles, item, rules))
+
+
+def _gap_mm(a, b, layer: int) -> float:
+    """The copper-to-copper distance between two items on ``layer``, by bisection of the clearance at which
+    KiCad's shapes collide (the shapes answer collide-or-not, never a distance)."""
+    def shape(item):
+        return item.GetEffectiveShape(layer) if item.GetClass() == "PAD" else item.GetEffectiveShape()
+    sa, sb = shape(a), shape(b)
+    lo, hi = 0.0, 0.25
+    if not sa.Collide(sb, kb.nm(hi)):
+        return hi
+    for _ in range(9):
+        mid = (lo + hi) / 2
+        if sa.Collide(sb, kb.nm(mid)):
+            hi = mid
+        else:
+            lo = mid
+    return lo
 
 
 def _with_ends(board, item) -> list:
@@ -402,20 +424,38 @@ def _with_ends(board, item) -> list:
 def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True,
                   allowed: frozenset | None = None) -> bool:
     """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
-    makes no new collision under the exact collision index. The moved copper, dragged ends included, may keep
-    colliding only with ``allowed``: the copper it is moving away from, whose collision shrinks (with no
-    ``allowed``, anything it collided with before). A collision the move deepens is otherwise
-    indistinguishable from one it resolves; open-book's repair drove one to 0.036 mm that way, and the
-    esp32c3's to 0.057 through a dragged end."""
+    makes no new collision under the exact collision index. The item may keep colliding only with ``allowed``:
+    the copper it is moving away from, whose collision shrinks (with no ``allowed``, anything it collided with
+    before). A dragged end may keep the collisions it had, none of them closer than before. A collision the
+    move deepens is otherwise indistinguishable from one it resolves; open-book's repair drove one to 0.036 mm
+    that way, and the esp32c3's to 0.057 through a dragged end; holding dragged ends to ``allowed`` instead
+    stalled both boards."""
     moved = _with_ends(board, item)
-    before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     own = item.m_Uuid.AsString()
+    before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
+    layer_of = {m.m_Uuid.AsString(): (m.GetLayer() if m.GetClass() != "PCB_VIA" else pcbnew.F_Cu) for m in moved}
+    gaps = {(mid, oid): _gap_mm(next(m for m in moved if m.m_Uuid.AsString() == mid), o, layer_of[mid])
+            for mid, hits in before.items() for oid, o in hits.items() if mid != own}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
-    # the dragged ends obey the same rule: kept collisions deepened through them (D62's 0.057 mm on the esp32c3)
-    clean = all(_hit_ids(obstacles, m, rules) <= (allowed if allowed is not None else before[m.m_Uuid.AsString()])
-                for m in moved)
+    clean = True
+    for m in moved:
+        mid = m.m_Uuid.AsString()
+        after = _hits(obstacles, m, rules)
+        if mid == own:
+            if not set(after) <= (allowed if allowed is not None else set(before[mid])):
+                clean = False
+                break
+            continue
+        # a dragged end keeps only what it had, and none of it closer than before (D62: kept collisions
+        # deepened through dragged ends, to 0.057 mm on the esp32c3)
+        if not set(after) <= set(before[mid]):
+            clean = False
+            break
+        if any(_gap_mm(m, o, layer_of[mid]) < gaps[(mid, oid)] - 0.0002 for oid, o in after.items()):
+            clean = False
+            break
     if not clean or not keep:
         _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
     for m in moved:
