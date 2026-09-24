@@ -416,3 +416,57 @@ def test_a_hole_without_copper_gets_a_no_pour_rule_area_sized_by_the_hole_rule()
         assert z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()
         bb = z.GetBoundingBox()
         assert kb.mm(bb.GetWidth()) >= 2 * 0.2526  # at least the rule around the hole
+
+
+# --- the result must not depend on item order (D25) ---------------------------------------------------------
+def _crowded_board(tmp_path, order):
+    """Eight parallel tracks of four nets, 0.19 mm apart under a 0.1972 rule, inserted in ``order``."""
+    import pcbnew
+    board = pcbnew.BOARD()
+    nets = {}
+    for name in ("A", "B", "C", "D"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+    specs = [(("A", "B", "C", "D")[i % 4], 3.0 + i * (0.25 + 0.19)) for i in range(8)]
+    for i in order:
+        name, y = specs[i]
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(2.0 + 0.1 * i), kb.nm(y)))  # staggered ends: no shared vertices
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(8.0 - 0.1 * i), kb.nm(y)))
+        t.SetWidth(kb.nm(0.25))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(nets[name])
+        board.Add(t)
+    outline = pcbnew.PCB_SHAPE(board)
+    outline.SetShape(pcbnew.SHAPE_T_RECT)
+    outline.SetStart(pcbnew.VECTOR2I(0, 0))
+    outline.SetEnd(pcbnew.VECTOR2I(kb.nm(10.0), kb.nm(10.0)))
+    outline.SetLayer(pcbnew.Edge_Cuts)
+    board.Add(outline)
+    path = tmp_path / f"crowded-{''.join(map(str, order))}.kicad_pcb"
+    kb.save_board(board, path)
+    return kb.load_board(path)
+
+
+def test_the_repair_gives_the_same_copper_whatever_order_the_items_came_in(tmp_path):
+    """The session import gives every item a fresh uuid, so a repair ordered by uuid is ordered by chance, and
+    one board's result changed between two runs of one configuration that way. Inserted in another order the
+    items also carry other uuids; the copper must come out identical."""
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    digests = []
+    for order in (list(range(8)), list(reversed(range(8))), [3, 7, 1, 5, 0, 6, 2, 4]):
+        board = _crowded_board(tmp_path, order)
+        report = fr.repair_clearances(board, rules, tmp_path / f"repair-{''.join(map(str, order))}")
+        assert report["remaining"] == 0, (order, report)
+        digests.append(fr.geometry_digest(board))
+    assert len(set(digests)) == 1, digests
+
+
+def test_the_digest_ignores_order_and_sees_geometry(tmp_path):
+    a = fr.geometry_digest(_crowded_board(tmp_path, list(range(8))))
+    b = fr.geometry_digest(_crowded_board(tmp_path, list(reversed(range(8)))))
+    assert a == b
+    board = _crowded_board(tmp_path, list(range(8)))
+    t = kb.track_segments(board)[0]
+    t.SetStart(pcbnew_vec := __import__("pcbnew").VECTOR2I(t.GetStart().x + 1, t.GetStart().y))
+    assert fr.geometry_digest(board) != a

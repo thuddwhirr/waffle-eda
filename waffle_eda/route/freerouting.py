@@ -456,6 +456,25 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
     return clean
 
 
+def _push_chain(board, obstacles, item, ux: float, uy: float, step: float, rules, movable: dict,
+                allowed: frozenset | None, depth: int = 4) -> bool:
+    """Move ``item`` by ``step`` along (ux, uy); if what stops it is ours (in ``movable``), push that first,
+    up to ``depth`` items deep. A row of packed tracks can only spread from its free edge inward."""
+    if _move_checked(board, obstacles, item, ux * step, uy * step, rules, allowed=allowed):
+        return True
+    if depth == 0:
+        return False
+    blocker = _blocker(board, obstacles, item, ux, uy, step, rules)
+    if blocker is None:
+        return False
+    other = movable.get(blocker.m_Uuid.AsString())
+    if other is None:
+        return False
+    if not _push_chain(board, obstacles, other, ux, uy, step, rules, movable, None, depth - 1):
+        return False
+    return _move_checked(board, obstacles, item, ux * step, uy * step, rules, allowed=allowed)
+
+
 def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, rules):
     """The first other-net copper ``item`` newly meets when moved ``distance_mm`` along (ux, uy), or None."""
     moved = _with_ends(board, item)
@@ -581,6 +600,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         moved_now = 0
         obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
         stuck: list[str] = []
+        balanced: set[str] = set()  # pressed equally from both sides: moved only by a neighbour's push
         for uuid, (plus, minus) in sorted(sides.items(), key=lambda kv: _track_key(tracks[kv[0]])):
             nx, ny = normals[uuid]
             if plus > 0 and minus > 0:  # pressed from both sides: settle in the middle, no extra
@@ -588,6 +608,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             else:
                 step = plus + NUDGE_EXTRA_MM if plus > 0 else -(minus + NUDGE_EXTRA_MM)
             if abs(step) < 1e-6:
+                balanced.add(uuid)
                 continue
             track = tracks[uuid]
             short = abs(step) - NUDGE_EXTRA_MM if not (plus > 0 and minus > 0) else abs(step)
@@ -604,8 +625,9 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             else:
                 stuck.append(uuid)
         # a track boxed in: the item it violates, then whatever blocks its way on the far side, is pushed
-        # instead, where that is ours (a via or a track)
+        # instead, where that is ours (a via or a track), and what blocks that in turn, a few items deep
         vias = {v.m_Uuid.AsString(): v for v in kb.vias(board)}
+        movable = {**tracks, **vias}
         for uuid in stuck:
             track = tracks[uuid]
             plus, minus = sides[uuid]
@@ -617,12 +639,11 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                 ids = [u for u, _d, _p in v.items]
                 if uuid not in ids:
                     continue
-                other = next((vias.get(u) or tracks.get(u) for u in ids if u != uuid), None)
-                if other is None or other.m_Uuid.AsString() in sides:
+                other = next((movable.get(u) for u in ids if u != uuid), None)
+                if other is None or (other.m_Uuid.AsString() in sides and other.m_Uuid.AsString() not in balanced):
                     continue
                 step = v.short_mm + 2 * NUDGE_EXTRA_MM
-                if _move_checked(board, obstacles, other, -nx * sign * step, -ny * sign * step, rules,
-                                 allowed=frozenset({uuid})):
+                if _push_chain(board, obstacles, other, -nx * sign, -ny * sign, step, rules, movable, frozenset({uuid})):
                     moved_now += 1
                     pushed = True
             if pushed:
@@ -631,11 +652,11 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
             if blocker is None:
                 continue
             uid = blocker.m_Uuid.AsString()
-            other = vias.get(uid) or tracks.get(uid)
-            if other is None or uid in sides:
+            other = movable.get(uid)
+            if other is None or (uid in sides and uid not in balanced):
                 continue
             step = short + 2 * NUDGE_EXTRA_MM
-            if _move_checked(board, obstacles, other, nx * sign * step, ny * sign * step, rules):
+            if _push_chain(board, obstacles, other, nx * sign, ny * sign, step, rules, movable, None):
                 moved_now += 1
         # a via against fixed copper: the via moves away from it
         for v in violations:
@@ -1036,6 +1057,21 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
     return path
 
 
+def geometry_digest(board) -> str:
+    """A short digest of the board's routed copper, independent of item order and uuids: two runs of one
+    configuration must agree on it (D25), and a gate row carries it so a difference shows at a glance."""
+    import hashlib
+    rows = []
+    for t in kb.track_segments(board) + kb.track_arcs(board):
+        s, e = t.GetStart(), t.GetEnd()
+        a, b = sorted(((s.x, s.y), (e.x, e.y)))
+        rows.append(("t", t.GetLayer(), a, b, t.GetWidth(), t.GetNetname()))
+    for v in kb.vias(board):
+        p = v.GetPosition()
+        rows.append(("v", p.x, p.y, v.GetDrillValue(), v.GetNetname()))
+    return hashlib.sha1(repr(sorted(rows)).encode()).hexdigest()[:10]
+
+
 # --- the run ----------------------------------------------------------------------------------------------------
 @dataclass
 class FreeroutingResult:
@@ -1049,6 +1085,7 @@ class FreeroutingResult:
     pours: int = 0
     widened: int = 0  # tracks the router necked below the rule, set back to it
     repair: dict = field(default_factory=dict)  # what repair_clearances did
+    digest: str = ""  # geometry_digest of the board handed back
     exported_layers: list = field(default_factory=list)
     passes: int = 0
     unrouted: int | None = None  # the router's own count at the end of its last stage
@@ -1067,7 +1104,7 @@ class FreeroutingResult:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
                 f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
-                f"{self.widened} widened, repair {self.repair or 'none'}; "
+                f"{self.widened} widened, repair {self.repair or 'none'}, digest {self.digest}; "
                 f"{self.seconds:.0f}s")
 
 
@@ -1164,5 +1201,6 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         if laid:  # the session file does not carry fixed wires; the import dropped them with the rest
             lay_stubs(board, laid)
     restore_references(board, renamed)
+    result.digest = geometry_digest(board)
     result.seconds = round(time.time() - t0, 1)
     return result
