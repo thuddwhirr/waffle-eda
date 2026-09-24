@@ -448,12 +448,15 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
                 clean = False
                 break
             continue
-        # a dragged end keeps only what it had, and none of it closer than before (D62: kept collisions
-        # deepened through dragged ends, to 0.057 mm on the esp32c3)
+        # a dragged end keeps only what it had, and none of it closer than the router itself was allowed
+        # (the rule less the slack): the repair never leaves copper worse than the router's own output, and a
+        # later round still reaches it. Held to "no closer than before" both boards stalled at two pairs;
+        # unbounded, kept collisions deepened to 0.057 mm on the esp32c3.
         if not set(after) <= set(before[mid]):
             clean = False
             break
-        if any(_gap_mm(m, o, layer_of[mid]) < gaps[(mid, oid)] - 0.0002 for oid, o in after.items()):
+        floor = rules.clearance_mm - CLEARANCE_SLACK_MM - NUDGE_EXTRA_MM
+        if any(_gap_mm(m, o, layer_of[mid]) < min(gaps[(mid, oid)], floor) - 0.0002 for oid, o in after.items()):
             clean = False
             break
     if not clean or not keep:
