@@ -224,6 +224,25 @@ along an axis that still gains the distance; and an end-only move of a long trac
 loop that found each of these: `scripts/repair_only.py` on the imported boards, a minute a board with no
 router run. Measurement.
 
+**D67. A rule area that forbids only the copper pour leaves the router's DSN.** KiCad's Specctra export writes
+it as a plain `(keepout)`, the same as one forbidding tracks and vias (tracks alone give `wire_keepout`, vias
+alone `via_keepout`; measured on a board of one area of each kind, `tests/test_freerouting.py`).
+`olimex-rp2040-pico-pc` draws no-pour areas over both pad rows of its TSSOP-14 (U3), and the router could not
+start a search from any of its pins: 13 of the board's 14 open connections were on U3. The wrapper lifts the
+pour-only areas off the board for the export and lays them back for the fill (`lift_pour_only_rule_areas`).
+Gate row before and after (2026-09-24): 52 of 60 nets, 0 violations, 650 s; 59 of 60, 0 violations, 214 s.
+Measurement.
+
+**D68. `olimex-rp2040-pico-pc`'s last open net, `Net-(LED1-Pad1)`, and what was measured** (2026-09-24). Its
+only corridor runs along the bottom edge; the router's GND track and via take it, and the router then rejects
+its own path at insertion ("could not be inserted", 18 passes). The router keeps the edge setting plus 0.03 mm
+(slot board: at 0.4776 a 0.86 mm slot routes and 0.84 does not; at 0.30, 0.68 and 0.66); its maze accepts
+about 0.03 mm less than its inserter. Handing the router 0.30 at the edge (DRC and repair at the 0.4776 rule):
+60 of 60, no edge violation (closest copper 0.5389), 1 clearance the placer left (via to track, 0.0054 short).
+GND routed last around the signals (signals as obstacles, then fixed or shoveable): LED1 routes at the rule,
+but `/SPI0_CSn1` then fails at insertion, U3's pad 10 GND piece (in a no-pour area) is left, and the placer
+made a short between the two I2C1 tracks: 58 of 60 either way. Measurements; the choice is the owner's.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
