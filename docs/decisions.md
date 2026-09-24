@@ -253,6 +253,17 @@ though only the second could move; and the edge clearance was measured to the st
 (0.127 mm of it) and capped at 0.25 mm, so a track KiCad passed at 0.539 mm read as 0.25 short. The repair
 alone (`repair_only.py --twice`) reproduces to the digest `42389e3b93`, the gate's final. Measurement.
 
+**D70. `crkbd-corne-cherry`, measured** (2026-09-24). 277 x 108 mm, 950 pads (344 plated, 302 with no net),
+158 nets; the reference lays 3027 tracks and 452 vias. The router's passes take 170 to 230 s each and leave
+96, 73, 49, 51, 39, ... 36 unrouted after passes 1 to 12; the 20-minute cap falls in pass 6 and a killed run
+writes no session. Freerouting's `job_timeout` does not stop its auto-routing stage (only its fanout and
+optimiser stages read it; a 14-minute setting routed on to the cap), so a run that must finish gets a pass
+budget instead. Two defects found on the way, fixed with tests: the cap killed `xvfb-run` and orphaned the
+JVM, which routed on beside the next run (D57's empty session file); and the benchmark recorded the
+reference's 921 teardrop zones as pours (esp32c3 had 154; it still passes without them). The router's 12
+standing violations are conflicts among fixed items, four of them EXLED1's override keepouts over its
+neighbouring pads. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

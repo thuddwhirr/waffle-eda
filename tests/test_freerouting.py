@@ -675,18 +675,6 @@ def test_of_two_vias_too_close_whichever_can_give_way_does(tmp_path):
     assert ys["B"] < y_a - 0.701 - 0.1972 + 1e-6  # gave way
 
 
-def test_the_routers_own_job_timeout_ends_before_the_process_cap(tmp_path):
-    """crkbd was killed at the 20-minute cap twice with no session file; the router writes one when it times
-    out itself."""
-    import json
-    fr.settings_json(tmp_path, threads=1, passes=30, timeout_s=1200)
-    cfg = json.loads((tmp_path / "freerouting.json").read_text())
-    assert cfg["router"]["job_timeout"] == "00:14:00"
-    assert fr.job_timeout(3661) == "01:01:01" and fr.job_timeout(5) == "00:01:00"
-    fr.settings_json(tmp_path, threads=1, passes=30)
-    assert "job_timeout" not in json.loads((tmp_path / "freerouting.json").read_text())["router"]
-
-
 def test_a_run_killed_at_the_cap_takes_its_whole_process_group_with_it(monkeypatch, tmp_path):
     """Killing `xvfb-run` alone orphaned the JVM, which routed on beside the next run."""
     import os

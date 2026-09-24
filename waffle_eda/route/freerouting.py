@@ -1452,23 +1452,15 @@ def fix_wires(dsn_text: str) -> str:
     return dsn_text.replace("(type route)", "(type fix)")
 
 
-JOB_MARGIN_S = 360  # the router's own timeout ends this much before the process cap: it notices only between
-#                   passes (crkbd's take 200 s), then writes the session
-
-
-def job_timeout(seconds: float) -> str:
-    """The router's `job_timeout` as it reads it: hours, minutes, seconds."""
-    total = max(60, int(seconds))
-    return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+# Freerouting's `job_timeout` does not stop its auto-routing stage: only the fanout and optimiser stages read
+# it (its scheduler thread checks isFanoutTimedOut and the optimiser's isTimedOut; crkbd routed on past a
+# 14-minute job timeout to the 20-minute process cap, 2026-09-24). A run that must finish gets a pass budget.
 
 
 def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANOUT,
-                  edge_clearance_mm: float | None = None, timeout_s: float | None = None) -> Path:
+                  edge_clearance_mm: float | None = None) -> Path:
     """Freerouting's settings file for this run, in the work directory: telemetry off, the log there, the fanout
-    stage as configured. The file must carry a version and a profile id or the jar stops with an exception.
-    With ``timeout_s`` the router's own job timeout is set that much less the margin before the process cap: a
-    job killed from outside leaves no session file (crkbd, D51 and 2026-09-24), one that times out itself
-    writes what it has."""
+    stage as configured. The file must carry a version and a profile id or the jar stops with an exception."""
     import json
     import uuid
     cfg = {"version": VERSION,
@@ -1479,7 +1471,6 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
                       "scoring": {"via_costs": VIA_COSTS},
-                      **({"job_timeout": job_timeout(timeout_s - JOB_MARGIN_S)} if timeout_s else {}),
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
@@ -1591,7 +1582,7 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, edge_clearance_mm=edge_clearance_mm, timeout_s=timeout_s)
+    settings_json(dsn.parent, threads, passes, edge_clearance_mm=edge_clearance_mm)
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
