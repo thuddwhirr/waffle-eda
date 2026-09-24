@@ -318,6 +318,25 @@ way: the container lacks KiCad's libraries (fetched at the release's tag); ERC w
 library tables; a board built in memory and handed to the router segfaults `pcbnew` (saved and reloaded instead).
 Waiting on the owner: the review of `design.md` and the outputs; prices and lead times, unknown. Measurement.
 
+**D75. Milestone A's fab outputs are taken as correct for now; class B starts.** The owner checks
+`designs/temperature-sensor/out/` with the manufacturer, which takes time; until that check is recorded here the
+design's `owner review` reads "accepted, provisional" and milestone A's completion is provisional on it. The
+prices and lead times the BOM and the spec escalate stay unknown. Class B begins with the first task the plan
+names, the benchmark's sanity pair on the nine class B references, in the order the plan lists them. Owner,
+2026-09-24.
+
+**D76. The benchmark reads a reference as it is: measured on class B** (2026-09-24). Three of the nine class B
+references failed the sanity pair's first half, the original not meeting its own measured rules. `upduino-v3.01`
+leaves its QFN's exposed pad and its USB shield with no net while GND vias and tracks stitch them (24 shorts, 36
+clearances; the clearance search poisoned to 0.0495); `sensor-watch-c1` pours to 0.0894 mm of a non-plated hole,
+under the search's 0.10 floor, and runs a track over a no-net polygon that is its buzzer contact;
+`tinkerforge-master-v3.2`'s copper sits 0.19 mm from a hole against a board-setup minimum of 0.25 that KiCad
+enforces under any rules file. The benchmark now reads an answer board (`rebuild.answer_board`): the reference
+refilled by KiCad 9 (D58), every no-net pad the reference's own copper overlaps given that net (probed at a
+0.001 mm clearance: a rule of zero reports no short), a no-net polygon paired with its net and the pairing
+forgiven in scoring, the DRC copy's setup minimums zeroed, the searches from zero. All three measure (clearance /
+hole: 0.1495 / 0.2495, 0.087 / 0.0893, 0.1464 / 0.1557); class A still brackets. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

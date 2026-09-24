@@ -91,4 +91,4 @@ width and spacing within the fab's capability; via type; board size within the m
 
 | Item | State |
 |---|---|
-| owner review | pending |
+| owner review | accepted 2026-09-24, provisional: the fab outputs under out/ are still to be checked with the manufacturer (D75) |

@@ -59,8 +59,8 @@
   },
   {
    "criterion": "owner review",
-   "ok": null,
-   "detail": "'pending': the owner reads design.md and sets 'owner review' to 'accepted <date>' (an edit to the file is the owner's input)"
+   "ok": true,
+   "detail": "accepted 2026-09-24, provisional: the fab outputs under out/ are still to be checked with the manufacturer (D75)"
   }
  ],
  "outputs": [
@@ -78,6 +78,6 @@
  },
  "next": "stage 2: bom.csv, one part per block",
  "seconds": 0.0,
- "when": "2026-09-24 19:45 UTC",
+ "when": "2026-09-24 20:44 UTC",
  "passed": true
 }

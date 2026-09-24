@@ -4,6 +4,8 @@
     python3 scripts/gate.py a        # class A: the whole board re-routed from placement: every net of every
                                      # class A reference connected, zero electrical violations under the rules
                                      # measured off that board (D50, D55)
+    python3 scripts/gate.py b        # class B: the same re-route on every class B reference (four layers, planes,
+                                     # net classes, a USB pair), in the order the plan lists them (D75)
     python3 scripts/gate.py escape   # BGA escape (class B+): every bus ball on every BGA of every bus reference,
                                      # zero electrical violations under the reference's constraints; every
                                      # synthetic case complete and DRC clean
@@ -44,6 +46,16 @@ def m4_references():
     order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
              "libresolar-mppt-2420"]  # crkbd-corne-cherry left the ladder (D72)
     return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
+
+
+CLASS_B_ORDER = ["pico-ice-rev3", "upduino-v3.01", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
+                 "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
+
+
+def class_b_references():
+    """Class B's ladder in the order the plan lists its references (D75): two QFN boards with USB first, the
+    densest small board third, the WLCSP at 0.35 mm pitch last."""
+    return [refs.REFERENCES[k] for k in CLASS_B_ORDER if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
 def gate_m1() -> list[tuple[str, bool, str]]:
@@ -122,11 +134,22 @@ def gate_m4() -> list[tuple[str, bool, str]]:
     gate judges only what the tool produces: stage 5's baseline, Freerouting behind `route.freerouting` (D55,
     D56), with the DSN, session and log of every board left under `build/fr/<key>/`.
     """
+    return _reroute_gate(m4_references())
+
+
+def gate_b() -> list[tuple[str, bool, str]]:
+    """Class B: the same full re-route from placement, on the class B references (plan.md, milestone B), under
+    the rules measured off each board. What class B adds to the criterion (widths per net class, the pair's gap
+    and skew, plane integrity, return vias) is added here as each is measured to matter, never before."""
+    return _reroute_gate(class_b_references())
+
+
+def _reroute_gate(references) -> list[tuple[str, bool, str]]:
     from waffle_eda.bench import rebuild
     from waffle_eda.route import freerouting
     rows = []
     missing = freerouting.available()
-    for ref in m4_references():
+    for ref in references:
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
             continue
@@ -173,6 +196,7 @@ def gate_m3() -> list[tuple[str, bool, str]]:
 
 GATES = {
     "a": gate_m4, "m4": gate_m4,
+    "b": gate_b,
     "escape": gate_m2, "m2": gate_m2,
     "busplan": gate_m3a, "m3a": gate_m3a,
     "bus": gate_m3, "m3b": gate_m3, "m3": gate_m3,

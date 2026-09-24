@@ -1,11 +1,10 @@
 # Stage 1, design: PASS
 
-2026-09-24 19:45 UTC, 0.0 s.
+2026-09-24 20:44 UTC, 0.0 s.
 
 ## Waiting on the owner
 
 - **the cost ceiling**: unknown: no price captured; every cost decision escalates to the owner: until a ceiling and prices are captured, every cost decision escalates (definition.md section 4)
-- **owner review**: 'pending': the owner reads design.md and sets 'owner review' to 'accepted <date>' (an edit to the file is the owner's input)
 
 ## Criteria met
 
@@ -19,6 +18,7 @@
 - no pin is on two nets
 - a pin marked unconnected is on no net
 - the fab profile exists: 'pcbway'; available ['pcbway']
+- owner review: accepted 2026-09-24, provisional: the fab outputs under out/ are still to be checked with the manufacturer (D75)
 
 ## Numbers
 

@@ -19,6 +19,7 @@ python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar,
 python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
 python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 minutes; the first three boards alone
                                         # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
+python3 scripts/gate.py b pico-ice-rev3               # class B's first rung (D75): being measured, see below
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays
@@ -39,19 +40,23 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 | `olimex-rp2040-pico-pc` | **60 of 60, PASS** | 0 | none: green since D69 (D67 to D69 are what it took) |
 | `libresolar-mppt-2420` | **102 of 102, PASS** | 0 | none: green since D73 (the USB shield's pad pieces) |
 
-**Where it stands (2026-09-24, 20:30 UTC):** both halves of milestone A run green. The gate: PASS 5 of 5
-(D73; 13 s to 7 min a board, 12 minutes in all). The synthetic design: `designs/temperature-sensor/` is through all
-six stages (D74), its fab outputs under `out/`, its renders and every gate's report under `reports/`. **What
-remains is the owner's part, and only that:** the review of `design.md` (set `owner review` to `accepted
-<date>`) and of the fab outputs (`out/temperature-sensor-assembly.pdf`, `reports/layout.png`, the BOM), and the
-prices and lead times the BOM and the spec escalate as unknown. `python3 scripts/design.py status
-temperature-sensor` lists exactly those. When the owner has reviewed them, milestone A is complete and the next
-session starts class B with its first task (below, "B. A class B board"): the sanity pair of
-`tests/test_rebuild.py` on the class B references. Until then nothing in class B is touched. The loop that got
-a class A rung green stays the tool for a regression: run its gate row once (the wrapper saves the router's
-output as `build/fr/<key>/imported.kicad_pcb`), then `python3 scripts/repair_only.py <key> --twice` to measure
-a repair change in a minute without the router, and the gate row again to confirm. Freerouting's optimiser is
-off (D65); run one Freerouting at a time (two at once have left an empty session file, `route/freerouting.py`,
+**Where it stands (2026-09-24, 21:00 UTC):** milestone A is provisionally complete (D75): the gate PASS 5 of
+5 (D73; 13 s to 7 min a board, 12 minutes in all), the synthetic design `designs/temperature-sensor/` through
+all six stages (D74) with its fab outputs under `out/`, and the owner's review of those outputs recorded as
+provisional until checked with the manufacturer. Prices and lead times stay unknown and escalated
+(`python3 scripts/design.py status temperature-sensor` lists them). **Class B has started (D75)** with its first
+task: the benchmark's sanity pair on the nine class B references (`tests/test_rebuild.py`, `LADDER_B`). Three
+boards needed the benchmark to read a reference as it is (D76: the answer board); the pair on all nine and the
+first rung of `gate.py b` (`pico-ice-rev3`) are the measurements this commit leaves running, and the next
+session starts by reading them: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
+pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
+the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B
+additions of "B. A class B board" below made only as each is measured to matter. The loop that got a class A
+rung green stays the tool: run the gate row once (the wrapper saves the router's output as
+`build/fr/<key>/imported.kicad_pcb`), then `python3 scripts/repair_only.py <key> --twice` to measure a repair
+change in a minute without the router, and the gate row again to confirm. Freerouting's optimiser is off
+(D65); run one Freerouting at a time (two at once have left an empty session file, `route/freerouting.py`,
 pitfalls). `crkbd-corne-cherry` left the ladder (D72).
 
 **How a design runs (D74).** `scripts/design.py run <name>` takes `designs/<name>/design.md` and `bom.csv`
@@ -162,9 +167,12 @@ signal crosses a split in the plane that references it); a return via near every
 regulator and decoupling placement rules from `lessons/layout-practices.md`; the fab profile's price model for a
 four-layer board.
 
-*Gates:* `gate.py b` on the nine references; a class B synthetic design (an MCU with USB and a buck regulator)
-to fab outputs. *First task:* extend `tests/test_rebuild.py`'s sanity pair to the class B references, since the
-benchmark was only asserted on class A.
+*Gates:* `gate.py b` on the nine references, in the order the plan's table lists them (D75); a class B synthetic
+design (an MCU with USB and a buck regulator) to fab outputs. *First task, in progress:* the sanity pair of
+`tests/test_rebuild.py` on the class B references (D76 is what it found first).
+
+*State (2026-09-24, 21:00 UTC):* started. `gate.py b` exists (the class A gate's mechanics over the class B
+ladder); the sanity pair on the nine and the first rung are being measured (see the next-step section).
 
 ### B+. A BGA without a matched bus
 
