@@ -379,27 +379,35 @@ def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float 
     return lo
 
 
-def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
-    """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if none
-    of the moved copper then collides with other-net copper under the exact collision index."""
+def _hit_ids(obstacles, item, rules) -> set[str]:
+    """The uuids of the other-net copper ``item`` collides with under the rules."""
+    return {o.m_Uuid.AsString() for o in obstacles._collisions(item, rules.clearance_mm, rules.hole_to_copper_mm)}
+
+
+def _with_ends(board, item) -> list:
+    """``item`` and the tracks of its net whose ends sit on it (a via's position, or a track's ends)."""
     is_via = item.GetClass() == "PCB_VIA"
     net = item.GetNetCode()
     if is_via:
         ends = (pcbnew.VECTOR2I(item.GetPosition()),)
-        moved = [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
-                          and (o.GetStart() in ends or o.GetEnd() in ends)]
     else:
         ends = (pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd()))
-        layer = item.GetLayer()
-        moved = [item] + [o for o in kb.track_segments(board)
-                          if o.GetNetCode() == net and o.GetLayer() == layer
-                          and o.m_Uuid.AsString() != item.m_Uuid.AsString()
-                          and (o.GetStart() in ends or o.GetEnd() in ends)]
+    return [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
+                     and o.m_Uuid.AsString() != item.m_Uuid.AsString()
+                     and (is_via or o.GetLayer() == item.GetLayer())
+                     and (o.GetStart() in ends or o.GetEnd() in ends)]
+
+
+def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True) -> bool:
+    """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
+    makes no new collision under the exact collision index. A collision that exists before the move is what
+    the move is there to resolve, and may persist until a later round finishes the job."""
+    moved = _with_ends(board, item)
+    before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
-    clean = all(obstacles.clear(m, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm) is None
-                for m in moved)
+    clean = all(_hit_ids(obstacles, m, rules) <= before[m.m_Uuid.AsString()] for m in moved)
     if not clean or not keep:
         _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
     for m in moved:
@@ -408,24 +416,18 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
 
 
 def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, rules):
-    """The first other-net copper ``item`` meets when moved ``distance_mm`` along (ux, uy), or None."""
-    is_via = item.GetClass() == "PCB_VIA"
-    net = item.GetNetCode()
-    if is_via:
-        ends = (pcbnew.VECTOR2I(item.GetPosition()),)
-    else:
-        ends = (pcbnew.VECTOR2I(item.GetStart()), pcbnew.VECTOR2I(item.GetEnd()))
-    moved = [item] + [o for o in kb.track_segments(board) if o.GetNetCode() == net
-                      and o.m_Uuid.AsString() != item.m_Uuid.AsString()
-                      and (is_via or o.GetLayer() == item.GetLayer())
-                      and (o.GetStart() in ends or o.GetEnd() in ends)]
+    """The first other-net copper ``item`` newly meets when moved ``distance_mm`` along (ux, uy), or None."""
+    moved = _with_ends(board, item)
+    before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(ux * distance_mm), kb.nm(uy * distance_mm))
     hit = None
     for m in moved:
-        hit = obstacles.clear(m, rules.clearance_mm, hole_clearance_mm=rules.hole_to_copper_mm)
-        if hit is not None:
+        new = [o for o in obstacles._collisions(m, rules.clearance_mm, rules.hole_to_copper_mm)
+               if o.m_Uuid.AsString() not in before[m.m_Uuid.AsString()]]
+        if new:
+            hit = new[0]
             break
     _move(board, item, moved, -kb.nm(ux * distance_mm), -kb.nm(uy * distance_mm))
     for m in moved:
