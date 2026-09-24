@@ -16,7 +16,8 @@ minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver
 python3 scripts/fetch_tools.py          # Freerouting 2.4.1 and a Java 25 into build/tools/ (D56)
 python3 scripts/check_env.py            # KiCad 9, pcbnew, z3, Java 25, the jar, Xvfb: all present on 2026-09-23
 python3 scripts/fetch_references.py     # clones the 23 reference boards into references/
-python3 scripts/gate.py a               # expect FAIL: see the state line under milestone A for the numbers
+python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 25 minutes; the first three boards alone
+                                        # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
 python3 -m pytest -q -rs                # class A only (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; a skip guards a build artifact
 ```
