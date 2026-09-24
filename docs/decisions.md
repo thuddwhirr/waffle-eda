@@ -367,7 +367,9 @@ measurement): the three largest boards stripped bare scored 0.574, 0.693 and 0.3
 list. `kb.open_nets` now joins each net's pads, tracks, vias and fills through KiCad's one-hop connectivity
 queries in a union-find (the whole-cluster query needs a vector type the bindings do not wrap) and
 `kb.unconnected_count` is KiCad's own uncapped count; `rebuild.score` and stage 5 use them, the DRC report only
-for violations. Stripped `buspirate5-rev10`: 183 nets open of 183, 0.1 s; its answer: 0. Measurement.
+for violations. Stripped `buspirate5-rev10`: 183 nets open of 183, 0.1 s; its answer: 0. Under it the second
+half passes on all nine class B boards and the four class A ones tested (5.5 minutes, 5 of them mch2022's two
+DRC runs), and the five class A routed boards re-score 1.000. Measurement.
 
 ## BGA escape (the class B+ machinery; passes its gate)
 
