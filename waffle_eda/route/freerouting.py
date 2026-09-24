@@ -633,6 +633,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
     neighbours; the outcome does not depend on the order KiCad lists the violations (D25). The smoke board's
     three parallel SOT-563 exits oscillated under one move per violation, and overshot under a summed push."""
     from waffle_eda.route.obstacles import Obstacles
+    work_dir.mkdir(parents=True, exist_ok=True)
     design_rules(board, rules)  # the index reads the edge clearance from the design settings
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
