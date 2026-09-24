@@ -155,6 +155,16 @@ necked where they enter a pad; `automatic_neckdown` off changes nothing. (3) 26 
 (4) Ground left as tracks where every class A reference pours it. Under the designers' own project rules our
 copper fails the same way (open-book 48, esp32c3 31; the originals 0). Measurement.
 
+**D60. The smoke test passes the class A gate with Freerouting inside three repairs** (`gate.py a
+tinkerforge-temperature`, 2026-09-24, commit of this entry): 6 of 6 nets, 0 violations, score 1.000, 28 s.
+The router is handed every clearance less 0.0072 mm (D57) and its output is repaired under KiCad's own DRC
+(`route/freerouting.py`): pads with a clearance override exported as keepouts grown by the override less the
+clearance (D59 kind 3; on `olimex-esp32c3-devkit` 16 hole violations to 0); tracks the router necked set back
+to the rule width (kind 2; on `open-book-c1` 40 width violations to 0, 40 clearance ones in their place); each
+clearance violation's track moved away by the shortfall plus 0.002 mm, tracks sharing its ends carried along,
+up to four DRC rounds (kind 1; on the smoke board 9 violations to 0 in 3 rounds, 8 moves). Runs are
+deterministic per configuration; a subset of the gate is a rung, never the milestone. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,

@@ -49,10 +49,10 @@ JAVA_MAJOR = 25  # the minimum Java that runs the jar: 2.4.1 is compiled for cla
 
 # Measured on `tinkerforge-temperature` (D57): asked for the measured clearance itself (0.1972 mm, 0.003 under
 # the SOT-563's pad gap) the router's exact insertion check rejects every connection at that part; asked for
-# 0.190 it connects the whole board. So the clearance between a wire and an SMD pad is handed over as the rule
-# less this slack, and the gate's DRC reports where the router used it. Every other clearance is handed over
-# exactly: on `libresolar-mppt-2420` a global slack produced 175 track-to-track and track-to-via violations of
-# exactly that slack. ``slack_all`` in :func:`dsn_rules` applies it globally for a measurement.
+# 0.190 it connects the whole board. So every clearance is handed over as the rule less this slack, and
+# :func:`repair_clearances` takes the slack back afterwards under KiCad's own DRC (D60: the smoke board then
+# passes, 6 of 6 and 0 violations, 15 moves). ``slack_all=False`` hands the slack to wire-to-SMD-pad clearances
+# only and everything else exactly, which connected 4 of 6 there and is kept for measurement.
 CLEARANCE_SLACK_MM = 0.0072
 # The router writes via drills in whole micrometres (248.9 became 248), so the drill is rounded up to one.
 DRILL_STEP_MM = 0.001
@@ -175,7 +175,7 @@ class DsnRules:
     smd_clearance_mm: float | None = None  # typed clearance wire to SMD pad: the rule less the slack
 
 
-def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = False) -> DsnRules:
+def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True) -> DsnRules:
     """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for."""
     import math
     exact = round(rules.clearance_mm, 4)
@@ -298,6 +298,140 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     if i < 0:
         i = dsn_text.index("    (rule\n", start)
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
+# --- necked traces (D59, kind 2) -------------------------------------------------------------------------------
+def widen_tracks(board, width_mm: float) -> int:
+    """Set every track narrower than the rule back to it; returns how many. Freerouting narrows a trace where it
+    enters a pad (40 width violations on `open-book-c1`, all by 0.03 mm or more) and its `automatic_neckdown`
+    setting does not stop it. Whether the widened copper clears its neighbours is the gate's DRC's to say."""
+    target = kb.nm(width_mm)
+    widened = 0
+    for track in kb.track_segments(board) + kb.track_arcs(board):
+        if track.GetWidth() < target:
+            track.SetWidth(target)
+            widened += 1
+    return widened
+
+
+# --- clearances a few micrometres short (D59, kind 1) -----------------------------------------------------------
+# The router keeps every round shape as an octagon and passes its own check with copper up to 0.011 mm closer
+# than KiCad measures. The repair is KiCad's ruler applied afterwards: run the gate's DRC, and for every
+# clearance violation that involves a track, move that track away from the other item by the shortfall plus a
+# hair, carrying the tracks that share its ends with it, then check again. A track end inside a pad or a via
+# stays connected after a move of a few micrometres; the DRC says whether the move made a new violation.
+NUDGE_EXTRA_MM = 0.002
+REPAIR_ROUNDS = 4
+
+
+@dataclass(frozen=True)
+class Violation:
+    type: str
+    rule_mm: float
+    actual_mm: float
+    items: tuple  # (uuid, description, (x_mm, y_mm)) per item
+
+    @property
+    def short_mm(self) -> float:
+        return round(self.rule_mm - self.actual_mm, 4)
+
+
+_RULE_ACTUAL = re.compile(r"(?:clearance|width) ([\d.]+) mm; actual ([\d.]+) mm")
+
+
+def drc_violations(board, rules, work_dir: Path) -> list[Violation]:
+    """The electrical violations KiCad's DRC reports for ``board`` under the gate's rules, with the items'
+    identities and positions. The board is saved to ``work_dir`` for the run."""
+    from waffle_eda.bench import harness, rebuild
+    work_dir.mkdir(parents=True, exist_ok=True)
+    path = work_dir / "board.kicad_pcb"
+    kb.save_board(board, path)
+    (work_dir / "board.kicad_dru").write_text(rules.rules_text())
+    report = harness.run_drc(path, work_dir / "drc.json")
+    out = []
+    for v in report.get("violations", []):
+        if v.get("type") not in harness.ELECTRICAL_TYPES:
+            continue
+        m = _RULE_ACTUAL.search(v.get("description", ""))
+        rule, actual = (float(m.group(1)), float(m.group(2))) if m else (0.0, 0.0)
+        items = tuple((i.get("uuid", ""), i.get("description", ""), (i.get("pos", {}).get("x", 0.0), i.get("pos", {}).get("y", 0.0)))
+                      for i in v.get("items", []))
+        out.append(Violation(type=v["type"], rule_mm=rule, actual_mm=actual, items=items))
+    return out
+
+
+def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
+    """Translate a track and the ends of every track of its net and layer that shares one of its ends."""
+    ends = (track.GetStart(), track.GetEnd())
+    net, layer = track.GetNetCode(), track.GetLayer()
+    for other in kb.track_segments(board):
+        if other.GetNetCode() != net or other.GetLayer() != layer:
+            continue
+        if other.m_Uuid.AsString() == track.m_Uuid.AsString():
+            continue
+        for end in ends:
+            if other.GetStart() == end:
+                other.SetStart(pcbnew.VECTOR2I(end.x + dx_nm, end.y + dy_nm))
+            if other.GetEnd() == end:
+                other.SetEnd(pcbnew.VECTOR2I(end.x + dx_nm, end.y + dy_nm))
+    track.SetStart(pcbnew.VECTOR2I(ends[0].x + dx_nm, ends[0].y + dy_nm))
+    track.SetEnd(pcbnew.VECTOR2I(ends[1].x + dx_nm, ends[1].y + dy_nm))
+
+
+def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
+    """Unit vector perpendicular to ``track`` pointing away from ``other_pos_mm``."""
+    import math
+    s, e = track.GetStart(), track.GetEnd()
+    ax, ay = kb.mm(e.x - s.x), kb.mm(e.y - s.y)
+    length = math.hypot(ax, ay)
+    if length < 1e-9:
+        return (0.0, 0.0)
+    nx, ny = -ay / length, ax / length
+    mx, my = (kb.mm(s.x) + kb.mm(e.x)) / 2, (kb.mm(s.y) + kb.mm(e.y)) / 2
+    if (other_pos_mm[0] - mx) * nx + (other_pos_mm[1] - my) * ny > 0:
+        nx, ny = -nx, -ny
+    return (nx, ny)
+
+
+def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
+    """Move tracks a few micrometres away from what they violate, under KiCad's own DRC, until it is clean."""
+    report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
+    for round_no in range(1, rounds + 1):
+        report["rounds"] = round_no
+        violations = [v for v in drc_violations(board, rules, work_dir / f"round{round_no}")
+                      if v.type in ("clearance", "hole_clearance")]
+        report["remaining"] = len(violations)
+        if not violations:
+            return report
+        tracks = {t.m_Uuid.AsString(): t for t in kb.track_segments(board)}
+        moved_now, unfixable = 0, 0
+        seen: set[str] = set()
+        for v in violations:
+            ours = [(u, d, p) for u, d, p in v.items if u in tracks]
+            if not ours or v.short_mm <= 0:
+                unfixable += 1
+                continue
+            uuid, _d, _p = ours[0]
+            if uuid in seen:  # one move per track per round; the next round re-measures
+                continue
+            other = next(((u, d, p) for u, d, p in v.items if u != uuid), None)
+            if other is None:
+                unfixable += 1
+                continue
+            track = tracks[uuid]
+            nx, ny = _away(track, other[2])
+            step = v.short_mm + NUDGE_EXTRA_MM
+            _move_track(board, track, kb.nm(nx * step), kb.nm(ny * step))
+            seen.add(uuid)
+            moved_now += 1
+        report["moved"] += moved_now
+        report["unfixable"] = unfixable
+        if moved_now == 0:
+            break
+    violations = [v for v in drc_violations(board, rules, work_dir / "final")
+                  if v.type in ("clearance", "hole_clearance")]
+    report["remaining"] = len(violations)
+    return report
 
 
 # --- escape stubs for fine-pitch rows (D51/D52) --------------------------------------------------------------
@@ -485,6 +619,8 @@ class FreeroutingResult:
     rules: DsnRules
     renamed: int
     stubs: int = 0
+    widened: int = 0  # tracks the router necked below the rule, set back to it
+    repair: dict = field(default_factory=dict)  # what repair_clearances did
     exported_layers: list = field(default_factory=list)
     passes: int = 0
     unrouted: int | None = None  # the router's own count at the end of its last stage
@@ -502,7 +638,8 @@ class FreeroutingResult:
     def summary(self) -> str:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
-                f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias; "
+                f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
+                f"{self.widened} widened, repair {self.repair or 'none'}; "
                 f"{self.seconds:.0f}s")
 
 
@@ -520,7 +657,7 @@ def parse_log(text: str) -> dict:
     return facts
 
 
-def export_dsn(board, rules, out: Path, slack_all: bool = False) -> tuple[DsnRules, dict[str, str]]:
+def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRules, dict[str, str]]:
     """Write the DSN for ``board`` under ``rules``; the board is left with its references renamed (see
     :func:`unique_references`) so that the session can be imported into it, and the mapping is returned."""
     _via_ring, pin_ring = smallest_ring_mm(board)
@@ -559,7 +696,7 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 
 
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
-                timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = False,
+                timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 say=lambda _m: None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log."""
@@ -584,6 +721,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
+        result.widened = widen_tracks(board, d.width_mm)
+        result.repair = repair_clearances(board, rules, work_dir / "repair")
+        say(f"repair: {result.repair}")
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
         result.vias = len(kb.vias(board))
         say(f"imported {ses.name}: tracks+vias {before} -> {result.tracks + result.vias}")

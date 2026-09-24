@@ -28,14 +28,19 @@ wrapper as committed; the last three boards were still running at the commit and
 
 | Board | Nets | Electrical violations | Blocker |
 |---|---|---|---|
-| `tinkerforge-temperature` | 4 of 6 | 2 clearance | the router's exact insertion check at the SOT-563 exits (D57) |
+| `tinkerforge-temperature` | **6 of 6, PASS** | 0 | none: green since D60 (items 1 to 3 below) |
 | `open-book-c1` | 34 of 35 | 59: 40 track width, 18 clearance, 1 edge | the router necks traces below the rule at pads (`automatic_neckdown` off changes nothing); GND, a pour on the reference, left as a track |
 | `olimex-esp32c3-devkit` | 34 of 34 | 31: 16 hole clearance, 15 clearance | the typed via clearance is not honoured everywhere; clearance at pad exits |
 | `olimex-rp2040-pico-pc` | 53 of 60 | 20: 19 clearance, 1 hole clearance | clearance at pad exits; 7 nets unrouted, not yet diagnosed |
 | `crkbd-corne-cherry` | measuring | | first run: empty session for the same reason (fixed) |
 | `libresolar-mppt-2420` | measuring | | first run 101 of 102 and 201 clearance violations of exactly the global slack (scoped since) |
 
-**Why it fails, measured (D57, D59), and the next step the owner agreed on 2026-09-23.** The router connects
+**Where it stands (2026-09-24):** items 1 to 3 below are built and the smoke test is green (D60). The next rung
+is `open-book-c1` alone (`gate.py a open-book-c1`, about 8 minutes): its last measurement, before the repair,
+was 34 of 35 nets with 59 violations; GND, a pour on the reference, was the unrouted net, which is item 4.
+Climb one board at a time; the milestone is the whole gate.
+
+**Why it failed, measured (D57, D59), and the repair order the owner agreed on 2026-09-23.** The router connects
 nearly everything and leaves violations of four kinds, each with a known cause: (1) clearances short by less
 than 0.011 mm, the error of the router's octagonal model of round copper against KiCad's exact DRC; (2) traces
 necked below the rule where they enter a pad, the router's own behaviour, which its setting does not switch
@@ -46,11 +51,11 @@ criterion is not the problem and is not loosened. **One more session, as repair,
 each item behind a failing gate or test case that names the board and the violation kind, every lower item
 kept green:
 
-1. export every pad with a clearance override as a keepout grown by the override (wrapper only; removes the 26
-   large violations on the two Olimex boards);
-2. restore necked traces to the rule width after the import, then DRC again;
-3. nudge each remaining sub-0.011 mm clearance shortfall away from the shape it violates by the shortfall plus
-   a hair, from the DRC report, under KiCad's own ruler;
+1. *done:* every pad with a clearance override exported as a keepout grown by the override less the clearance
+   (`freerouting.pad_keepouts`; the esp32c3's 16 hole violations to 0);
+2. *done:* necked traces restored to the rule width after the import (`widen_tracks`; open-book's 40 to 0);
+3. *done:* each remaining clearance shortfall nudged away under KiCad's own DRC (`repair_clearances`; the
+   smoke board's 9 to 0, and green);
 4. pour ground before routing and hand it to the router as a plane;
 5. then, and only then, the fine-pitch exits again (`freerouting.escape_stubs`), whose only measurement so far
    was confounded by 1 to 4.
@@ -114,10 +119,9 @@ form (a placement change on a failed route, logged, retried within a budget).
 *Gates:* `python3 scripts/gate.py a` on all six references, smallest first (D49); the temperature-sensor design
 to fab outputs, re-parsed, reviewed by the owner.
 
-*State (2026-09-23):* gate FAIL, 0 of 6. Stage 5's baseline (Freerouting 2.4.1 behind `route/freerouting.py`,
-D56, D57) connects 4 of 6 nets on `tinkerforge-temperature`, 34 of 35 on `open-book-c1`, 34 of 34 on
-`olimex-esp32c3-devkit`, each with clearance or width violations under the measured rules; the table in the
-next-step section has the numbers. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
+*State (2026-09-24):* gate FAIL, 1 of 6. Stage 5's baseline (Freerouting 2.4.1 inside three repairs,
+`route/freerouting.py`, D56 to D60) passes `tinkerforge-temperature` (6 of 6, 0 violations); the other five
+fail with the numbers in the next-step section's table, measured before the repairs on all but the esp32c3. Stages 1 to 4 and 6: nothing written. The benchmark and its sanity pair
 pass on all six (D50). Tests: 192 passed, 0 failed.
 
 ### B. A class B board, end to end

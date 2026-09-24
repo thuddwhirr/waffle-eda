@@ -94,10 +94,10 @@ def test_the_export_itself_needs_the_rename():
 def test_the_measured_rules_become_the_routers_rules():
     d = fr.dsn_rules(_rules(), pin_ring_mm=None)
     assert d.width_mm == 0.2997  # exactly the rule: the router keeps the width it is given
-    assert d.clearance_mm == 0.1972  # exactly the rule; only the wire-to-SMD-pad clearance carries the slack
-    assert d.smd_clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)
-    assert fr.dsn_rules(_rules(), None, slack_all=True).clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)
-    assert fr.dsn_rules(_rules(), None, slack_all=True).smd_clearance_mm is None
+    assert d.clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)  # the slack the repair takes back
+    assert d.smd_clearance_mm is None
+    scoped = fr.dsn_rules(_rules(), None, slack_all=False)
+    assert scoped.clearance_mm == 0.1972 and scoped.smd_clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)
     assert d.via_drill_mm == 0.249  # rounded up to a whole micrometre: the session file truncates to one
     assert d.via_diameter_mm == 0.701
     # hole-to-copper for a via: the rule less the via's ring, so copper at that clearance from the via's pad is
@@ -117,7 +117,7 @@ def test_plated_pins_get_their_own_typed_clearance_from_the_smallest_ring():
 
 
 def test_typed_clearances_go_into_the_structures_rule_block_only():
-    d = fr.dsn_rules(_rules(), pin_ring_mm=0.1)
+    d = fr.dsn_rules(_rules(), pin_ring_mm=0.1, slack_all=False)
     text = fr.typed_clearances(DSN, d)
     structure = text[text.index("(structure"):text.index("(placement")]
     network = text[text.index("(network"):]
@@ -231,3 +231,77 @@ def test_the_smoke_board_carries_overrides_too_and_an_override_below_the_rule_is
     assert sorted((k.reference, round(k.grow_mm + 0.1972, 3)) for k in keepouts) == \
         [("Fiducial_Mark", 0.65), ("Fiducial_Mark", 0.65), ("U3", 0.899), ("U4", 0.899), ("U5", 0.899), ("U6", 0.899)]
     assert fr.pad_keepouts(board, clearance_mm=0.9) == []
+
+
+# --- necked traces (D59, kind 2) -------------------------------------------------------------------------------
+def test_tracks_the_router_necked_are_restored_to_the_rule_width():
+    """Freerouting narrows a trace where it enters a pad (40 width violations on `open-book-c1`, all by 0.03 mm
+    or more); `automatic_neckdown` off changes nothing. After the import every track narrower than the rule is
+    set back to it, and the gate's DRC says whether the widened copper then clears its neighbours."""
+    import pcbnew
+    board = pcbnew.BOARD()
+    net = pcbnew.NETINFO_ITEM(board, "N1")
+    board.Add(net)
+    for width in (0.25, 0.2006, 0.1798, 0.25):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(0, 0))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(1.0), 0))
+        t.SetWidth(kb.nm(width))
+        t.SetNet(net)
+        board.Add(t)
+    widened = fr.widen_tracks(board, width_mm=0.25)
+    assert widened == 2
+    assert all(kb.mm(t.GetWidth()) == pytest.approx(0.25) for t in kb.track_segments(board))
+    assert fr.widen_tracks(board, width_mm=0.25) == 0
+
+
+# --- clearances a few micrometres short (D59, kind 1) -----------------------------------------------------------
+def _two_track_board(tmp_path, gap_mm: float):
+    """Two parallel tracks of different nets ``gap_mm`` apart, on a board with an outline, saved to a file."""
+    import pcbnew
+    board = pcbnew.BOARD()
+    nets = {}
+    for name in ("A", "B"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+    for i, (name, y) in enumerate((("A", 5.0), ("B", 5.0 + 0.25 + gap_mm))):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(2.0), kb.nm(y)))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(8.0), kb.nm(y)))
+        t.SetWidth(kb.nm(0.25))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(nets[name])
+        board.Add(t)
+    outline = pcbnew.PCB_SHAPE(board)
+    outline.SetShape(pcbnew.SHAPE_T_RECT)
+    outline.SetStart(pcbnew.VECTOR2I(0, 0))
+    outline.SetEnd(pcbnew.VECTOR2I(kb.nm(10.0), kb.nm(10.0)))
+    outline.SetLayer(pcbnew.Edge_Cuts)
+    board.Add(outline)
+    path = tmp_path / "two.kicad_pcb"
+    kb.save_board(board, path)
+    return path
+
+
+def test_a_track_a_few_micrometres_too_close_is_moved_away_and_the_drc_then_passes(tmp_path):
+    """The router's octagonal model leaves copper up to 0.011 mm closer than KiCad measures (D59). The repair
+    reads KiCad's own report and moves the offending track by the shortfall plus a hair, until the report is
+    clean or the rounds run out."""
+    path = _two_track_board(tmp_path, gap_mm=0.19)
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    board = kb.load_board(path)
+    before = fr.drc_violations(board, rules, tmp_path / "before")
+    assert [v.type for v in before] == ["clearance"] and before[0].short_mm == pytest.approx(0.0072, abs=1e-4)
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report["moved"] >= 1 and report["remaining"] == 0, report
+    assert fr.drc_violations(board, rules, tmp_path / "after") == []
+    ys = sorted(kb.mm(t.GetStart().y) for t in kb.track_segments(board))
+    assert ys[1] - ys[0] >= 0.25 + 0.1972 - 1e-6  # moved apart, not narrowed
+
+
+def test_a_clean_board_needs_no_repair(tmp_path):
+    path = _two_track_board(tmp_path, gap_mm=0.25)
+    rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
+    board = kb.load_board(path)
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0}

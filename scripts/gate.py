@@ -19,6 +19,8 @@
 
 The milestone names of the first five days (m1, m2, m3a, m3b, m4) still work and mean the same gates.
 A reference that is not fetched is a FAIL, not a skip: the gate cannot vouch for what it did not run.
+Reference keys after the gate name (`gate.py a tinkerforge-temperature`) run those rows only, for climbing the
+ladder one board at a time; the milestone is the whole gate, never a subset.
 """
 from __future__ import annotations
 
@@ -33,12 +35,15 @@ def bus_references():
     return [r for r in refs.REFERENCES.values() if r.has_bus]
 
 
+ONLY: list[str] = []  # reference keys named on the command line; empty means every reference of the gate
+
+
 def m4_references():
     """M4's ladder: class A, smallest first, as D49 sets it. `tinkerforge-temperature` is the registry's own
     smoke test for every stage; `libresolar-mppt-2420` is the one whose power on continuous copper matters."""
     order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
              "crkbd-corne-cherry", "libresolar-mppt-2420"]
-    return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES]
+    return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
 def gate_m1() -> list[tuple[str, bool, str]]:
@@ -175,9 +180,14 @@ GATES = {
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1 or argv[0] not in GATES:
+    if not argv or argv[0] not in GATES:
         print(__doc__)
         return 2
+    unknown = [k for k in argv[1:] if k not in refs.REFERENCES]
+    if unknown:
+        print(f"not a reference: {unknown}")
+        return 2
+    ONLY[:] = argv[1:]
     rows = GATES[argv[0]]()
     failed = [r for r in rows if not r[1]]
     print(f"\n=== GATE {argv[0].upper()}: {'PASS' if not failed else 'FAIL'} ({len(rows) - len(failed)} of {len(rows)} cases pass) ===")
