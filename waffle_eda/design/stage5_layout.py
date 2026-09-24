@@ -94,8 +94,10 @@ def score(board_path: Path, rules: rebuild.BoardRules, work: Path) -> tuple[dict
     facts = rebuild.drc_under_rules(board_path, rules.values(), work, tag="candidate")
     board = kb.load_board(board_path)
     nets = sorted(rebuild.routable_nets(board))
-    open_nets = set(facts["unconnected_nets"])
-    connected = sum(1 for n in nets if kb.unescape_net(n) not in open_nets)
+    open_pieces = kb.open_nets(board)  # KiCad's own connectivity, not the DRC report's capped list (D79)
+    facts["unconnected_items"] = kb.unconnected_count(board)
+    facts["unconnected_nets"] = sorted(open_pieces)
+    connected = sum(1 for n in nets if n not in open_pieces)
     return facts, connected, len(nets)
 
 

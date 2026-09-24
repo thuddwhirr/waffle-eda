@@ -359,6 +359,16 @@ So the bounds class A was measured with stand (`SEARCHES`), and a board that fai
 (sensor-watch: 0.0878 / 0.0893). Under that, the class A rules reproduce exactly. The file's fill is the copper
 the designer had made; only a candidate's pours are filled here (D62). Measurement.
 
+**D79. Connectivity is read from KiCad's own graph; the DRC report's unconnected list stops at about 500.**
+The class B sanity pair's second half (2026-09-24, 39 minutes for the nine, 31 of them `mch2022-badge`'s rule
+measurement): the three largest boards stripped bare scored 0.574, 0.693 and 0.302 (`buspirate5-rev10`,
+`tinytapeout-demo`, `mch2022-badge`), their reports listing 499, 501 and 501 unconnected items with 78, 42 and
+125 of their nets never named, so those read as connected with no copper on the board. D18's cap, on another
+list. `kb.open_nets` now joins each net's pads, tracks, vias and fills through KiCad's one-hop connectivity
+queries in a union-find (the whole-cluster query needs a vector type the bindings do not wrap) and
+`kb.unconnected_count` is KiCad's own uncapped count; `rebuild.score` and stage 5 use them, the DRC report only
+for violations. Stripped `buspirate5-rev10`: 183 nets open of 183, 0.1 s; its answer: 0. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

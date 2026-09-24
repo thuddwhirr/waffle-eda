@@ -46,11 +46,14 @@ session and logs are under `build/fr/<key>/`. The failing cases, first (each row
 all six stages (D74) with its fab outputs under `out/`, and the owner's review of those outputs recorded as
 provisional until checked with the manufacturer. Prices and lead times stay unknown and escalated
 (`python3 scripts/design.py status temperature-sensor` lists them). **Class B has started (D75)** with its first
-task: the benchmark's sanity pair on the nine class B references (`tests/test_rebuild.py`, `LADDER_B`). Three
-boards needed the benchmark to read a reference as it is (D76: the answer board), a refill of that board
-turned the class A gate red and came out again (D78), and the long calls are bounded (D77); the pair on all
-nine and the first rung of `gate.py b` (`pico-ice-rev3`) are the measurements this commit leaves running, and
-the next session starts by reading them: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+task: the benchmark's sanity pair on the nine class B references (`tests/test_rebuild.py`, `LADDER_B`). What
+the pair found: three boards needed the benchmark to read a reference as it is (D76: the answer board); a
+refill of that board turned the class A gate red and came out again (D78); the long calls are bounded (D77);
+and the DRC report's unconnected list is capped at about 500 items, which credited the three largest boards
+stripped bare with a third of their nets, so connectivity now comes from KiCad's own graph (D79). The first
+half passes on all nine (the pair costs 39 minutes, 31 of them `mch2022-badge`'s rule measurement); the
+second half under D79 and the first rung of `gate.py b` (`pico-ice-rev3`) are the measurements this commit
+leaves running, and the next session starts by reading them: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
 tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
 pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
 the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B

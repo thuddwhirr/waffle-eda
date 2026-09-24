@@ -522,27 +522,28 @@ def score(ref: refs.Reference, candidate_path: Path, work_dir: Path | None = Non
                  forgiven=rules.forgiven)
 
     copper = kb.net_copper(cand, sorted(nets))
-    # the report names nets unescaped and the API escaped, so compare unescaped or a net with a slash in its
-    # name is never found in the unconnected list and is scored connected with no copper on the board at all
-    unconnected = set(facts["unconnected_nets"])
+    # connectivity from KiCad's own graph, not the DRC report, whose unconnected list stops at about 500 items
+    # and credited the three largest class B boards stripped bare with a third of their nets (D79)
+    open_pieces = kb.open_nets(cand)
+    missing_links = kb.unconnected_count(cand)
     per_net = {}
     for name in sorted(nets):
         nc = copper[name]
-        per_net[name] = {"connected": kb.unescape_net(name) not in unconnected, "segments": nc.segments,
-                         "length_mm": round(nc.length_mm, 3), "vias": nc.via_count,
+        per_net[name] = {"connected": name not in open_pieces, "pieces": open_pieces.get(name, 1),
+                         "segments": nc.segments, "length_mm": round(nc.length_mm, 3), "vias": nc.via_count,
                          "layers": sorted(nc.layers)}
     connected = sum(1 for v in per_net.values() if v["connected"])
     n = len(nets)
     conn_frac = connected / n if n else 0.0
     drc_ok = facts["electrical"] == 0
-    passed = connected == n and facts["unconnected_items"] == 0 and drc_ok
+    passed = connected == n and missing_links == 0 and drc_ok
     # the "do nothing" tool connects nothing and so scores zero; the answer connects everything with no
     # violation and so scores one. Nothing between them is a pass.
     composite = conn_frac * (0.7 + 0.3 * drc_ok)
 
     return RebuildScore(
         reference=ref.key, candidate=str(candidate_path), nets=n, connected=connected,
-        unconnected_items=facts["unconnected_items"], electrical=facts["electrical"],
+        unconnected_items=missing_links, electrical=facts["electrical"],
         electrical_by_type=facts["by_type"],
         tracks=len(kb.track_segments(cand)) + len(kb.track_arcs(cand)), vias=len(kb.vias(cand)),
         tracks_answer=answer_tracks, vias_answer=answer_vias,

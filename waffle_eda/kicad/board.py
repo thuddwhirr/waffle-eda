@@ -20,6 +20,11 @@ stage repeats it:
 * A shape built in Python (``pcbnew.SHAPE_CIRCLE(...)``) exposes only the ``Collide(SEG, ...)`` overload; make the
   shape from ``GetEffectiveShape()`` (typed as the base ``SHAPE``) the receiver and pass the built shape as the
   argument, or the call raises a ``TypeError`` about ``SEG const &``.
+* KiCad's DRC report lists at most about 500 unconnected items (D79), so on a board with more missing links than
+  that, nets past the cap read as connected. Connectivity comes from :func:`open_nets` instead: KiCad's own
+  connectivity graph queried one hop at a time (``GetConnectedPads``, ``GetConnectedTracks`` return an item's
+  direct neighbours, zone fills included; ``GetConnectedItems`` needs a vector type the bindings do not wrap)
+  and joined by a union-find here, on a board just loaded, never across edits.
 """
 from __future__ import annotations
 
@@ -239,3 +244,53 @@ def track_width_histogram_mm(board: pcbnew.BOARD) -> list[tuple[float, int]]:
 def via_size_histogram_mm(board: pcbnew.BOARD) -> list[tuple[float, float, int]]:
     counter = Counter((round(via_diameter_mm(v), 2), round(via_drill_mm(v), 2)) for v in vias(board))
     return [(d, drill, n) for (d, drill), n in counter.most_common()]
+
+
+def open_nets(board: pcbnew.BOARD) -> dict[str, int]:
+    """The nets whose pads are not all joined by copper, each with its number of pieces: KiCad's own
+    connectivity (fills included), built on the board as loaded and read one hop at a time into a union-find.
+    A net on fewer than two pads has nothing to join and is never listed. Exact where the DRC report's
+    unconnected list is capped (D79): on `buspirate5-rev10` stripped, 183 nets open of 183 in 0.1 s."""
+    board.BuildConnectivity()
+    conn = board.GetConnectivity()
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    items: dict[str, list] = {}
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname():
+                items.setdefault(pad.GetNetname(), []).append(pad)
+    for t in board.GetTracks():
+        if t.GetNetname():
+            items.setdefault(t.GetNetname(), []).append(t)
+    for z in board.Zones():
+        if not z.GetIsRuleArea() and z.GetNetname():
+            items.setdefault(z.GetNetname(), []).append(z)
+    out: dict[str, int] = {}
+    for name, net_items in items.items():
+        pads = [i for i in net_items if i.GetClass() == "PAD"]
+        if len(pads) < 2:
+            continue
+        for x in net_items:
+            xid = x.m_Uuid.AsString()
+            find(xid)
+            for y in list(conn.GetConnectedPads(x)) + list(conn.GetConnectedTracks(x)):
+                rx, ry = find(xid), find(y.m_Uuid.AsString())
+                if rx != ry:
+                    parent[rx] = ry
+        pieces = len({find(p.m_Uuid.AsString()) for p in pads})
+        if pieces > 1:
+            out[name] = pieces
+    return out
+
+
+def unconnected_count(board: pcbnew.BOARD) -> int:
+    """KiCad's own count of missing connections on the board, uncapped (the DRC report's list is not)."""
+    board.BuildConnectivity()
+    return int(board.GetConnectivity().GetUnconnectedCount(False))
