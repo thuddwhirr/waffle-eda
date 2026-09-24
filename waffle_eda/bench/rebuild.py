@@ -32,9 +32,9 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
 from waffle_eda.bench import harness, references as refs
-from waffle_eda.kicad import board as kb
+from waffle_eda.kicad import board as kb, refill
 
-VERSION = 2  # bump when the measurement changes; cached files of another version are re-measured (2: D76)
+VERSION = 4  # bump when the measurement changes; cached files of another version are re-measured (4: D78)
 
 
 def problem_path(ref: refs.Reference) -> Path:
@@ -104,16 +104,19 @@ def adopt_orphans(board, shorts: dict[str, set[str]]) -> tuple[dict[str, str], d
 
 
 def answer_board(ref: refs.Reference, reuse: bool = True) -> tuple[Path, dict]:
-    """The reference as the benchmark reads it: its zones refilled by KiCad 9 (a legacy fill fails the DRC
-    until it is, D58) and its orphan pads adopted (D76), saved beside the problem board with the reference's
-    project file. Every measurement and score reads this file, never the checkout's."""
+    """The reference as the benchmark reads it: the checkout's board with its orphan pads adopted (D76), saved
+    beside the problem board with the reference's project file. Every measurement and score reads this file.
+
+    Its zones are *not* refilled: the file's fill is the copper the designer had made, and a fill by KiCad 9
+    under the project's settings is other copper. Refilled, `olimex-rp2040-pico-pc` measured a clearance of
+    0.212 mm where its own pours sit 0.153 from its tracks, and the class A gate went red on that rule (D78).
+    """
     out = answer_path(ref)
     manifest = out.with_name(out.stem + ".json")
     src = refs.board_path(ref)
     if reuse and out.is_file() and manifest.is_file() and out.stat().st_mtime > src.stat().st_mtime:
         return out, json.loads(manifest.read_text())
     board = kb.load_board(src)
-    kb.refill_zones(board)
     kb.save_board(board, out)
     pro = src.with_suffix(".kicad_pro")
     if pro.is_file():
@@ -276,19 +279,43 @@ def _floor4(x: float) -> float:
     return math.floor(x * 10000 + 1e-6) / 10000
 
 
+# Each constraint is measured by bisection between these bounds, the ones class A was measured with (D50): seven
+# steps resolve to a few micrometres, and the path, hence the value, depends on the bounds (D78: from zero,
+# `olimex-rp2040-pico-pc` read 0.1558 instead of 0.1534 and its rung went red). A board that fails at a lower
+# bound (sensor-watch pours to 0.089 mm of a hole) is searched again below it.
+SEARCHES = {"clearance": ("clearance", 0.05, 0.40), "hole_clearance": ("hole_clearance", 0.10, 0.50),
+            "edge_clearance": ("copper_edge_clearance", 0.0, 0.60)}
+
+
+def _largest_met_all(board_path: Path, work_dir: Path, searches: dict[str, tuple[str, float, float]],
+                     steps: int = 7, forgiven: dict[str, str] | None = None) -> dict[str, float]:
+    """The largest value of each constraint under which the board has no violation of its type, every
+    constraint bisected in the same DRC run: a clearance rule only ever yields `clearance` findings, the hole
+    rule `hole_clearance`, the edge rule `copper_edge_clearance`, so one report answers all three and the
+    measurement costs seven DRC runs, not twenty-one (one run on `mch2022-badge` takes 158 s; D77)."""
+    state = {c: [lo, hi, None] for c, (_v, lo, hi) in searches.items()}  # lo, hi, best (None: nothing met yet)
+    for _ in range(steps):
+        mids = {c: (st[0] + st[1]) / 2 for c, st in state.items()}
+        facts = _drc(board_path, rules_text(mids), work_dir, tag="probe", runs=1, forgiven=forgiven)
+        for c, (vtype, _lo, _hi) in searches.items():
+            st = state[c]
+            if facts["by_type"].get(vtype, 0) == 0:
+                st[2], st[0] = mids[c], mids[c]
+            else:
+                st[1] = mids[c]
+    below = {c: (v, 0.0, lo) for c, (v, lo, hi) in searches.items() if state[c][2] is None and lo > 0.0}
+    if below:  # the board fails at the lower bound: the value lies under it
+        lower = _largest_met_all(board_path, work_dir, below, steps, forgiven)
+        for c, value in lower.items():
+            state[c][2] = value + 0.0005  # `lower` already sits a hair below
+    # a hair below the largest met, so rounding never fails the original; never negative
+    return {c: max(0.0, round((st[2] if st[2] is not None else st[0]) - 0.0005, 4)) for c, st in state.items()}
+
+
 def _largest_met(board_path: Path, work_dir: Path, constraint: str, vtype: str,
                  lo: float, hi: float, steps: int = 7, forgiven: dict[str, str] | None = None) -> float:
-    """Largest value of ``constraint`` under which the whole board has no violation of ``vtype``."""
-    best = lo
-    for _ in range(steps):
-        mid = (lo + hi) / 2
-        facts = _drc(board_path, rules_text({constraint: mid}), work_dir, tag="probe", runs=1, forgiven=forgiven)
-        if facts["by_type"].get(vtype, 0) == 0:
-            best, lo = mid, mid
-        else:
-            hi = mid
-    # a hair below the largest met, so rounding never fails the original; never negative
-    return max(0.0, round(best - 0.0005, 4))
+    """One constraint alone (kept for measurements of a single rule)."""
+    return _largest_met_all(board_path, work_dir, {constraint: (vtype, lo, hi)}, steps, forgiven)[constraint]
 
 
 # KiCad names each item of a violation by its kind. Tracks, arcs, vias and zones are copper the router laid and
@@ -422,9 +449,8 @@ def measure_rules(ref: refs.Reference, force: bool = False) -> BoardRules:
     nets = all_nets(board)
     work = refs.repo_root() / "build" / "boardrules" / ref.key
     forgiven = adopted["paired_graphics"]
-    clearance = _largest_met(board_file, work, "clearance", "clearance", 0.0, 0.40, forgiven=forgiven)
-    hole = _largest_met(board_file, work, "hole_clearance", "hole_clearance", 0.0, 0.50, forgiven=forgiven)
-    edge = _largest_met(board_file, work, "edge_clearance", "copper_edge_clearance", 0.0, 0.60, forgiven=forgiven)
+    met = _largest_met_all(board_file, work, SEARCHES, forgiven=forgiven)
+    clearance, hole, edge = met["clearance"], met["hole_clearance"], met["edge_clearance"]
     widths = [kb.mm(t.GetWidth()) for t in kb.track_segments(board) + kb.track_arcs(board)]
     via_sizes = [(kb.via_diameter_mm(v), kb.via_drill_mm(v)) for v in kb.vias(board)]
     layers = [name for _id, name in kb.copper_layers(board)]

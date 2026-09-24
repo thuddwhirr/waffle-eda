@@ -30,7 +30,7 @@ import sys
 
 import _path  # noqa: F401
 from waffle_eda.bench import harness, references as refs, synthetic
-from waffle_eda.kicad import board as kb
+from waffle_eda.kicad import board as kb, refill
 
 
 def bus_references():
@@ -144,11 +144,25 @@ def gate_b() -> list[tuple[str, bool, str]]:
     return _reroute_gate(class_b_references())
 
 
+def router_budget() -> dict:
+    """The router's passes and time cap: the defaults of `route_board` for a milestone run, or shorter ones
+    from `WAFFLE_ROUTER_PASSES` and `WAFFLE_ROUTER_TIMEOUT_S` to fail faster while iterating on a board (D77).
+    A row routed under an override says so; a milestone is never claimed on one."""
+    import os
+    out = {}
+    if os.environ.get("WAFFLE_ROUTER_PASSES"):
+        out["passes"] = int(os.environ["WAFFLE_ROUTER_PASSES"])
+    if os.environ.get("WAFFLE_ROUTER_TIMEOUT_S"):
+        out["timeout_s"] = float(os.environ["WAFFLE_ROUTER_TIMEOUT_S"])
+    return out
+
+
 def _reroute_gate(references) -> list[tuple[str, bool, str]]:
     from waffle_eda.bench import rebuild
     from waffle_eda.route import freerouting
     rows = []
     missing = freerouting.available()
+    budget = router_budget()
     for ref in references:
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
@@ -161,16 +175,18 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=info["pours"])
+                                             pours=info["pours"], **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
         out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
-        kb.refill_zones(board)
         kb.save_board(board, out)
+        fill = refill.refill_file(out)  # a child process with D14's fallbacks; the in-process fill can take an hour
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
-        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary()))
+        fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
+        budget_note = f" | router budget overridden: {budget}" if budget else ""
+        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
     return rows
 
 

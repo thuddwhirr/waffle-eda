@@ -331,11 +331,33 @@ leaves its QFN's exposed pad and its USB shield with no net while GND vias and t
 clearances; the clearance search poisoned to 0.0495); `sensor-watch-c1` pours to 0.0894 mm of a non-plated hole,
 under the search's 0.10 floor, and runs a track over a no-net polygon that is its buzzer contact;
 `tinkerforge-master-v3.2`'s copper sits 0.19 mm from a hole against a board-setup minimum of 0.25 that KiCad
-enforces under any rules file. The benchmark now reads an answer board (`rebuild.answer_board`): the reference
-refilled by KiCad 9 (D58), every no-net pad the reference's own copper overlaps given that net (probed at a
-0.001 mm clearance: a rule of zero reports no short), a no-net polygon paired with its net and the pairing
-forgiven in scoring, the DRC copy's setup minimums zeroed, the searches from zero. All three measure (clearance /
-hole: 0.1495 / 0.2495, 0.087 / 0.0893, 0.1464 / 0.1557); class A still brackets. Measurement.
+enforces under any rules file. The benchmark now reads an answer board (`rebuild.answer_board`): the checkout's
+board with every no-net pad the reference's own copper overlaps given that net (probed at a 0.001 mm clearance:
+a rule of zero reports no short), a no-net polygon paired with its net and the pairing forgiven in scoring, the
+DRC copy's setup minimums zeroed, the searches from zero. All three measure (clearance / hole: 0.1495 / 0.2495,
+0.087 / 0.0893, 0.1464 / 0.1557); class A still brackets. Measurement.
+
+**D77. A run fails in minutes, not an hour: every long call bounded** (2026-09-24). The first class B sanity run
+spent 28 minutes in KiCad's zone fill of `mch2022-badge` in this process (D14's pathology: every zone alone fills
+in seconds), and its rule measurement was 21 DRC runs of 158 s each. Now: the benchmark's and the gate's fills run
+in the child process with D14's caps (`kicad/refill.py`); every `kicad-cli` DRC has a budget
+(`WAFFLE_DRC_TIMEOUT_S`, 900 s) and fails with a message, and each report records its seconds; the measurement
+bisects the three constraints in one DRC per step, 7 runs instead of 21, to the same values (the smoke board:
+0.1964 / 0.4253 / 0.5479 either way, 8 s); a gate row takes a shorter router budget through
+`WAFFLE_ROUTER_PASSES` and `WAFFLE_ROUTER_TIMEOUT_S` for an iteration and says so in its detail (D38), never
+for a milestone. Owner (fail faster), the rest measured, 2026-09-24.
+
+**D78. The reference's fill is not refilled: a fill by KiCad 9 is other copper** (2026-09-24). D76's first
+version refilled the answer board's zones (after D58), and the class A gate went red, 3 of 5: `olimex-rp2040-pico-pc`
+measured a clearance of 0.212 mm where its own pours sit 0.153 from its tracks (the refill under the project's
+settings keeps more), so the router was asked for a rule the board never demonstrated, routed differently (a
+different DSN) and left one net open; `libresolar-mppt-2420` kept 8 clearances the repair could not settle.
+Without the refill the two read 0.1558 / 0.2534 and 0.1182 / 0.2456 (clearance / hole), still not the earlier
+0.1534 / 0.2526 and 0.1179 / 0.2464: the bisection's path, hence its value, depends on its bounds, and D76 had
+moved them to zero; under the 0.0024 mm stricter rule the RP2040 board's route changed and one clearance stayed.
+So the bounds class A was measured with stand (`SEARCHES`), and a board that fails at a bound is searched below it
+(sensor-watch: 0.0878 / 0.0893). Under that, the class A rules reproduce exactly. The file's fill is the copper
+the designer had made; only a candidate's pours are filled here (D62). Measurement.
 
 ## BGA escape (the class B+ machinery; passes its gate)
 

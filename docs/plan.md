@@ -46,13 +46,16 @@ all six stages (D74) with its fab outputs under `out/`, and the owner's review o
 provisional until checked with the manufacturer. Prices and lead times stay unknown and escalated
 (`python3 scripts/design.py status temperature-sensor` lists them). **Class B has started (D75)** with its first
 task: the benchmark's sanity pair on the nine class B references (`tests/test_rebuild.py`, `LADDER_B`). Three
-boards needed the benchmark to read a reference as it is (D76: the answer board); the pair on all nine and the
-first rung of `gate.py b` (`pico-ice-rev3`) are the measurements this commit leaves running, and the next
-session starts by reading them: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+boards needed the benchmark to read a reference as it is (D76: the answer board), a refill of that board
+turned the class A gate red and came out again (D78), and the long calls are bounded (D77); the pair on all
+nine and the first rung of `gate.py b` (`pico-ice-rev3`) are the measurements this commit leaves running, and
+the next session starts by reading them: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
 tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
 pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
 the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B
-additions of "B. A class B board" below made only as each is measured to matter. The loop that got a class A
+additions of "B. A class B board" below made only as each is measured to matter. Iterate on the one board
+that fails (`pytest -k <board>`, one gate row), under a short router budget where the router is the slow part
+(`WAFFLE_ROUTER_PASSES=8 WAFFLE_ROUTER_TIMEOUT_S=300`, D77), and let the full budget confirm. The loop that got a class A
 rung green stays the tool: run the gate row once (the wrapper saves the router's output as
 `build/fr/<key>/imported.kicad_pcb`), then `python3 scripts/repair_only.py <key> --twice` to measure a repair
 change in a minute without the router, and the gate row again to confirm. Freerouting's optimiser is off

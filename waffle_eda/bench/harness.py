@@ -15,6 +15,7 @@ The composite score is zero when nothing is connected (the "do nothing" tool) an
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -75,16 +76,28 @@ def _bus_copper(board, ref: refs.Reference, delete: bool = False) -> tuple[set[s
     return nets, removed
 
 
+# A DRC that runs longer than this is a hang, not a result: one run on the largest class B board takes 158 s
+# (D77). The budget is an environment override so a slow machine is not a failure.
+DRC_TIMEOUT_S = float(os.environ.get("WAFFLE_DRC_TIMEOUT_S", "900"))
+
+
 def run_drc(board_path: Path, out_path: Path, severity: str = "--severity-error") -> dict:
-    """Run kicad-cli DRC and return the parsed JSON report."""
+    """Run kicad-cli DRC and return the parsed JSON report, with the run's seconds under ``seconds``."""
     cli = shutil.which("kicad-cli")
     if not cli:
         raise RuntimeError("kicad-cli not found")
     cmd = [cli, "pcb", "drc", severity, "--format", "json", "--output", str(out_path), str(board_path)]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    t0 = time.time()
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=DRC_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"kicad-cli drc on {board_path.name} ran past {DRC_TIMEOUT_S:.0f} s "
+                           f"(WAFFLE_DRC_TIMEOUT_S): stopped, no report") from None
     if r.returncode not in (0, 5) or not out_path.is_file():  # 5 = violations with --exit-code-violations
         raise RuntimeError(f"kicad-cli drc failed ({r.returncode}): {r.stderr[-500:]}")
-    return json.loads(out_path.read_text())
+    report = json.loads(out_path.read_text())
+    report["seconds"] = round(time.time() - t0, 1)
+    return report
 
 
 # The rule-driven electrical constraints. KiCad's DRC stops reporting a violation type after about two hundred
