@@ -205,6 +205,14 @@ tries the floor first and, if the index is not clean, restores the imported copp
 smoke 0 (floor, digest c30c3f3d1e), open-book 0 (free, d6ec360560), esp32c3 0 (floor, b9c2ad5f17), each
 reproducible run to run. Measurement.
 
+**D65. Freerouting's optimiser is off: it is where the time and the variation were.** Its maze search, rip-up
+resolver, pass runner and optimiser draw on Java's random generator with no seed setting; on
+`olimex-esp32c3-devkit` the same DSN (md5 40ee4f1c09) gave three different boards in three runs, the optimiser
+taking 11 of each run's 12 minutes for a score it never improved. With `optimizer.max_passes` 0 the same board
+routes in 34 s and two runs agree to the digest (imported c0c904b4ac); the smoke test routes in 21 s. The gate
+scores connectivity and DRC, which the optimiser does not change; it costs vias (107 to 71 there) and stays off
+until a gate scores what it buys. Measurement, 2026-09-24.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
