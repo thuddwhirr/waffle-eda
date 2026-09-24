@@ -401,3 +401,18 @@ def test_the_pours_are_laid_after_the_import_with_the_hole_rule_in_their_clearan
         clearance = clearance.value() if hasattr(clearance, "value") else clearance
         assert kb.mm(clearance) == pytest.approx(0.4964 - 0.226, abs=1e-4)  # the hole rule less the via ring
         assert not z.GetIsRuleArea()
+
+
+def test_a_hole_without_copper_gets_a_no_pour_rule_area_sized_by_the_hole_rule():
+    """The filler keeps the zone clearance from a pad's copper; a non-plated mounting hole has none, and
+    open-book's pour came 0.1 mm too close to its four holes on both layers (8 violations)."""
+    ref = _ref("open-book-c1")
+    bare, _ = rebuild.strip_all(ref)
+    board = kb.load_board(bare)
+    rules = _rules(hole_to_copper_mm=0.2526)
+    areas = fr.hole_rule_areas(board, rules)
+    assert len(areas) >= 4
+    for z in areas:
+        assert z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()
+        bb = z.GetBoundingBox()
+        assert kb.mm(bb.GetWidth()) >= 2 * 0.2526  # at least the rule around the hole

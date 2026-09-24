@@ -558,6 +558,42 @@ def design_rules(board, rules) -> None:
     ds.m_TrackMinWidth = kb.nm(rules.min_track_mm)
 
 
+def hole_rule_areas(board, rules) -> list:
+    """A rule area forbidding copper pour around every hole whose copper ring is smaller than the hole rule:
+    the filler keeps the zone clearance from a pad's copper, and a non-plated hole has none (open-book's pour
+    came 0.1 mm too close to its four mounting holes on both layers). The circle is the hole plus the rule."""
+    import math
+    made = []
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            drill = pad.GetDrillSize()
+            hole = max(kb.mm(drill.x), kb.mm(drill.y))
+            if hole <= 0:
+                continue
+            layers = pad.GetLayerSet().CuStack()
+            size = pad.GetSize(layers[0]) if layers else drill
+            ring = (min(kb.mm(size.x), kb.mm(size.y)) - hole) / 2
+            if ring >= rules.hole_to_copper_mm:
+                continue
+            radius = hole / 2 + rules.hole_to_copper_mm
+            pos = pad.GetPosition()
+            for layer in (layers or [lid for lid, _n in kb.copper_layers(board)]):
+                zone = pcbnew.ZONE(board)
+                zone.SetIsRuleArea(True)
+                zone.SetDoNotAllowCopperPour(True)
+                zone.SetDoNotAllowTracks(False)
+                zone.SetDoNotAllowVias(False)
+                zone.SetLayer(layer)
+                outline = zone.Outline()
+                outline.NewOutline()
+                for k in range(32):
+                    a = 2 * math.pi * k / 32
+                    outline.Append(pos.x + kb.nm(radius * math.cos(a)), pos.y + kb.nm(radius * math.sin(a)))
+                board.Add(zone)
+                made.append(zone)
+    return made
+
+
 def add_pours(board, pours: list[dict], rules, ring_mm: float | None = None) -> list:
     """Lay the recorded pours (`bench.rebuild.pour_facts`) as zones after the import, over the routed tracks.
 
@@ -890,6 +926,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"repair: {result.repair}")
         via_ring, pin_ring = smallest_ring_mm(board)
         rings = [r for r in (via_ring, pin_ring) if r is not None]
+        if pours:
+            hole_rule_areas(board, rules)
         result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None))
         say(f"pours: {result.pours}")
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
