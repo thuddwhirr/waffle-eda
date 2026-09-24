@@ -326,7 +326,7 @@ def test_a_clean_board_needs_no_repair(tmp_path):
     rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
     board = kb.load_board(path)
     report = fr.repair_clearances(board, rules, tmp_path / "repair")
-    assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0}
+    assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0, "strategy": "floor"}
 
 
 # --- pads with the same number (D61) ------------------------------------------------------------------------

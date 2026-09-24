@@ -331,6 +331,7 @@ def widen_tracks(board, width_mm: float) -> int:
 NUDGE_EXTRA_MM = 0.0005
 REPAIR_ROUNDS = 12
 TRACE: list | None = None  # a list here receives the repair's decisions, for the order test's diagnosis
+DRAG_FLOOR = True  # set per strategy by repair_clearances; see _move_checked
 
 
 @dataclass(frozen=True)
@@ -490,6 +491,9 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
     moved = _with_ends(board, item)
     own = item.m_Uuid.AsString()
     before = {m.m_Uuid.AsString(): _hits(obstacles, m, rules) for m in moved}
+    layer_of = {m.m_Uuid.AsString(): (m.GetLayer() if m.GetClass() != "PCB_VIA" else pcbnew.F_Cu) for m in moved}
+    gaps = {(mid, oid): _gap_mm(next(m for m in moved if m.m_Uuid.AsString() == mid), o, layer_of[mid])
+            for mid, hits in before.items() for oid, o in hits.items() if mid != own}
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
@@ -502,11 +506,16 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
                 clean = False
                 break
             continue
-        # a dragged end keeps only what it had (D62's rule, the one under which open-book is green). Holding it
-        # to "no closer than before" or to a floor at the router's own clearance stalled open-book at two
-        # pairs; unbounded, a kept collision deepened to 0.057 mm on the esp32c3, which is that board's
-        # failing case to fix without touching this rule.
+        # a dragged end keeps only what it had, and none of it closer than the router itself was allowed (the
+        # rule less the slack): the repair never leaves copper worse than the router's own output. Measured
+        # through the DRC report this floor stalled open-book at two pairs; the report drops violations (D63),
+        # and under the index the measurement is repeated (scripts/repair_only.py on the three imported boards).
         if not set(after) <= set(before[mid]):
+            clean = False
+            break
+        floor = rules.clearance_mm - CLEARANCE_SLACK_MM - NUDGE_EXTRA_MM
+        if DRAG_FLOOR and any(_gap_mm(m, o, layer_of[mid]) < min(gaps[(mid, oid)], floor) - 0.0002
+                              for oid, o in after.items()):
             clean = False
             break
     if not clean or not keep:
@@ -625,7 +634,46 @@ def _away(track, other_pos_mm: tuple[float, float]) -> tuple[float, float]:
     return (nx, ny)
 
 
+def _snapshot(board) -> dict:
+    return {**{t.m_Uuid.AsString(): (pcbnew.VECTOR2I(t.GetStart()), pcbnew.VECTOR2I(t.GetEnd())) for t in kb.track_segments(board)},
+            **{v.m_Uuid.AsString(): (pcbnew.VECTOR2I(v.GetPosition()),) for v in kb.vias(board)}}
+
+
+def _restore(board, snap: dict) -> None:
+    for t in kb.track_segments(board):
+        s, e = snap[t.m_Uuid.AsString()]
+        t.SetStart(s)
+        t.SetEnd(e)
+    for v in kb.vias(board):
+        v.SetPosition(snap[v.m_Uuid.AsString()][0])
+
+
+STRATEGIES = (True, False)  # dragged ends floored at the router's clearance, then free (D64)
+
+
 def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
+    """Repair under each strategy in turn from the same imported copper, and keep the first that leaves the
+    index clean, else the one with the fewest violations. With dragged ends floored the esp32c3 passes and
+    open-book keeps 5 violations; free, the reverse (D64): one rule serves neither, two in sequence serve
+    both, and each is deterministic."""
+    global DRAG_FLOOR
+    start = _snapshot(board)
+    best = None
+    for floor in STRATEGIES:
+        _restore(board, start)
+        DRAG_FLOOR = floor
+        report = _repair_rounds(board, rules, work_dir, rounds)
+        report["strategy"] = "floor" if floor else "free"
+        if best is None or report["remaining"] < best[0]["remaining"]:
+            best = (report, _snapshot(board))
+        if report["remaining"] == 0:
+            break
+    _restore(board, best[1])
+    DRAG_FLOOR = True
+    return best[0]
+
+
+def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
     """Move tracks a few micrometres away from what they violate, until the exact collision index is clean.
 
     A track is moved once per round, by the largest shortfall on its open side plus a hair, or, when it is

@@ -196,6 +196,15 @@ and not by the report, which also removes one DRC per repair round; and the orde
 (`tests/test_freerouting.py`) found this through a digest that differed between insertion orders of the same
 copper. Measurement.
 
+**D64. The repair runs under two rules in turn and keeps the clean result.** Whether a track end dragged by a
+neighbour's move may come closer to old copper than the router's own clearance decides two boards opposite
+ways: floored, `olimex-esp32c3-devkit` repairs to 0 violations and `open-book-c1` keeps 5; free, open-book
+repairs to 0 and the esp32c3 keeps 2 (a pair deepened to 0.039 mm). One rule serves neither; the repair now
+tries the floor first and, if the index is not clean, restores the imported copper and tries free
+(`freerouting.STRATEGIES`). Measured with `scripts/repair_only.py` on the three imported boards, 2026-09-24:
+smoke 0 (floor, digest c30c3f3d1e), open-book 0 (free, d6ec360560), esp32c3 0 (floor, b9c2ad5f17), each
+reproducible run to run. Measurement.
+
 ## Class A (in progress)
 
 **D49. The class A ladder rises**: `tinkerforge-temperature`, `open-book-c1`, `olimex-esp32c3-devkit`,
