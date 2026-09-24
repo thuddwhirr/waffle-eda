@@ -1213,11 +1213,19 @@ def joined_pins(board) -> set[str]:
             for members in comps.values():  # the largest piece stays the pin: a plane reaches a round pad, not
                 if len(members) < 2:  # a 0.2 mm finger walled in by the other net's fingers
                     continue
-                keep = max(members, key=lambda i: _area(pads[i]))
+                keep = _group_pin(pads, members)
                 for i in members:
                     if i != keep:
                         out.add(f"{fp.GetReference()}-{names[i]}")
     return out
+
+
+def _group_pin(pads, members) -> int:
+    """The piece that stays the group's pin: a plated one where there is one, since the router reaches it on
+    every layer while the group's other pieces, pads with no net to it, wall the surface piece in (D73:
+    libresolar's USB shield posts); else the largest."""
+    plated = [i for i in members if pads[i].GetDrillSize().x > 0]
+    return max(plated or members, key=lambda i: _area(pads[i]))
 
 
 def _area(pad) -> float:
@@ -1301,12 +1309,15 @@ def join_piece_groups(board, rules) -> list:
                 continue
             heads = [max(g, key=lambda i: _area(pads[i])) for g in groups]
             heads.sort(key=lambda i: (pads[i].GetPosition().x, pads[i].GetPosition().y))
+            enabled = board.GetEnabledLayers().CuStack()
+            reached = {i: any(_reached(board, pads[i], l) for l in pads[i].GetLayerSet().CuStack() if l in enabled)
+                       for i in heads}  # by the router's copper, judged before any join is laid
             for a, b in zip(heads, heads[1:]):  # a chain in x: neighbours first, the rest reach through them
                 pa, pb = pads[a], pads[b]
-                shared = [l for l in pa.GetLayerSet().CuStack() if pb.IsOnLayer(l) and l in board.GetEnabledLayers().CuStack()]
+                shared = [l for l in pa.GetLayerSet().CuStack() if pb.IsOnLayer(l) and l in enabled]
                 if not shared or not pa.GetNetname():
                     continue
-                if _reached(board, pa, shared[0]) and _reached(board, pb, shared[0]):
+                if reached[a] and reached[b]:
                     continue  # the router got to both (the smoke board's two EP pads, 11.6 mm apart)
                 for layer in shared:
                     t = pcbnew.PCB_TRACK(board)

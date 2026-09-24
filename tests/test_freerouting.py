@@ -774,6 +774,9 @@ def test_piece_groups_the_router_left_apart_are_joined_where_the_run_is_clear():
     p3 = board.FindFootprintByReference("P3")
     groups = fr.piece_groups(p3)
     assert len(groups["6"]) == 6 and sum(len(g) for g in groups["6"]) == 12
+    names = fr._pin_names(p3)
+    kept = {f"P3-{names[i]}" for i in range(len(names)) if names[i].startswith("6")} - fr.joined_pins(board)
+    assert kept == {"P3-6@2", "P3-6@9", "P3-6@4", "P3-6@7", "P3-6@5", "P3-6@6"}, kept  # the plated pieces stay the pins of their groups
     made = fr.join_piece_groups(board, rules)  # no copper yet: every group is unreached
     p3_joins = [t for t in made if t.GetNetname() == "Net-(C25-Pad1)"]
     assert len(p3_joins) == 5, len(p3_joins)  # a chain through the six groups
