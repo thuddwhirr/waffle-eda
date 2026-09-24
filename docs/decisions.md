@@ -262,7 +262,9 @@ budget instead. Two defects found on the way, fixed with tests: the cap killed `
 JVM, which routed on beside the next run (D57's empty session file); and the benchmark recorded the
 reference's 921 teardrop zones as pours (esp32c3 had 154; it still passes without them). The router's 12
 standing violations are conflicts among fixed items, four of them EXLED1's override keepouts over its
-neighbouring pads. Measurement.
+neighbouring pads. With a five-pass budget (24 min with the repair and the DRC): 119 of 152 nets, 39 open connections
+of which 25 on the two RP2040s' QFN-56 (0.4 mm pitch); 833 violations at import, none over 0.011 mm; after the repair 51
+by the index, up to 0.19 mm, four shorts, under either strategy. Measurement.
 
 ## Class A (in progress)
 
