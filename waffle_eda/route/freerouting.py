@@ -37,6 +37,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from collections import Counter
@@ -1451,7 +1452,8 @@ def fix_wires(dsn_text: str) -> str:
     return dsn_text.replace("(type route)", "(type fix)")
 
 
-JOB_MARGIN_S = 120  # the router's own timeout ends this much before the process cap, so it still writes the session
+JOB_MARGIN_S = 360  # the router's own timeout ends this much before the process cap: it notices only between
+#                   passes (crkbd's take 200 s), then writes the session
 
 
 def job_timeout(seconds: float) -> str:
@@ -1595,13 +1597,19 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
     if ses.is_file():
         ses.unlink()
     env = {k: v for k, v in os.environ.items() if k != "JAVA_TOOL_OPTIONS"}  # the proxy settings only add noise
+    # the jar runs in its own process group: killing `xvfb-run` alone at the cap orphaned the JVM, which routed
+    # on for twenty more minutes beside the next run (two crkbd runs at once, 2026-09-24; D57's empty session)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=dsn.parent,
+                            env=env, start_new_session=True)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=dsn.parent, env=env)
-    except subprocess.TimeoutExpired as why:
-        log.write_text((why.stdout or b"").decode(errors="replace") + (why.stderr or b"").decode(errors="replace"))
+        out, _ = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        out, _ = proc.communicate()
+        log.write_text(out or "")
         return None, True
-    log.write_text(r.stdout + r.stderr)  # the same text the settings file sends to freerouting.log
-    return r.returncode, False
+    log.write_text(out or "")  # the same text the settings file sends to freerouting.log
+    return proc.returncode, False
 
 
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,

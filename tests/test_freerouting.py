@@ -681,7 +681,27 @@ def test_the_routers_own_job_timeout_ends_before_the_process_cap(tmp_path):
     import json
     fr.settings_json(tmp_path, threads=1, passes=30, timeout_s=1200)
     cfg = json.loads((tmp_path / "freerouting.json").read_text())
-    assert cfg["router"]["job_timeout"] == "00:18:00"
+    assert cfg["router"]["job_timeout"] == "00:14:00"
     assert fr.job_timeout(3661) == "01:01:01" and fr.job_timeout(5) == "00:01:00"
     fr.settings_json(tmp_path, threads=1, passes=30)
     assert "job_timeout" not in json.loads((tmp_path / "freerouting.json").read_text())["router"]
+
+
+def test_a_run_killed_at_the_cap_takes_its_whole_process_group_with_it(monkeypatch, tmp_path):
+    """Killing `xvfb-run` alone orphaned the JVM, which routed on beside the next run."""
+    import os
+    pidfile = tmp_path / "child.pid"
+    java = tmp_path / "java"  # the stand-in JVM: a child of its own that outlives it unless the group is killed
+    java.write_text(f"#!/bin/sh\nsleep 600 &\necho $! > {pidfile}\nsleep 600\n")
+    java.chmod(0o755)
+    xvfb = tmp_path / "xvfb-run"  # stands in for the real one: runs its command
+    xvfb.write_text('#!/bin/sh\nshift\nexec "$@"\n')
+    xvfb.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    monkeypatch.setattr(fr, "available", lambda: None)
+    monkeypatch.setattr(fr, "java_path", lambda: java)
+    monkeypatch.setattr(fr, "jar_path", lambda: tmp_path / "x.jar")
+    code, timed_out = fr.run_jar(tmp_path / "board.dsn", tmp_path / "board.ses", tmp_path / "run.log", 1, 1, timeout_s=1.0)
+    assert timed_out and code is None
+    child = int(pidfile.read_text())
+    assert not os.path.exists(f"/proc/{child}") or open(f"/proc/{child}/stat").read().split()[2] == "Z", child
