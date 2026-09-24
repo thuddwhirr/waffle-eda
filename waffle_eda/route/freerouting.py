@@ -1581,7 +1581,8 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
-                pours: list[dict] | None = None, say=lambda _m: None) -> FreeroutingResult:
+                pours: list[dict] | None = None, say=lambda _m: None,
+                router_edge_mm: float | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log."""
     t0 = time.time()
@@ -1597,7 +1598,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=rules.edge_clearance_mm)
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s,
+                              edge_clearance_mm=rules.edge_clearance_mm if router_edge_mm is None else router_edge_mm)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exported_layers=layers,
