@@ -1211,6 +1211,8 @@ class FreeroutingResult:
     widened: int = 0  # tracks the router necked below the rule, set back to it
     repair: dict = field(default_factory=dict)  # what repair_clearances did
     digest: str = ""  # geometry_digest of the board handed back
+    dsn_md5: str = ""  # of the DSN handed to the router: the same DSN must give the same session
+    imported: str = ""  # geometry_digest of the router's output as imported, before the repair
     exported_layers: list = field(default_factory=list)
     passes: int = 0
     unrouted: int | None = None  # the router's own count at the end of its last stage
@@ -1229,7 +1231,8 @@ class FreeroutingResult:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
                 f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
-                f"{self.widened} widened, repair {self.repair or 'none'}, digest {self.digest}; "
+                f"{self.widened} widened, repair {self.repair or 'none'}; dsn {self.dsn_md5} imported {self.imported} "
+                f"final {self.digest}; "
                 f"{self.seconds:.0f}s")
 
 
@@ -1301,17 +1304,20 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         dsn.write_text(fix_wires(dsn.read_text()))
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
+    import hashlib
+    dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
     code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exported_layers=layers,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
-                               exit_code=code, timed_out=timed_out)
+                               exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
     if ses.is_file():
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
         result.widened = widen_tracks(board, d.width_mm)
+        result.imported = geometry_digest(board)
         kb.save_board(board, work_dir / "imported.kicad_pcb")  # the router's output as imported: the repair
         say(f"saved {work_dir / 'imported.kicad_pcb'}")  # alone can be rerun on it (scripts/repair_only.py)
         result.repair = repair_clearances(board, rules, work_dir / "repair")
