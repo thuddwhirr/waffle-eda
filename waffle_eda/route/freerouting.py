@@ -546,8 +546,8 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
     report = {"rounds": 0, "moved": 0, "remaining": 0, "unfixable": 0}
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
-        violations = [v for v in drc_violations(board, rules, work_dir / f"round{round_no}")
-                      if v.type in ("clearance", "hole_clearance") and _ours(board, v)]
+        violations = sorted((v for v in drc_violations(board, rules, work_dir / f"round{round_no}")
+                             if v.type in ("clearance", "hole_clearance") and _ours(board, v)), key=_violation_key)
         report["remaining"] = len(violations)
         if not violations:
             return report
@@ -581,7 +581,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         moved_now = 0
         obstacles = Obstacles(board)  # at the rule alone: the DRC rounds hold the per-pad overrides
         stuck: list[str] = []
-        for uuid, (plus, minus) in sorted(sides.items()):
+        for uuid, (plus, minus) in sorted(sides.items(), key=lambda kv: _track_key(tracks[kv[0]])):
             nx, ny = normals[uuid]
             if plus > 0 and minus > 0:  # pressed from both sides: settle in the middle, no extra
                 step = (plus - minus) / 2
@@ -667,6 +667,17 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
                   if v.type in ("clearance", "hole_clearance") and _ours(board, v)]
     report["remaining"] = len(violations)
     return report
+
+
+def _track_key(track) -> tuple:
+    """A geometric sort key: the session import gives every item a fresh uuid, so an order by uuid is an order
+    by chance, and the repair's result changed between two runs of one board that way (D25)."""
+    s, e = track.GetStart(), track.GetEnd()
+    return (track.GetLayer(), min(s.x, e.x), min(s.y, e.y), max(s.x, e.x), max(s.y, e.y))
+
+
+def _violation_key(v: Violation) -> tuple:
+    return (v.type, tuple(sorted(p for _u, _d, p in v.items)), v.short_mm)
 
 
 def _ours(board, v: Violation) -> bool:
