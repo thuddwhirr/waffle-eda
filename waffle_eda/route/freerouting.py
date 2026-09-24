@@ -901,9 +901,11 @@ STRATEGIES = (True, False)  # dragged ends floored at the router's clearance, th
 
 def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS) -> dict:
     """Repair under each strategy in turn from the same imported copper, and keep the first that leaves the
-    index clean, else the one with the fewest violations. With dragged ends floored the esp32c3 passes and
-    open-book keeps 5 violations; free, the reverse (D64): one rule serves neither, two in sequence serve
-    both, and each is deterministic."""
+    index clean, else the one whose deepest violation is shallowest and, at a tie, the fewer. With dragged
+    ends floored the esp32c3 passes and open-book keeps 5 violations; free, the reverse (D64): one rule serves
+    neither, two in sequence serve both, and each is deterministic. The depth comes first because on crkbd the
+    free strategy left fewer violations (51 against the floor's) but four of them were shorts and most were
+    deeper than anything the router had left (D70: 833 at import, none over 0.011 mm)."""
     global DRAG_FLOOR
     start = _snapshot(board)
     best = None
@@ -912,7 +914,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         DRAG_FLOOR = floor
         report = _repair_rounds(board, rules, work_dir, rounds)
         report["strategy"] = "floor" if floor else "free"
-        if best is None or report["remaining"] < best[0]["remaining"]:
+        if best is None or (report["worst_mm"], report["remaining"]) < (best[0]["worst_mm"], best[0]["remaining"]):
             best = (report, _snapshot(board))
         if report["remaining"] == 0:
             break
@@ -939,6 +941,7 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
         violations = index_violations(board, obstacles, rules)  # clearance, hole and edge alike
         report["remaining"] = len(violations)
         if not violations:
+            report["worst_mm"] = 0.0
             return report
         via_ids = {v.m_Uuid.AsString() for v in kb.vias(board)}
         # per track: the shortfalls on each side of it, along its own normal
@@ -1099,7 +1102,9 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
         report["unfixable"] = unfixable
         if moved_now == 0:
             break
-    report["remaining"] = len(index_violations(board, Obstacles(board), rules))
+    left = index_violations(board, Obstacles(board), rules)
+    report["remaining"] = len(left)
+    report["worst_mm"] = max((v.short_mm for v in left), default=0.0)
     return report
 
 

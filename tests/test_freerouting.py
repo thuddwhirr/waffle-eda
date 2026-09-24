@@ -329,7 +329,7 @@ def test_a_clean_board_needs_no_repair(tmp_path):
     rules = _rules(clearance_mm=0.1972, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.25)
     board = kb.load_board(path)
     report = fr.repair_clearances(board, rules, tmp_path / "repair")
-    assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0, "strategy": "floor"}
+    assert report == {"rounds": 1, "moved": 0, "remaining": 0, "unfixable": 0, "strategy": "floor", "worst_mm": 0.0}
 
 
 # --- pads with the same number (D61) ------------------------------------------------------------------------
@@ -693,3 +693,17 @@ def test_a_run_killed_at_the_cap_takes_its_whole_process_group_with_it(monkeypat
     assert timed_out and code is None
     child = int(pidfile.read_text())
     assert not os.path.exists(f"/proc/{child}") or open(f"/proc/{child}/stat").read().split()[2] == "Z", child
+
+
+def test_the_repair_keeps_the_strategy_whose_deepest_violation_is_shallowest(monkeypatch, tmp_path):
+    """On crkbd the free strategy left fewer violations than the floor but four of them were shorts (D70)."""
+    outcomes = {True: {"rounds": 12, "moved": 9, "remaining": 60, "unfixable": 0, "worst_mm": 0.011},
+                False: {"rounds": 12, "moved": 9, "remaining": 51, "unfixable": 0, "worst_mm": 0.19}}
+    monkeypatch.setattr(fr, "_repair_rounds", lambda board, rules, work, rounds: dict(outcomes[fr.DRAG_FLOOR]))
+    path = _two_track_board(tmp_path, gap_mm=0.30)
+    board = kb.load_board(path)
+    report = fr.repair_clearances(board, _rules(), tmp_path / "repair")
+    assert report["strategy"] == "floor" and report["remaining"] == 60
+    outcomes[False]["worst_mm"] = 0.011  # as shallow: then the fewer wins
+    report = fr.repair_clearances(board, _rules(), tmp_path / "repair")
+    assert report["strategy"] == "free" and report["remaining"] == 51
