@@ -1106,9 +1106,9 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
                     if gain > 0.3:
                         candidates.append((ax, ay, gain))
                 done = False
-                for cx, cy, gain in candidates:
-                    step = (v.short_mm + NUDGE_EXTRA_MM) / gain
-                    if _move_checked(board, obstacles, via, cx * step, cy * step, rules, allowed=frozenset({other[0]})):
+                for cx, cy, gain in candidates:  # what blocks the via is pushed first where it is ours, as for
+                    step = (v.short_mm + NUDGE_EXTRA_MM) / gain  # a track (libresolar's +5V via between D9's
+                    if _push_chain(board, obstacles, via, cx, cy, step, rules, movable, frozenset({other[0]})):  # pad and PWM_LS)
                         moved_now += 1
                         done = True
                         break
@@ -1161,9 +1161,6 @@ def _ours(board, v: Violation) -> bool:
 # leaves 14 GND connections open. Where they do not overlap (the two `EP` pads of the smoke board's connector,
 # 11.6 mm apart) KiCad wants copper between them, and so must the router. So only the overlapping pieces
 # leave the net's pin list; they stay in the image as obstacles.
-_PINS = re.compile(r"\(pins ([^)]*)\)")
-
-
 def _pin_names(fp) -> list[str]:
     """The pin names KiCad's exporter gives a footprint's pads, in pad order: N, then N@1, N@2 for repeats."""
     seen: Counter = Counter()
@@ -1183,60 +1180,88 @@ def _touch(a, b) -> bool:
     return bool(a.GetEffectiveShape(shared[0]).Collide(b.GetEffectiveShape(shared[0]), 0))
 
 
-def joined_pins(board) -> set[str]:
-    """Pin names (`REF-N@k`) of pad pieces joined by copper to another piece of the same number: one pin per
-    connected group of pieces stays, the rest leave the router's pin lists."""
-    out: set[str] = set()
+def _inside(shape, x: int, y: int) -> bool:
+    return bool(shape.Collide(pcbnew.SHAPE_CIRCLE(pcbnew.VECTOR2I(x, y), 1), 0))
+
+
+def _common_point(sa, sb, grid: int = 12) -> tuple[int, int] | None:
+    """A point inside both shapes: the centre of their bounding boxes' intersection, else the first of a grid
+    over it (open-book's 0.2 mm fingers meet their round pad off the centre of that box)."""
+    box = sa.BBox()
+    box.Intersect(sb.BBox())
+    if box.GetWidth() <= 0 or box.GetHeight() <= 0:
+        return None
+    c = box.GetCenter()
+    if _inside(sa, c.x, c.y) and _inside(sb, c.x, c.y):
+        return (c.x, c.y)
+    for i in range(grid):
+        for j in range(grid):
+            x = box.GetLeft() + box.GetWidth() * (2 * i + 1) // (2 * grid)
+            y = box.GetTop() + box.GetHeight() * (2 * j + 1) // (2 * grid)
+            if _inside(sa, x, y) and _inside(sb, x, y):
+                return (x, y)
+    return None
+
+
+def piece_wires(board, width_mm: float) -> list[dict]:
+    """A fixed wire across every overlap of two pad pieces of one number and net, so the router sees the
+    pieces joined as KiCad's connectivity does, and keeps every piece in the net.
+
+    D61 dropped the joined pieces from the router's pin lists instead; a dropped piece is then a pad with no
+    net to the router, an obstacle it keeps the clearance from, and libresolar's USB shield (twelve pieces
+    in six overlapping groups, joined by the reference with short tracks) could not be reached: 1 of its 6
+    connections routed, "no connection was found" and "could not be inserted" for the rest. The wire runs
+    from centre to centre through a point inside both pieces, as wide as the router's width or the narrower
+    piece, whichever is less; the session file does not carry fixed wires (D57), and needs not: KiCad joins
+    the pieces by their overlap."""
+    out = []
     for fp in board.GetFootprints():
         pads = list(fp.Pads())
-        names = _pin_names(fp)
         groups: dict[str, list[int]] = {}
         for i, pad in enumerate(pads):
             groups.setdefault(pad.GetNumber(), []).append(i)
         for idx in groups.values():
-            if len(idx) < 2:
-                continue
-            parent = {i: i for i in idx}
-
-            def find(i):
-                while parent[i] != i:
-                    i = parent[i]
-                return i
-
             for a in idx:
                 for b in idx:
-                    if a < b and _touch(pads[a], pads[b]):
-                        parent[find(b)] = find(a)
-            comps: dict[int, list[int]] = {}
-            for i in idx:
-                comps.setdefault(find(i), []).append(i)
-            for members in comps.values():  # the largest piece stays the pin: a plane reaches a round pad, not
-                if len(members) < 2:  # a 0.2 mm finger walled in by the other net's fingers
-                    continue
-                keep = max(members, key=lambda i: _area(pads[i]))
-                for i in members:
-                    if i != keep:
-                        out.add(f"{fp.GetReference()}-{names[i]}")
+                    if a >= b or pads[a].GetNetCode() != pads[b].GetNetCode() or not pads[a].GetNetname():
+                        continue
+                    pa, pb = pads[a], pads[b]
+                    shared = [l for l in pa.GetLayerSet().CuStack() if pb.IsOnLayer(l)]
+                    if not shared or not _touch(pa, pb):
+                        continue
+                    layer = shared[0]
+                    sa, sb = pa.GetEffectiveShape(layer), pb.GetEffectiveShape(layer)
+                    ca, cb = pa.GetPosition(), pb.GetPosition()
+                    via = _common_point(sa, sb)
+                    if via is None:
+                        continue
+                    narrow = min(kb.mm(v) for pad in (pa, pb) for v in (pad.GetSize(layer).x, pad.GetSize(layer).y))
+                    out.append({"net": pa.GetNetname(), "layer": board.GetLayerName(layer),
+                                "width_mm": round(min(width_mm, narrow), 4),
+                                "points_mm": [(kb.mm(ca.x), kb.mm(ca.y)), (kb.mm(via[0]), kb.mm(via[1])), (kb.mm(cb.x), kb.mm(cb.y))],
+                                "reference": fp.GetReference(), "pad": pa.GetNumber()})
     return out
 
 
-def _area(pad) -> float:
-    layers = pad.GetLayerSet().CuStack()
-    size = pad.GetSize(layers[0] if layers else pcbnew.F_Cu)
-    return kb.mm(size.x) * kb.mm(size.y)
+def _dsn_name(name: str) -> str:
+    return name if re.fullmatch(r"[A-Za-z0-9_+./-]+", name) else '"' + name.replace('"', "") + '"'
 
 
-def drop_pins(dsn_text: str, names: set[str]) -> str:
-    """Remove the named pins from every net's pin list in the network section."""
-    start = dsn_text.find("(network")
-    if start < 0 or not names:
+def piece_wires_dsn(dsn_text: str, wires: list[dict]) -> str:
+    """Write the piece wires into the wiring section as fixed wires (micrometres, y negated, as KiCad writes)."""
+    if not wires:
         return dsn_text
-
-    def strip(m: re.Match) -> str:
-        kept = [pin for pin in m.group(1).split() if pin.replace('"', "") not in names]
-        return "(pins " + " ".join(kept) + ")"
-
-    return dsn_text[:start] + _PINS.sub(strip, dsn_text[start:])
+    lines = []
+    for w in wires:
+        pts = "  ".join(f"{x * 1000:.1f} {-y * 1000:.1f}" for x, y in w["points_mm"])
+        lines.append(f'    (wire (path {_dsn_name(w["layer"])} {w["width_mm"] * 1000:.1f}  {pts})(net {_dsn_name(w["net"])})(type fix))')
+    block = "\n".join(lines) + "\n"
+    i = dsn_text.find("  (wiring\n")
+    if i >= 0:
+        i += len("  (wiring\n")
+        return dsn_text[:i] + block + dsn_text[i:]
+    end = dsn_text.rstrip().rfind(")")
+    return dsn_text[:end] + "  (wiring\n" + block + "  )\n" + dsn_text[end:]
 
 
 # --- supply nets as pours (plan, milestone A) -------------------------------------------------------------------
@@ -1603,7 +1628,7 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
-    text = drop_pins(typed_clearances(out.read_text(), d), joined_pins(board))
+    text = piece_wires_dsn(typed_clearances(out.read_text(), d), piece_wires(board, d.width_mm))
     out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm)))
     return d, renamed
 

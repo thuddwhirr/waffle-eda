@@ -350,29 +350,33 @@ NETWORK = """  (network
 """
 
 
-def test_only_pad_pieces_that_touch_leave_the_pin_list():
-    """The named pins go, quoted references included; everything else stays, class lists untouched."""
-    text = fr.drop_pins(NETWORK, {"B3-2@1", "B3-2@2", "USB-C1-0@1", "B5-1@1", "B5-1@2", "B5-1@3"})
-    assert '(pins B3-2 C1-2 "USB-C1"-0 U3-49 U3-49@3)' in text
-    assert "(pins B5-1 R1-1)" in text
-    assert text.count("(class kicad_default") == 1
-    assert fr.drop_pins(NETWORK, set()) == NETWORK
-
-
-def test_the_buttons_fingers_are_joined_and_the_connectors_two_eps_are_not():
+def test_pad_pieces_that_overlap_get_a_fixed_wire_and_stay_in_the_net():
+    """D61 dropped the joined pieces from the pin lists; to the router a dropped piece is a pad with no net,
+    an obstacle, and libresolar's USB shield could not be reached (D73). A wire across each overlap tells the
+    router what KiCad's connectivity knows."""
     ref = _ref("open-book-c1")
     bare, _ = rebuild.strip_all(ref)
-    joined = fr.joined_pins(kb.load_board(bare))
-    b5 = sorted(n for n in joined if n.startswith("B5-"))
-    assert len(b5) == 7, b5  # 9 pieces, two round pads stay as pins
     board = kb.load_board(bare)
-    fp = board.FindFootprintByReference("B5")
-    names = fr._pin_names(fp)
-    round_pads = {f"B5-{names[i]}" for i, p in enumerate(fp.Pads()) if min(kb.mm(p.GetSize(p.GetLayerSet().CuStack()[0]).x), kb.mm(p.GetSize(p.GetLayerSet().CuStack()[0]).y)) > 2}
-    assert len(round_pads) == 2 and not (round_pads & set(b5)), (round_pads, b5)
+    wires = fr.piece_wires(board, 0.2997)
+    b5 = [w for w in wires if w["reference"] == "B5"]
+    assert len(b5) == 7 and len({w["net"] for w in b5}) == 2  # 9 pieces: the fingers of two nets on their two round pads
+    for w in b5:
+        assert 0 < w["width_mm"] <= 0.2997 and len(w["points_mm"]) == 3
     ref = _ref("tinkerforge-temperature")
     bare, _ = rebuild.strip_all(ref)
-    assert fr.joined_pins(kb.load_board(bare)) == set()  # P1's two EP pads are 11.6 mm apart: both routed
+    assert fr.piece_wires(kb.load_board(bare), 0.2997) == []  # P1's two EP pads are 11.6 mm apart: both routed
+    ref = _ref("libresolar-mppt-2420")
+    bare, _ = rebuild.strip_all(ref)
+    p3 = [w for w in fr.piece_wires(kb.load_board(bare), 0.25) if w["reference"] == "P3"]
+    assert len(p3) == 6 and {w["net"] for w in p3} == {"Net-(C25-Pad1)"}  # six overlaps among the twelve shield pieces
+
+
+def test_the_piece_wires_go_into_the_wiring_section_as_fixed_wires():
+    wires = [{"net": "Net-(C25-Pad1)", "layer": "Top", "width_mm": 0.25, "points_mm": [(1.0, 2.0), (1.5, 2.5), (2.0, 3.0)], "reference": "P3", "pad": "6"}]
+    text = fr.piece_wires_dsn(DSN, wires)
+    assert '(wire (path Top 250.0  1000.0 -2000.0  1500.0 -2500.0  2000.0 -3000.0)(net "Net-(C25-Pad1)")(type fix))' in text
+    assert text.count("(wiring") == 1 and text.index("(wiring") > text.index("(network")
+    assert fr.piece_wires_dsn(DSN, []) == DSN
 
 
 # --- supply nets as pours (item 4) ----------------------------------------------------------------------------
