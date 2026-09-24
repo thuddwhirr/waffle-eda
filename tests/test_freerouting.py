@@ -212,8 +212,8 @@ def test_pads_with_a_clearance_override_become_keepouts_grown_by_it():
     keepouts = fr.pad_keepouts(board, clearance_mm=0.1261)
     by_ref = {k.reference: k for k in keepouts}
     assert sorted(by_ref) == ["FID1", "FID2", "FID3", "FID4", "FID5", "FID6", "MH1", "MH2", "MH3", "MH4"]
-    assert by_ref["MH1"].grow_mm == pytest.approx(1.85, abs=1e-4)  # the whole override, see the module
-    assert by_ref["FID1"].grow_mm == pytest.approx(1.016, abs=1e-4)
+    assert by_ref["MH1"].grow_mm == pytest.approx(1.85 - 0.1261, abs=1e-4)  # the router keeps the rest itself
+    assert by_ref["FID1"].grow_mm == pytest.approx(1.016 - 0.1261, abs=1e-4)
     assert by_ref["MH1"].layers == ("F.Cu", "B.Cu") and by_ref["FID1"].layers == ("F.Cu",)
     text = fr.keepouts_dsn(DSN, keepouts)
     structure = text[text.index("(structure"):text.index("(placement")]
@@ -228,6 +228,6 @@ def test_the_smoke_board_carries_overrides_too_and_an_override_below_the_rule_is
     bare, _ = rebuild.strip_all(ref)
     board = kb.load_board(bare)
     keepouts = fr.pad_keepouts(board, clearance_mm=0.1972)
-    assert sorted((k.reference, round(k.grow_mm, 3)) for k in keepouts) == \
+    assert sorted((k.reference, round(k.grow_mm + 0.1972, 3)) for k in keepouts) == \
         [("Fiducial_Mark", 0.65), ("Fiducial_Mark", 0.65), ("U3", 0.899), ("U4", 0.899), ("U5", 0.899), ("U6", 0.899)]
     assert fr.pad_keepouts(board, clearance_mm=0.9) == []

@@ -234,9 +234,9 @@ def typed_clearances(dsn_text: str, d: DsnRules) -> str:
 # KiCad's Specctra export carries the net-class clearance only. A pad with its own clearance (a mounting hole at
 # 1.85 mm, a fiducial at 1.016 mm on `olimex-esp32c3-devkit`) is routed past at the ordinary clearance, and the
 # gate's DRC then fails every track that came near. So every such pad goes into the DSN as a keepout circle
-# around the pad grown by the whole override, on each copper layer the pad is on. Grown by the whole override
-# rather than the override less the clearance, because whether the router keeps its clearance from a keepout
-# edge is not known; the cost is a little room around ten pads.
+# around the pad grown by the override less the clearance, on each copper layer the pad is on: the router keeps
+# its clearance from a keepout edge (measured on `olimex-esp32c3-devkit`: 0 hole violations at either growth,
+# 8 fewer clearance violations at the smaller one).
 @dataclass(frozen=True)
 class PadKeepout:
     reference: str
@@ -244,7 +244,7 @@ class PadKeepout:
     x_mm: float
     y_mm: float
     radius_mm: float  # the pad's own half extent, before growing
-    grow_mm: float  # the override
+    grow_mm: float  # the override less the clearance the router keeps anyway
     layers: tuple  # copper layer names
 
 
@@ -275,7 +275,8 @@ def pad_keepouts(board, clearance_mm: float) -> list[PadKeepout]:
             radius = max(kb.mm(size.x), kb.mm(size.y), kb.mm(drill.x), kb.mm(drill.y)) / 2
             pos = pad.GetPosition()
             out.append(PadKeepout(reference=fp.GetReference(), pad=pad.GetNumber(), x_mm=kb.mm(pos.x),
-                                  y_mm=kb.mm(pos.y), radius_mm=radius, grow_mm=override, layers=layers))
+                                  y_mm=kb.mm(pos.y), radius_mm=radius, grow_mm=round(override - clearance_mm, 4),
+                                  layers=layers))
     return out
 
 
