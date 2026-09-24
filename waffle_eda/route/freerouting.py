@@ -402,18 +402,20 @@ def _with_ends(board, item) -> list:
 def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, keep: bool = True,
                   allowed: frozenset | None = None) -> bool:
     """Move a track (and the ends it shares) or a via (and the track ends on it) and keep the move only if it
-    makes no new collision under the exact collision index. The item itself may keep colliding only with
-    ``allowed``: the copper it is moving away from, whose collision shrinks (with no ``allowed``, anything it
-    collided with before). The dragged track ends may keep what they had. A collision the move deepens is
-    otherwise indistinguishable from one it resolves, and open-book's repair drove one to 0.036 mm that way."""
+    makes no new collision under the exact collision index. The moved copper, dragged ends included, may keep
+    colliding only with ``allowed``: the copper it is moving away from, whose collision shrinks (with no
+    ``allowed``, anything it collided with before). A collision the move deepens is otherwise
+    indistinguishable from one it resolves; open-book's repair drove one to 0.036 mm that way, and the
+    esp32c3's to 0.057 through a dragged end."""
     moved = _with_ends(board, item)
     before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     own = item.m_Uuid.AsString()
     for m in moved:
         obstacles.remove(m)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
-    clean = all(_hit_ids(obstacles, m, rules) <= (allowed if (allowed is not None and m.m_Uuid.AsString() == own)
-                                                 else before[m.m_Uuid.AsString()]) for m in moved)
+    # the dragged ends obey the same rule: kept collisions deepened through them (D62's 0.057 mm on the esp32c3)
+    clean = all(_hit_ids(obstacles, m, rules) <= (allowed if allowed is not None else before[m.m_Uuid.AsString()])
+                for m in moved)
     if not clean or not keep:
         _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
     for m in moved:
@@ -512,7 +514,7 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
     for round_no in range(1, rounds + 1):
         report["rounds"] = round_no
         violations = [v for v in drc_violations(board, rules, work_dir / f"round{round_no}")
-                      if v.type in ("clearance", "hole_clearance")]
+                      if v.type in ("clearance", "hole_clearance") and _ours(board, v)]
         report["remaining"] = len(violations)
         if not violations:
             return report
@@ -629,9 +631,15 @@ def repair_clearances(board, rules, work_dir: Path, rounds: int = REPAIR_ROUNDS)
         if moved_now == 0:
             break
     violations = [v for v in drc_violations(board, rules, work_dir / "final")
-                  if v.type in ("clearance", "hole_clearance")]
+                  if v.type in ("clearance", "hole_clearance") and _ours(board, v)]
     report["remaining"] = len(violations)
     return report
+
+
+def _ours(board, v: Violation) -> bool:
+    """Whether a violation involves copper the router laid (a track or via); a pair of fixed items is the
+    placement's, as `bench.rebuild.board_facts` grades it, and no move can change it."""
+    return any(d.startswith(("Track", "Via", "Arc")) for _u, d, _p in v.items)
 
 
 # --- pads with the same number (D61) ------------------------------------------------------------------------
