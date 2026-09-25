@@ -61,7 +61,9 @@ cannot connect a plane net itself (with no plane in the DSN it routes the net as
 plane handed over it vias no SMD pad to), so `route/planes.py` lays a feed beside every plane-net SMD pad with
 room (88 of 105 on upduino: a fixed via the clearance from the pad and a stub to it, in a thermal pad after
 the import), and with the GND plane handed over on In1 typed `power` and In2 left to the router, 30 passes
-reach 81 of 86, DRC clean, GND and +3V3 whole, no track on In1. Both inner layers kept for planes do not
+reach 81 of 86, DRC clean, GND and +3V3 whole, no track on In1 (the gate row under that configuration, run
+2026-09-25: **FAIL, 81 of 86**, 924 s, the same imported and final digests as the rung's own run, so D65's
+determinism holds). Both inner layers kept for planes do not
 converge (60 of 86); the jar's window is what wrote the empty sessions (`WAFFLE_ROUTER_GUI=0`). What stays
 open is five signal nets: QFN pads with another net's track laid across the exit within 0.4 mm before their
 turn (8 pads on U2, U3 and J3). Straight fixed stubs out of every pad of a 0.5 mm package made it worse (71 of
