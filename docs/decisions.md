@@ -381,6 +381,18 @@ exports a zone laid before the export as a DSN `(plane NET (polygon LAYER ...))`
 by via (the salvaged exporter's way). The reference routes 273 tracks on In2 and 11 on In1 beside its planes,
 so the layers stay `signal`. Measurement; the change it asks for is the next step.
 
+**D81. The planes stay out of the router's DSN on class B; what stays open on `pico-ice-rev3`** (2026-09-25,
+four passes each, `scripts/_run_rung_scratch.py`). The reference's inner-layer pours handed over before the
+export: on `signal` layers Freerouting 2.4.1 calls each "a dedicated power plane" (a conduction area over half
+the board) and writes an empty session, three runs; typed `power`, In1 and In2 both: 132 and 119 items
+unrouted after passes 1 and 2 against 56 and 57 with no planes; In1 (GND) alone: 102, 83, 73, 76 after passes 1
+to 4, 68 of 95 nets, 51 missing links, 9 clearances, GND itself in 3 pieces. No planes, every pour laid after
+the import (class A's way, D62): 56, 57, 43, 47; 72 of 95 nets, 30 missing links, 1 clearance, 517 s. The 30
+missing links are all signals of the two QFNs (U3, the RP2040 at 0.4 mm pitch; U6, the iCE40 at 0.5) to each
+other and to the headers J2 and J3, and the router lays 533 of its 1577 tracks on In1, which the reference
+keeps as its GND plane (11 tracks). So the gate hands over no planes (`WAFFLE_PLANES` selects the others for a
+measurement), and the rung's cases are the fine-pitch exits and the plane layers. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
