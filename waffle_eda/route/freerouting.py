@@ -1653,6 +1653,7 @@ class FreeroutingResult:
     rules: DsnRules
     renamed: int
     stubs: int = 0
+    feeds: int = 0  # plane feeds laid before the export (route/planes.py, D85)
     pours: int = 0
     joined: int = 0  # tracks laid between a pad's piece groups the router left apart
     widened: int = 0  # tracks the router necked below the rule, set back to it
@@ -1679,7 +1680,8 @@ class FreeroutingResult:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
                 f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
-                f"{self.widened} widened, {self.joined} joined, pruned {self.pruned or 'none'}, repair {self.repair or 'none'}; dsn {self.dsn_md5} "
+                f"{self.widened} widened, {self.joined} joined, {self.feeds} feeds, pruned {self.pruned or 'none'}, "
+                f"repair {self.repair or 'none'}; dsn {self.dsn_md5} "
                 f"imported {self.imported} "
                 f"final {self.digest}; "
                 f"{self.seconds:.0f}s")
@@ -1752,7 +1754,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
-                fanout: bool = FANOUT) -> FreeroutingResult:
+                fanout: bool = FANOUT, feeds: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1761,19 +1763,29 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     writes them as DSN `(plane ...)` entries, their layers are typed `power` in the DSN (on a `signal` layer
     the router calls the plane a dedicated power plane and writes an empty session, pitfalls above), and the
     router connects their nets by via instead of routing them as tracks (D80, D81). ``fanout`` runs the router's
-    own fanout stage first (a via beside every SMD pad; off by default, D57)."""
+    own fanout stage first (a via beside every SMD pad; off by default, D57). ``feeds`` lays a fixed via and
+    stub beside every SMD pad of the planes' nets before the export (`route/planes.py`, D85), so the planes
+    connect those pads and the router routes only the pads with no room for one."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = work_dir / "board.dsn", work_dir / "board.ses", work_dir / "run.log"
     laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm) if stubs else []
     lay_stubs(board, laid)
+    laid_feeds = []
     if planes:
         hole_rule_areas(board, rules)
-        laid_planes = add_pours(board, planes, rules)
+        # the fill keeps its clearance from a via's pad, not its hole (D62): the plane's clearance allows for
+        # the smallest ring the rules give a via, since the vias come after the plane here
+        laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
+        if feeds:
+            from waffle_eda.route import planes as feedlib
+            laid_feeds = feedlib.plane_feeds(board, rules, {p["net"] for p in planes})
+            feedlib.lay_feeds(board, laid_feeds)
+            say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
-    if laid:
+    if laid or laid_feeds:
         dsn.write_text(fix_wires(dsn.read_text()))
     if planes:
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
@@ -1787,13 +1799,17 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                               fanout=fanout)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
-                               exported_layers=layers,
+                               feeds=len(laid_feeds), exported_layers=layers,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
                                exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
     if ses.is_file():
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
+        if laid_feeds:  # the session carries no fixed copper (D57): the feeds come back before the pruning
+            from waffle_eda.route import planes as feedlib
+            relaid = feedlib.lay_feeds(board, laid_feeds)
+            say(f"plane feeds re-laid after the import: {len(relaid)} items")
         result.joined = len(join_piece_groups(board, rules))
         result.pruned = prune_dangling(board)
         result.widened = widen_tracks(board, d.width_mm)
