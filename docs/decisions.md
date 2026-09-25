@@ -537,6 +537,37 @@ a 0.5 mm patch beyond each pin's end kept as a keepout on its layer: the stitchi
 router 48, 131, 32; 64 of 86 with a clearance. The reference's pour reaches its pins because the designer's
 routing leaves the ring free; ours will not without a rule for it. Option kept (`WAFFLE_POUR_PINS=1`). Measurement.
 
+**D96. The router connects a plane on a `signal` layer itself; typed `power`, the plane is unreachable**
+(2026-09-25, `scripts/rung.py upduino-v3.01 signal 4 900 [stitch]`, `route_board(feeds_mode="none")`). 2.4.1
+forces a non-signal layer inactive (`AutorouteControl`: "is a dedicated power plane and cannot be routed"), so no
+via can target a plane there ("layers are disabled" at every plane pad), which is what the feeds of D85 answered.
+Both planes on `signal` layers, no feed, every pin kept: the router connects the plane nets itself, at four
+passes 64 of 86 (32 unrouted, 25 standing violations, 42 failed insertions, 38 walled in) against the fixed
+feeds' 67 (51, 127, 38, 14); GND whole but the thermal pad U2-49 (D98), +3V3 whole, 198 vias. The price: 290
+tracks (455 mm) on In1 and 130 (400 mm) on In2, through the planes, where the reference has 8 (44 mm) and 90
+(236 mm). With the stitching after and the preferred directions flipped by D97's block: 68 of 86, 29 unrouted,
+25, 43, 21; In1 318 tracks, 674 mm. The failed insertions are the same wall at U3 in every form. Measurement.
+
+**D97. Per-layer trace costs cannot be set from outside the 2.4.1 jar** (2026-09-25, `route_board(layer_trace_costs=
+{"In1.Cu": 30, "In2.Cu": 30})`, `autoroute_settings_dsn`). The DSN's `(autoroute_settings ...)` block (via, plane-via
+and ripup costs; `layer_rule` active, direction, costs) is read only before the first plane or keepout scope:
+`Structure.readScope` builds its layer structure at the first of those and then skips the block, whose closing
+bracket ends the structure and drops every pin (0 unrouted items; D57's finding). Placed after the boundary, the
+costs were read and then overwritten: `RouterSettings.applyBoardSpecificOptimizations` sets every layer's trace
+costs from the board (its log: In1 "30.0 -> 1.0" and 1.4 against, In2 1.0 and 3.8, F.Cu 1.8 and 4.6, B.Cu 1.8 and
+2.2), keeping only the directions; the settings JSON's arrays for them are transient. The jar prices the plane
+layer as its cheapest, hence D96's 674 mm on In1; outside the jar the only lever is `routable: false`, the
+`power` case. The block stays as a tool for a fork that respects it. Measurement.
+
+**D98. A filled zone of another net is not an obstacle to a feed; taking it as one left the stitching no site**
+(2026-09-25, `route/planes.py`). Since dbd246d a feed's via was rejected where another net's fill lay within the
+ring plus the clearance on any layer, and a stub where one lay on its layer. On a board with a plane of another
+net a via always passes through it: on D96's board the in-pad site of U2-49 was rejected by the +3V3 plane on
+In2, and with the fills no longer copper the site is found. The refill clears a pour around another net's via or
+track (that board's 197 vias through both planes: 0 electrical violations). The constraint sat behind D91's after
+form (38 of 88 feeds found room) and D95's islands (13 of 15); both are to be re-measured. Test corrected to the
+legal target: `test_another_nets_pour_does_not_move_a_stitch_via`. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

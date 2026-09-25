@@ -1790,6 +1790,35 @@ def type_layers_power(dsn_text: str, layers: list[str]) -> str:
     return dsn_text
 
 
+def autoroute_settings_dsn(dsn_text: str, layers: list[str], trace_costs: dict[str, float], via_costs: int,
+                           plane_via_costs: int = 5, ripup_costs: int = 100) -> str:
+    """Add an `(autoroute_settings ...)` block to the structure right after the boundary, in the form the jar's
+    own DSN writer uses (`AutorouteSettings.writeScope`): every layer active, the preferred direction
+    alternating as the jar's default does (vertical on even indexes), and the trace costs of the layers named
+    in ``trace_costs`` raised in both directions (D96: a plane layer left `signal` so the router can drop vias
+    into the plane, but costly to run tracks on). The block must come before the first plane or keepout scope:
+    the loader (`Structure.readScope`, 2.4.1) reads it only while its layer structure is still unbuilt, and a
+    plane or keepout builds it; after one, the block is not read, its closing bracket ends the structure
+    scope, and every pin is lost (D57's finding, and measured again here: 0 unrouted items)."""
+    lines = ["    (autoroute_settings", "      (autoroute on)", "      (postroute off)", "      (vias on)",
+             f"      (via_costs {via_costs})", f"      (plane_via_costs {plane_via_costs})",
+             f"      (start_ripup_costs {ripup_costs})"]
+    for i, layer in enumerate(layers):
+        cost = trace_costs.get(layer)
+        along, against = (cost, cost) if cost is not None else (1.0, 2.5)
+        name = f'"{layer}"' if any(c in layer for c in " ()") or not layer.isascii() else layer
+        lines += [f"      (layer_rule {name}", "        (active on)",
+                  f"        (preferred_direction {'horizontal' if i % 2 == 1 else 'vertical'})",
+                  f"        (preferred_direction_trace_costs {along})",
+                  f"        (against_preferred_direction_trace_costs {against})", "      )"]
+    lines.append("    )")
+    start = dsn_text.find("    (boundary\n")
+    end = dsn_text.find("\n    )\n", start) + len("\n    )\n") if start >= 0 else -1
+    if start < 0 or end < len("\n    )\n"):
+        raise ValueError("no (boundary ...) block in the structure section of the DSN")
+    return dsn_text[:end] + "\n".join(lines) + "\n" + dsn_text[end:]
+
+
 def fix_wires(dsn_text: str) -> str:
     """Type every exported wire as fixed: on a problem board the only wires at export time are the stubs."""
     return dsn_text.replace("(type route)", "(type fix)")
@@ -1957,7 +1986,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
                 fanout: bool = FANOUT, feeds: set[str] | None = None,
                 stub_pads: set[str] | None = None, gui: bool = GUI,
-                feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False) -> FreeroutingResult:
+                feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False,
+                layer_trace_costs: dict[str, float] | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1981,7 +2011,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     no feed left in it, the stubs laid after the import. ``via_in_pad`` puts a feed's via in any pad it fits
     (D93, the fab's filled-and-capped option), laid after the import as a thermal pad's is. ``pour_pins_rule``
     leaves a fine-pitch pin of a plane net to the pour of its own layer (:func:`pour_pins`, D95): no feed
-    beside it, its pin out of the router's network, the pour and the stitching connecting it after the import."""
+    beside it, its pin out of the router's network, the pour and the stitching connecting it after the import.
+    ``feeds_mode`` "none" lays no feed and drops no pin: the router connects the plane nets itself, which it
+    does when the plane's layer stays `signal` (D96), and the stitching feeds what it leaves.
+    ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
+    block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
+    `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -2001,12 +2036,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         # the smallest ring the rules give a via, since the vias come after the plane here
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
-    if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias"):
-        raise ValueError(f"feeds_mode {feeds_mode!r}: fixed, routable, after, reserved or vias")
+    if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias", "none"):
+        raise ValueError(f"feeds_mode {feeds_mode!r}: fixed, routable, after, reserved, vias or none")
     left_to_pour: set[str] = pour_pins(board, pours or [], set(feeds)) if feeds and pour_pins_rule else set()
     if left_to_pour:
         say(f"fine-pitch pins left to their layer's pour, no feed: {len(left_to_pour)}")
-    if feeds and feeds_mode != "after":
+    if feeds and feeds_mode not in ("after", "none"):
         from waffle_eda.route import planes as feedlib
         # the feeds slide around the copper already on the board, the exit stubs above included: placed
         # against the pads alone, four GND feeds landed on or within 0.13 mm of the closure loop's five stubs
@@ -2025,7 +2060,11 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
-    in_pad = [x for x in laid_feeds if x.in_pad] if feeds_mode != "after" else []
+    if layer_trace_costs:
+        dsn.write_text(autoroute_settings_dsn(dsn.read_text(), [n for _l, n in kb.copper_layers(board)], layer_trace_costs,
+                                              int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))))
+        say(f"trace costs raised in the DSN: {layer_trace_costs}")
+    in_pad = [x for x in laid_feeds if x.in_pad] if feeds_mode not in ("after", "none") else []
     if in_pad:  # a via in a pad is laid after the import (D85, D93): the router keeps off its site on the other
         copper_names = [name for _lid, name in kb.copper_layers(board)]  # layers, or lays tracks through it (15
         sites = [PadKeepout("feed", x.pad, x.via[0], x.via[1], d.via_diameter_mm / 2, 0.0,  # shorts with 54 in-pad
@@ -2065,7 +2104,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                                         (board.GetLayerName(pad.GetLayerSet().CuStack()[0]),)))
         dsn.write_text(keepouts_dsn(dsn.read_text(), sites))
         say(f"pin exits reserved for the pour: {len(sites)}")
-    if feeds:
+    if feeds and feeds_mode != "none":
         if feeds_mode == "after":  # the plane nets are not the router's at all: the feeds, pours and stitching
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))  # after the import connect them
         elif feeds_mode == "reserved":  # likewise, except the pads no feed reaches: they stay, to be routed to a
@@ -2098,7 +2137,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
-        if laid_feeds and feeds_mode != "after":  # the session carries no fixed copper (D57): the feeds come
+        if laid_feeds and feeds_mode not in ("after", "none"):  # the session carries no fixed copper (D57): the feeds come
             from waffle_eda.route import planes as feedlib  # back before the pruning; routable ones come back
             relaid = feedlib.lay_feeds(board, [x for x in laid_feeds if x.in_pad]  # in the session as the router
                                        if feeds_mode == "routable" else laid_feeds)  # left them, so only the vias

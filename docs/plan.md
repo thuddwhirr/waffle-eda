@@ -76,6 +76,28 @@ the class A configuration's 72 (D80 to D82), so on pico-ice the fed GND plane co
 the insertion failure is the case on both rungs. Class B has had two sessions (PR #4 and this one); the
 fourth without a pass writes the review the ladder rules call for, not a fifth iteration.
 
+**The third class B session (D96 to D98) measured the router's own plane mode.** Asked whether Freerouting
+supports planes better than our feeds, the answer is yes and no (D96): a plane on a `signal` layer the router
+connects itself, every pad, no feed, and its standing violations fall from 127 to 25; a plane on a `power`
+layer it cannot reach at all (the layer is forced inactive), which is what the feeds of D85 were for. The count
+does not move (64 and 68 of 86 at four passes for the fixed feeds' 67; the same failed insertions at U3), and
+the router lays 674 mm of track through the GND plane, since the jar prices the plane layer as its cheapest and
+overwrites any per-layer cost handed to it (D97: the DSN block is read, then `applyBoardSpecificOptimizations`
+replaces it; the settings file has no field for it). A wrong constraint of our own was found on the way (D98):
+another net's fill counted as copper, so on a board with a plane of another net a stitch via had no site
+anywhere; fixed, with its test corrected, and behind D91's after form and D95's islands, both to be
+re-measured. **The next step**, in this order: (1) the plane mode's verdict row, `WAFFLE_ROUTER_GUI=0 python3
+scripts/rung.py upduino-v3.01 signal 30 2400 stitch` (running at the time of this commit, not yet measured);
+(2) the after form at four passes with D98's fix (`rung.py upduino-v3.01 gnd 4 900 feeds after`; D91 measured
+it at 10 unrouted with 38 feeds finding room), then D95's pour pins, since both were measured under the
+wrong constraint; (3) the owner's decision on the fork: the smallest change with a measurement behind it is
+to have `applyBoardSpecificOptimizations` keep the trace costs the DSN sets (D97), which makes the plane mode
+usable (planes reachable, tracks priced off them); the build through the proxy is untried. The class B gate's
+default is unchanged (fixed feeds on a `power` plane); `feeds_mode="none"` (`stitch` in rung) and
+`layer_trace_costs` are options. Class A ran once with the wrapper's changes in place (`python3 scripts/gate.py a`,
+2026-09-25 22:52 UTC: PASS 5 of 5); the `planes.py` change came after that run and is outside class A's path,
+which never imports it (feeds off).
+
 **Freerouting's source is at hand.** The owner forked it to <https://github.com/thuddwhirr/freerouting>, for
 reading and for changes if a measurement ever asks for one; `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1
 https://github.com/thuddwhirr/freerouting /home/user/thuddwhirr/freerouting` puts it on disk (a fresh container
@@ -111,7 +133,7 @@ python3 scripts/design.py run temperature-sensor      # re-runs all six stages, 
                                                       # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
-                                        # board, so `-m "not parked and not bench"` is the quick run, 134 tests in a minute
+                                        # board, so `-m "not parked and not bench"` is the quick run, 137 tests in a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
@@ -336,8 +358,8 @@ rising order; the target board to fab outputs.
 | `scripts/gate.py` | the gates: `a`, `b`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work); each re-route class runs under its own configuration (`CLASS_A`, `CLASS_B`: planes, feeds, stubs, rounds, window; D86), overridable by `WAFFLE_*` for a measurement, and the row names what it ran under |
 | `scripts/design.py` | `run <name>` (stages in order, stopping at a failing gate), `status <name>` (each gate, what waits on the owner) |
 | `scripts/insertion_stops.py` | where a run's failed insertions stopped (D90): the jar's "insert trace failed" lines read back onto the routed board, the nearest copper by kind and the corridor at each stop |
-| `scripts/rung.py` | one class B gate row with the plane handling, the feeds and their form (`loose`, `after`, `reserved`, `vias`), the stubs, the router's fanout stage and the closure loop's rounds selectable (`rounds=N`, `open=<board>`, `exits=...`), for iterating on a rung under a short budget (D77, D81 to D91) |
-| `tests/` | 280 tests: 134 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
+| `scripts/rung.py` | one class B gate row with the plane handling, the feeds and their form (`stitch` for none, D96; `loose`, `after`, `reserved`, `vias`; `costs=L:C,...` for D97's block), the stubs, the router's fanout stage and the closure loop's rounds selectable (`rounds=N`, `open=<board>`, `exits=...`), for iterating on a rung under a short budget (D77, D81 to D91) |
+| `tests/` | 283 tests: 137 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)

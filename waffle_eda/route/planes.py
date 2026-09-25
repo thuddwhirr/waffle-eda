@@ -148,16 +148,10 @@ class _Search:
 
     def __init__(self, board, rules, width_mm: float, via_mm: float, drill_mm: float, copper: bool = False):
         self.rects = _rects(board, copper)
-        # a filled zone's copper, by net and layer: a via must not land in another net's pour
-        self.fills: list[tuple[int, int, object]] = []
-        if copper:
-            for z in board.Zones():
-                if z.GetIsRuleArea() or not z.GetNetCode():
-                    continue
-                for lid in z.GetLayerSet().CuStack():
-                    poly = z.GetFilledPolysList(lid)
-                    if poly.OutlineCount():
-                        self.fills.append((z.GetNetCode(), lid, poly))
+        # A filled zone of another net is not an obstacle: the refill clears the pour around a via or a track
+        # of another net (the routed board's vias through both planes score 0 electrical violations). Taking
+        # the fills as copper (2026-09-25 to D98) left a via no site anywhere on a board with a plane of another
+        # net, since a via always passes through it: the stitching found no room and the after form 38 sites.
         self.clear = rules.clearance_mm + MARGIN_MM
         self.hole = rules.hole_to_copper_mm + MARGIN_MM
         self.edge = rules.edge_clearance_mm + MARGIN_MM
@@ -200,10 +194,6 @@ class _Search:
                     return False
             elif d < 2 * r + self.clear or d < r + self.drill_r + self.hole:
                 return False
-        point = pcbnew.VECTOR2I(kb.nm(p[0]), kb.nm(p[1]))
-        for f_net, _lid, poly in self.fills:
-            if f_net != net and poly.Collide(point, kb.nm(r + self.clear)):
-                return False
         return True
 
     def stub_clear(self, net: int, a: tuple[float, float], b: tuple[float, float], rects: list[_Rect],
@@ -225,11 +215,6 @@ class _Search:
             for o_net, q in self.placed:
                 if o_net != net and math.hypot(q[0] - p[0], q[1] - p[1]) < half + self.via_r + self.clear:
                     return False
-            if self.fills and layer is not None:
-                point = pcbnew.VECTOR2I(kb.nm(p[0]), kb.nm(p[1]))
-                for f_net, lid, poly in self.fills:
-                    if f_net != net and lid == layer and poly.Collide(point, kb.nm(half + self.clear)):
-                        return False
         return True
 
 

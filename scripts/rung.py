@@ -2,7 +2,7 @@
 """One class B gate row on one reference, with the plane handling and the escape stubs selectable: the tool
 for iterating on a rung under a short budget (D77), where `gate.py b <key>` is the verdict.
 
-    python3 scripts/rung.py <key> <mode> <passes> <timeout_s> [stubs] [fanout] [feeds] [loose|after|reserved|vias] [inpad] [pourpins] [rounds=N] [open=<board>]
+    python3 scripts/rung.py <key> <mode> <passes> <timeout_s> [stubs] [fanout] [feeds] [loose|after|reserved|vias|stitch] [inpad] [pourpins] [costs=L:C,...] [rounds=N] [open=<board>]
 
     mode: none    no planes in the DSN, every recorded pour laid after the import (class A's way; the gate's default)
           signal  the inner-layer pours before the export on signal layers (broken: the router calls the layer a
@@ -20,6 +20,10 @@ for iterating on a rung under a short budget (D77), where `gate.py b <key>` is t
            import where the keepouts held their room (D91)
     vias: the feed vias alone fixed in the DSN, the fed pads out of the network and the pads with no feed
            left in it, the stubs laid after the import (D91)
+    stitch: no feed before the router and no pin dropped: the router connects the plane nets itself (mode
+           signal, D96), the stitching feeds what it leaves
+    costs=In1.Cu:30,...: the router's trace costs on the named layers, both directions, through an
+           autoroute_settings block in the DSN (D96: tracks kept off a plane's layer that stays signal)
     inpad: a feed's via in any pad it fits (D93: the fab's filled-and-capped option), not only a thermal pad
     pourpins: a fine-pitch pin of a plane net left to the pour of its own layer, no feed, its pin out of the
            router's network (D95: the reference's way at U3's GND pins)
@@ -42,14 +46,15 @@ from waffle_eda.route import freerouting as fr
 
 key, mode, passes, timeout_s = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4])
 options = {a.split("=", 1)[0]: (a.split("=", 1)[1] if "=" in a else True) for a in sys.argv[5:]}
-unknown = set(options) - {"stubs", "fanout", "feeds", "loose", "after", "reserved", "vias", "inpad", "pourpins", "rounds", "open", "exits"}
+unknown = set(options) - {"stubs", "fanout", "feeds", "loose", "after", "reserved", "vias", "stitch", "inpad", "pourpins", "costs", "rounds", "open", "exits"}
 if unknown:
     raise SystemExit(f"unknown option {sorted(unknown)}")
 stubs = "stubs" in options  # the fine-pitch exits laid as fixed wires (D51/D52)
 fanout = "fanout" in options  # the router's own fanout stage (D57)
-feeds = "feeds" in options  # plane feeds (D85)
+feeds = "feeds" in options or "stitch" in options  # plane feeds (D85); `stitch`: the stitching alone (D96)
 feeds_mode = ("routable" if "loose" in options else "after" if "after" in options else "reserved" if "reserved" in options
-              else "vias" if "vias" in options else "fixed")
+              else "vias" if "vias" in options else "none" if "stitch" in options else "fixed")
+layer_costs = {kv.split(":")[0]: float(kv.split(":")[1]) for kv in options["costs"].split(",")} if "costs" in options else None
 via_in_pad = "inpad" in options  # D93
 pour_pins_rule = "pourpins" in options  # D95
 rounds = int(options.get("rounds", 1))  # the closure loop's rounds (D86)
@@ -70,7 +75,8 @@ else:
     raise SystemExit(mode)
 work = refs.repo_root() / "build" / "fr" / (f"{key}-{mode}{'-stubs' if stubs else ''}{'-fanout' if fanout else ''}"
                                              f"{'-feeds' if feeds else ''}{'-' + feeds_mode if feeds_mode != 'fixed' else ''}"
-                                             f"{'-inpad' if via_in_pad else ''}{'-pourpins' if pour_pins_rule else ''}")
+                                             f"{'-inpad' if via_in_pad else ''}{'-pourpins' if pour_pins_rule else ''}"
+                                             f"{'-costs' if layer_costs else ''}")
 if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's typing
     fr.type_layers_power = lambda text, layers: text
 t0 = time.time()
@@ -97,7 +103,7 @@ def finish(routed, _work):  # the gate's finishing: the child-process fill, then
 _final, results = fr.route_rounds(bare, rules, work, finish, rounds=rounds, say=print, stub_pads=stub_pads or None,
                                   passes=passes, timeout_s=timeout_s, pours=pours_after, planes=planes, stubs=stubs,
                                   fanout=fanout, feeds=plane_nets or None, feeds_mode=feeds_mode, via_in_pad=via_in_pad,
-                                  pour_pins_rule=pour_pins_rule)
+                                  pour_pins_rule=pour_pins_rule, layer_trace_costs=layer_costs)
 for k, result in enumerate(results, 1):
     print(f"ROUTER round {k}: exits {list(result.exits)}, feeds {result.feeds_mode}{' via-in-pad' if via_in_pad else ''}; {result.summary()}")
 s = rebuild.score(ref, out, work_dir=work / "score")

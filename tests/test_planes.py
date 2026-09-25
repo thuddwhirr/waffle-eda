@@ -155,17 +155,18 @@ def test_pieces_follow_kicads_connectivity_and_stitch_feeds_every_piece_but_the_
     assert len(planes.pieces(loaded, "GND")) == 2
 
 
-def test_another_nets_pour_keeps_a_stitch_via_out(tmp_path):
-    """On a routed board the fills are copper too: a via may not land in another net's pour."""
+def test_another_nets_pour_does_not_move_a_stitch_via(tmp_path):
+    """D98: a filled zone of another net is not an obstacle to a feed. The via keeps the site the bare board
+    gives it, and the refill clears the pour around the via: the fill keeps the via's ring plus the clearance."""
     from waffle_eda.kicad import refill
     b = _board()
     nets = b.GetNetsByName()
-    zone = pcbnew.ZONE(b)  # a SIG pour over the free space left of C1, where its feed would go
+    zone = pcbnew.ZONE(b)  # a SIG pour over the free space left of C1, covering the site of its feed
     zone.SetNet(nets["SIG"])
     zone.SetLayer(pcbnew.F_Cu)
     outline = zone.Outline()
     outline.NewOutline()
-    for x, y in ((6.0, -2.0), (8.2, -2.0), (8.2, 2.0), (6.0, 2.0)):
+    for x, y in ((6.0, -2.0), (9.4, -2.0), (9.4, 2.0), (6.0, 2.0)):
         outline.Append(kb.nm(x), kb.nm(y))
     zone.SetLocalClearance(kb.nm(0.2))
     zone.SetMinThickness(kb.nm(0.2))
@@ -174,12 +175,17 @@ def test_another_nets_pour_keeps_a_stitch_via_out(tmp_path):
     kb.save_board(b, path)
     assert refill.refill_file(path)["unfilled_zones"] == []
     loaded = kb.load_board(path)
-    assert any(z.GetFilledPolysList(pcbnew.F_Cu).OutlineCount() for z in loaded.Zones())
-    feeds = {f.pad: f for f in planes.plane_feeds(loaded, RULES, {"GND"}, copper=True)}
-    assert "C1-1" in feeds and feeds["C1-1"].via != (8.69, 0.0)  # the pour took the spot the bare board gave
     fill = [z for z in loaded.Zones() if z.GetNetname() == "SIG"][0].GetFilledPolysList(pcbnew.F_Cu)
+    assert fill.OutlineCount() and fill.Collide(pcbnew.VECTOR2I(kb.nm(8.69), kb.nm(0.0)), kb.nm(0.01))  # the pour covers the site
+    feeds = {f.pad: f for f in planes.plane_feeds(loaded, RULES, {"GND"}, copper=True)}
+    assert "C1-1" in feeds and feeds["C1-1"].via == (8.69, 0.0)  # the bare board's site, pour or no pour
+    planes.lay_feeds(loaded, [feeds["C1-1"]])
+    kb.save_board(loaded, path)
+    assert refill.refill_file(path)["unfilled_zones"] == []
+    refilled = kb.load_board(path)
+    fill = [z for z in refilled.Zones() if z.GetNetname() == "SIG"][0].GetFilledPolysList(pcbnew.F_Cu)
     via = feeds["C1-1"].via
-    assert not fill.Collide(pcbnew.VECTOR2I(kb.nm(via[0]), kb.nm(via[1])), kb.nm(0.3 + 0.2))
+    assert not fill.Collide(pcbnew.VECTOR2I(kb.nm(via[0]), kb.nm(via[1])), kb.nm(0.3 + 0.2 - 0.001))  # ring 0.3 + clearance 0.2
 
 
 def test_feeds_keep_clear_of_copper_already_on_the_board_when_asked():

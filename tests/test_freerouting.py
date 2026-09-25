@@ -963,3 +963,18 @@ def test_fine_pitch_plane_pins_are_left_to_their_layers_pour():
     from waffle_eda.route import planes
     feeds = planes.plane_feeds(b, RULES, {"N0", "N1"}, skip=left)
     assert "U1-1" not in {f.pad for f in feeds} and "U1-2" in {f.pad for f in feeds}
+
+
+def test_the_autoroute_settings_block_follows_the_boundary_in_the_jars_own_form():
+    """D96: trace costs raised on a plane's layer through the DSN, every layer active, the block after the boundary
+    and before the first plane or keepout, which the loader reads only in that order."""
+    dsn = ('(pcb "x"\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (layer In1.Cu\n      (type signal)\n    )\n'
+           '    (boundary\n      (path pcb 0  0 0  1000 0)\n    )\n    (plane GND (polygon In1.Cu 0  0 0  1000 0))\n'
+           '    (keepout "" (circle F.Cu 100 0 0))\n    (via "Via[0-1]_600:300_um")\n    (rule\n      (width 150)\n'
+           '      (clearance 140.7)\n    )\n  )\n  (placement\n  )\n)')
+    out = fr.autoroute_settings_dsn(dsn, ["F.Cu", "In1.Cu"], {"In1.Cu": 30.0}, via_costs=1)
+    assert out.index("(boundary") < out.index("(autoroute_settings") < out.index("(plane GND") < out.index("(keepout")
+    assert out.index("      (path pcb 0  0 0  1000 0)\n    )\n    (autoroute_settings\n") > 0
+    assert "(layer_rule In1.Cu\n        (active on)\n        (preferred_direction horizontal)\n        (preferred_direction_trace_costs 30.0)\n        (against_preferred_direction_trace_costs 30.0)" in out
+    assert "(layer_rule F.Cu\n        (active on)\n        (preferred_direction vertical)\n        (preferred_direction_trace_costs 1.0)\n        (against_preferred_direction_trace_costs 2.5)" in out
+    assert "(via_costs 1)" in out and "(plane_via_costs 5)" in out
