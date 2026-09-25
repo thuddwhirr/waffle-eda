@@ -91,14 +91,22 @@ re-measured. The plane mode's verdict row (D99): **FAIL, 77 of 86**, 10 clearanc
 searches inside the pad) and a plated pin the router's own tracks on In2 fence off from the fill, which only
 the jar can mend. The after form re-measured under D98 (D100): **75 of 86 at four passes**, the best four-pass
 count of any form, the router at 10 unrouted with nothing of the plane nets before it, but 44 feeds find room
-for 88 pads after the router and +3V3 is left in 28 pieces: the router's copper takes the sites. **The next
-step**, in this order: (1) the after form with via-in-pad, the in-pad sites reserved on the other layers before
-the router and laid after it (`rung.py upduino-v3.01 gnd 4 900 feeds after inpad`; a pad's own copper is the
-site the router cannot take; the QFN pins keep the after search), measured at four passes against D100's 75,
-28 and 10 pieces; if the planes come whole, its 30-pass row; (2) D95's pour pins re-measured under D98;
-(3) the owner's decision on the fork: the smallest change with a measurement behind it is to have
-`applyBoardSpecificOptimizations` keep the trace costs the DSN sets (D97), which makes the plane mode usable
-(planes reachable, tracks priced off them); the build through the proxy is untried. The class B gate's
+for 88 pads after the router and +3V3 is left in 28 pieces: the router's copper takes the sites. The after form with
+the in-pad sites reserved before the router (D101): 69 of 86, the router at 16 unrouted, 10 clearances, +3V3
+in 15 pieces; the 17 pads left are the QFN pins that hold no via, the back-side pads of D92 and a plated pin,
+which no feed form reaches after the router has filled the ring. **Nine feed forms have now been measured
+without a pass, and the same pins stand in every one; the feed forms are exhausted** (D101), and the rule on
+a tool failing three times on one problem applies: the missing constraint is inside the jar, not in the feeds.
+**The next step is the owner's decision between three options, each with its measurement:** (a) the fork,
+the smallest change with a measurement behind it: `applyBoardSpecificOptimizations` keeps the trace costs the
+DSN sets (D97), so the plane mode (the only configuration in which the router connected every plane pad but
+two, D96 and D99) runs with tracks priced off the planes; the build through the proxy is untried, and the
+U3 and D3 knots (the shove, D88 to D90) stay whatever the planes do; (b) the plane mode as it is (D99: 77 of
+86, 10 clearances, 551 mm of track through the GND plane), which is not a board the owner would fab;
+(c) the review the ladder rules call for, written now rather than after a fourth session, with pico-ice
+(61 of 95, D82) alongside upduino. Until the owner decides, D95's pour pins under D98 is the one cheap
+measurement left (six minutes), not a tenth feed form. The after form with via-in-pad stays an option
+(`feeds after inpad`). Class A ran on this code: PASS 5 of 5 (2026-09-25 23:27 UTC). The class B gate's
 default is unchanged (fixed feeds on a `power` plane); `feeds_mode="none"` (`stitch` in rung) and
 `layer_trace_costs` are options. Class A ran once with the wrapper's changes in place (`python3 scripts/gate.py a`,
 2026-09-25 22:52 UTC: PASS 5 of 5); the `planes.py` change came after that run and is outside class A's path,

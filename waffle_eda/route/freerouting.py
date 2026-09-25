@@ -2014,6 +2014,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     beside it, its pin out of the router's network, the pour and the stitching connecting it after the import.
     ``feeds_mode`` "none" lays no feed and drops no pin: the router connects the plane nets itself, which it
     does when the plane's layer stays `signal` (D96), and the stitching feeds what it leaves.
+    ``feeds_mode`` "after" with ``via_in_pad`` reserves the in-pad sites found on the bare board as keepouts on
+    the other layers before the router and lays them after it (D100); the pads that hold no via keep the search
+    after the import.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
     `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
@@ -2065,6 +2068,11 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                                               int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))))
         say(f"trace costs raised in the DSN: {layer_trace_costs}")
     in_pad = [x for x in laid_feeds if x.in_pad] if feeds_mode not in ("after", "none") else []
+    if feeds and feeds_mode == "after" and via_in_pad:  # D100: a pad's own copper is the one site the router
+        from waffle_eda.route import planes as feedlib  # cannot take, so the in-pad sites found on the bare board
+        in_pad = [x for x in feedlib.plane_feeds(board, rules, set(feeds), copper=True, via_in_pad=True,  # are
+                                                 skip=left_to_pour) if x.in_pad]  # reserved before the router
+        say(f"in-pad via sites for the after form, laid after the router: {len(in_pad)}")  # and laid after it
     if in_pad:  # a via in a pad is laid after the import (D85, D93): the router keeps off its site on the other
         copper_names = [name for _lid, name in kb.copper_layers(board)]  # layers, or lays tracks through it (15
         sites = [PadKeepout("feed", x.pad, x.via[0], x.via[1], d.via_diameter_mm / 2, 0.0,  # shorts with 54 in-pad
@@ -2154,8 +2162,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"repair: {result.repair}")
         if feeds and feeds_mode == "after":  # the feeds around the router's copper, the vias in pads included (D91)
             from waffle_eda.route import planes as feedlib
-            laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True, via_in_pad=via_in_pad)
-            feedlib.lay_feeds(board, laid_feeds)
+            reserved = list(in_pad) if via_in_pad else []  # laid where they were reserved (D100), no second search
+            feedlib.lay_feeds(board, reserved)
+            searched = feedlib.plane_feeds(board, rules, set(feeds), copper=True, via_in_pad=via_in_pad,
+                                           skip={x.pad for x in reserved} | left_to_pour)
+            feedlib.lay_feeds(board, searched)
+            laid_feeds = reserved + searched
             result.feeds = len(laid_feeds)
             say(f"plane feeds laid after the import: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
         via_ring, pin_ring = smallest_ring_mm(board)

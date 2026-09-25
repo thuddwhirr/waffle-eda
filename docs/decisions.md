@@ -587,6 +587,17 @@ take: with via-in-pad (D93) every pad 0.7 mm wide holds its via, so the in-pad s
 before the router (D94's keepouts) and laid after it are the next measurement; the QFN pins that hold no via
 keep the after search. Measurement.
 
+**D101. The after form with the in-pad sites reserved does not beat the after form; the feed forms are exhausted**
+(2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds after inpad`, `route_board(feeds_mode="after",
+via_in_pad=True)`: 54 in-pad sites found on the bare board, reserved as keepouts on the other layers, laid after
+the router). 69 of 86 at four passes (D100's after form: 75), the router at 16 unrouted (10) and 25 standing
+violations, 10 clearances the repair could not settle (0), 73 feeds laid for 88 pads (56 in a pad), +3V3 in 15
+pieces (28), GND in 8 (10), the stitching 0. The 17 pads left are the QFN pins that hold no via and have no site
+within 1.5 mm after the router (U3-4, -12, -22, -23, -48, U2-22, U1-6, U7-2, U8-1), the back-side pads of D92
+(C14-1, C30-1, R5-2) and the plated J2-9. Nine feed forms measured (D85, D91 to D95, D100, this): none connects
+those pins, which the reference's pour reaches through routing that leaves the ring free (D95). Only the router's
+own plane mode (D96, D99) connected every plane pad but two, at the cost D97 names. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
