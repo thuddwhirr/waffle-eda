@@ -104,8 +104,8 @@ two, D96 and D99) runs with tracks priced off the planes; the build through the 
 U3 and D3 knots (the shove, D88 to D90) stay whatever the planes do; (b) the plane mode as it is (D99: 77 of
 86, 10 clearances, 551 mm of track through the GND plane), which is not a board the owner would fab;
 (c) the review the ladder rules call for, written now rather than after a fourth session, with pico-ice
-(61 of 95, D82) alongside upduino. Until the owner decides, D95's pour pins under D98 is the one cheap
-measurement left (six minutes), not a tenth feed form. The after form with via-in-pad stays an option
+(61 of 95, D82) alongside upduino. D95's pour pins under D98 are measured (D102): 64 of 86 again, 8 GND islands at U3 for 10, so nothing
+cheap is left to measure; a tenth feed form is not the next step. The after form with via-in-pad stays an option
 (`feeds after inpad`). Class A ran on this code: PASS 5 of 5 (2026-09-25 23:27 UTC). The class B gate's
 default is unchanged (fixed feeds on a `power` plane); `feeds_mode="none"` (`stitch` in rung) and
 `layer_trace_costs` are options. Class A ran once with the wrapper's changes in place (`python3 scripts/gate.py a`,

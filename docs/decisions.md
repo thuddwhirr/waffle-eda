@@ -598,6 +598,12 @@ within 1.5 mm after the router (U3-4, -12, -22, -23, -48, U2-22, U1-6, U7-2, U8-
 those pins, which the reference's pour reaches through routing that leaves the ring free (D95). Only the router's
 own plane mode (D96, D99) connected every plane pad but two, at the cost D97 names. Measurement.
 
+**D102. The pour pins re-measured under D98: unchanged** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds
+pourpins`, 15 fine-pitch GND pins left to the pour with their exits kept): 64 of 86 at four passes (D95: 64), the
+router at 48 unrouted and 131 standing violations (48, 131), one clearance the repair could not settle, the
+stitching 5 feeds (3), 8 GND islands (10): U3-4, -22, -23, -35, -36, -47, -48 and U8-1, the ring around U3 taken
+by the router's tracks before the pour or the stitching can reach the pins. +3V3 whole. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
