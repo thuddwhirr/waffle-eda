@@ -827,3 +827,56 @@ def test_a_plane_nets_pins_leave_the_network_and_the_net_stays():
     assert "(net GND\n      (pins )" in out and '(net "Net-(C4-Pad1)"\n      (pins )' in out
     assert "(pins C1-1)" in out and "(net GND)(type fix)" in out
     assert drop_net_pins(dsn, set()) == dsn
+
+
+def _qfn_board(edge_y: float = -3.3):
+    """A 0.5 mm pitch package with a row of pads on its north side, a thermal pad, a resistor in one pad's exit,
+    and the board's edge close to another; nets on two pads each so the stubs count them as routable."""
+    from tests.test_planes import _pad
+    b = pcbnew.BOARD()
+    b.GetDesignSettings().SetCopperLayerCount(2)
+    nets = {}
+    for k in range(6):
+        nets[k] = pcbnew.NETINFO_ITEM(b, f"N{k}")
+        b.Add(nets[k])
+    u1 = pcbnew.FOOTPRINT(b)
+    u1.SetReference("U1")
+    u1.SetPosition(pcbnew.VECTOR2I(0, 0))
+    b.Add(u1)
+    for k in range(5):  # the north row: pads 0.25 wide, 0.9 long, exits pointing up (-y)
+        _pad(u1, str(k + 1), nets[k], -1.0 + 0.5 * k, -2.5, 0.25, 0.9)
+    _pad(u1, "9", nets[5], 0, 0, 3.0, 3.0)  # the thermal pad
+    r1 = pcbnew.FOOTPRINT(b)  # the other pad of every net, and a resistor pad right in pad 3's exit
+    r1.SetReference("R1")
+    r1.SetPosition(pcbnew.VECTOR2I(kb.nm(10), 0))
+    b.Add(r1)
+    for k in range(6):
+        _pad(r1, str(k + 1), nets[k], 10 + k, 5, 0.6, 0.6)
+    _pad(r1, "7", nets[5], 0.0, -3.4, 0.2, 0.6)  # net N5, 0.15 mm beyond pad 3's edge, in pad 3's exit only
+    for (ax, ay), (bx, by) in (((-6, edge_y), (16, edge_y)), ((16, edge_y), (16, 8)), ((16, 8), (-6, 8)), ((-6, 8), (-6, edge_y))):
+        seg = pcbnew.PCB_SHAPE(b, pcbnew.SHAPE_T_SEGMENT)
+        seg.SetStart(pcbnew.VECTOR2I(kb.nm(ax), kb.nm(ay)))
+        seg.SetEnd(pcbnew.VECTOR2I(kb.nm(bx), kb.nm(by)))
+        seg.SetLayer(pcbnew.Edge_Cuts)
+        b.Add(seg)
+    return b
+
+
+def test_fine_pitch_stubs_leave_every_pad_straight_and_stop_at_pads_and_the_edge():
+    """D85: a straight exit out of every pad of a 0.5 mm package, shortened by another net's pad in the way,
+    dropped when the edge rule leaves too little, none for the thermal pad."""
+    b = _qfn_board()
+    nets = {f"N{k}" for k in range(6)}
+    stubs = fr.escape_stubs(b, width_mm=0.15, clearance_mm=0.14, nets=nets, fine_pitch_mm=0.5, edge_mm=0.3, hole_mm=0.25)
+    by_net = {s.net: s for s in stubs}
+    assert "N5" not in by_net  # the thermal pad
+    # the free pads: straight up, 0.5 mm beyond the pad's edge at y = -2.95, but the edge rule at y = -3.3
+    # allows copper down to -3.3 + 0.3 + 0.075 = -2.925, so nothing fits: the whole row is inside the rule
+    assert all(len(s.points) == 2 and s.points[1][0] == pytest.approx(s.points[0][0]) for s in stubs)
+    assert all(s.points[1][1] < s.points[0][1] for s in stubs)  # up, away from the package
+    assert set(by_net) <= {"N0", "N1", "N2", "N3", "N4"}
+    b2 = _qfn_board(edge_y=-8.0)  # the edge out of the way
+    stubs2 = fr.escape_stubs(b2, width_mm=0.15, clearance_mm=0.14, nets=nets, fine_pitch_mm=0.5, edge_mm=0.3, hole_mm=0.25)
+    by_net2 = {s.net: s for s in stubs2}
+    assert set(by_net2) == {"N0", "N1", "N3", "N4"}  # pad 3 (N2): the resistor pad 0.15 mm ahead leaves under the minimum
+    assert all(abs(s.length_mm() - (0.45 + 0.5)) < 1e-6 for s in stubs2)  # half the pad plus the exit
