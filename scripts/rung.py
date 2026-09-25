@@ -11,8 +11,8 @@ for iterating on a rung under a short budget (D77), where `gate.py b <key>` is t
           gnd     only the ground plane before the export, typed power (D81: worse still)
     stubs: the fine-pitch exits laid as fixed wires (D51/D52; D83: worse on pico-ice)
     fanout: the router's own fanout stage first, a via beside every SMD pad (off since D57)
-    feeds: a fixed via and stub beside every SMD pad of the planes' nets, laid before the export (D85; needs
-           a mode that hands planes over)
+    feeds: the inner pours' nets leave the router: a fixed via and stub beside every SMD pad of theirs before
+           the export, their pins out of the DSN's network, their pours and feeds connecting them (D85)
 
 Writes build/fr/<key>-<mode>[-stubs][-fanout][-feeds]/ with the DSN, the session, the router's log, the imported and the routed
 board; prints the router's summary, the score and the nets left open with their pieces.
@@ -52,7 +52,7 @@ if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's
     fr.type_layers_power = lambda text, layers: text
 t0 = time.time()
 result = fr.route_board(board, rules, work, passes=passes, timeout_s=timeout_s, pours=after, planes=planes, say=print,
-                        stubs=stubs, fanout=fanout, feeds=feeds)
+                        stubs=stubs, fanout=fanout, feeds={p["net"] for p in inner} if feeds else None)
 print("ROUTER:", result.summary())
 out = work / f"{key}-routed.kicad_pcb"
 kb.save_board(board, out)

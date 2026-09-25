@@ -814,3 +814,16 @@ def test_a_plane_layer_handed_to_the_router_is_typed_power_in_the_dsn():
         fr.type_layers_power(dsn, ["In9.Cu"])
     with pytest.raises(ValueError):
         fr.type_layers_power(out, ["In1.Cu"])  # already power: typing it again is a mistake
+
+
+def test_a_plane_nets_pins_leave_the_network_and_the_net_stays():
+    """D85: the router routes nothing of a plane net (its pours and feeds connect it) but the net must stay in
+    the network section, since the fixed feed wires and vias name it."""
+    from waffle_eda.route.freerouting import drop_net_pins
+    dsn = ('(structure (rule (width 150)))\n  (network\n    (net GND\n      (pins C1-2 U1-49 J1-6@2)\n    )\n'
+           '    (net "Net-(C4-Pad1)"\n      (pins C4-1 U1-3)\n    )\n    (net +3V3\n      (pins C1-1)\n    )\n  )\n'
+           '  (wiring\n    (wire (path F.Cu 150  1 2  3 4)(net GND)(type fix))\n  )\n')
+    out = drop_net_pins(dsn, {"GND", "Net-(C4-Pad1)"})
+    assert "(net GND\n      (pins )" in out and '(net "Net-(C4-Pad1)"\n      (pins )' in out
+    assert "(pins C1-1)" in out and "(net GND)(type fix)" in out
+    assert drop_net_pins(dsn, set()) == dsn

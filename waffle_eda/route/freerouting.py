@@ -73,6 +73,11 @@ DRILL_STEP_MM = 0.001
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
 FANOUT = False  # the fanout stage necks its stubs to 75 % of the width, below the rule, and is fragile (D57)
+# The jar's own window under Xvfb, as every class A measurement ran it. Its renderer draws a plane's detailed
+# fill from the search tree the router is changing and dies of a NullPointerException, after which the session
+# file is written empty (upduino with the planes and 90 fixed feeds, 2026-09-25); `WAFFLE_ROUTER_GUI=0` runs
+# the jar with no window, for the measurement.
+GUI = os.environ.get("WAFFLE_ROUTER_GUI", "1") != "0"
 OPTIMIZER_PASSES = 0  # the optimiser reworks copper for length and via count, which the gate does not score; it took
 # 11 of the esp32c3's 12 minutes and, drawing on Java's random generator, gave a different board each run (D65)
 
@@ -1253,6 +1258,22 @@ def drop_pins(dsn_text: str, names: set[str]) -> str:
     return dsn_text[:start] + _PINS.sub(strip, dsn_text[start:])
 
 
+def drop_net_pins(dsn_text: str, nets: set[str]) -> str:
+    """Empty the pin lists of the named nets in the network section: the router then routes nothing of them
+    and keeps its clearance from their pads and fixed copper as it does from any other net's (D85: a plane
+    net is connected by its pours and its feeds, not by the router)."""
+    start = dsn_text.find("(network")
+    if start < 0 or not nets:
+        return dsn_text
+
+    def strip(m: re.Match) -> str:
+        name = m.group(1).strip('"')
+        return m.group(0) if name not in nets else f"(net {m.group(1)}\n{m.group(2)}(pins )"
+
+    pattern = re.compile(r'\(net ("[^"]*"|\S+)\n(\s*)\(pins [^)]*\)')
+    return dsn_text[:start] + pattern.sub(strip, dsn_text[start:])
+
+
 def piece_groups(fp) -> dict[str, list[list[int]]]:
     """Per pad number, the groups of pieces joined by their own copper (indices into the footprint's pads)."""
     pads = list(fp.Pads())
@@ -1609,7 +1630,7 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
     import uuid
     cfg = {"version": VERSION,
            "profile": {"id": str(uuid.uuid4()), "email": "", "allow_telemetry": False, "allow_contact": False},
-           "gui": {"enabled": True, "input_directory": "", "dialog_confirmation_timeout": 5,
+           "gui": {"enabled": GUI, "input_directory": "", "dialog_confirmation_timeout": 5,
                    "show_routing_summary": False},
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
@@ -1754,7 +1775,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
-                fanout: bool = FANOUT, feeds: bool = False) -> FreeroutingResult:
+                fanout: bool = FANOUT, feeds: set[str] | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1763,9 +1784,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     writes them as DSN `(plane ...)` entries, their layers are typed `power` in the DSN (on a `signal` layer
     the router calls the plane a dedicated power plane and writes an empty session, pitfalls above), and the
     router connects their nets by via instead of routing them as tracks (D80, D81). ``fanout`` runs the router's
-    own fanout stage first (a via beside every SMD pad; off by default, D57). ``feeds`` lays a fixed via and
-    stub beside every SMD pad of the planes' nets before the export (`route/planes.py`, D85), so the planes
-    connect those pads and the router routes only the pads with no room for one."""
+    own fanout stage first (a via beside every SMD pad; off by default, D57). ``feeds`` names the plane nets:
+    a fixed via and stub go beside every SMD pad of theirs before the export (`route/planes.py`, D85) and
+    their pins leave the router's network, so their pours and feeds connect them and the router routes the
+    other nets around them."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1779,14 +1801,16 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         # the smallest ring the rules give a via, since the vias come after the plane here
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
-        if feeds:
-            from waffle_eda.route import planes as feedlib
-            laid_feeds = feedlib.plane_feeds(board, rules, {p["net"] for p in planes})
-            feedlib.lay_feeds(board, laid_feeds)
-            say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
+    if feeds:
+        from waffle_eda.route import planes as feedlib
+        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds))
+        feedlib.lay_feeds(board, laid_feeds)
+        say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid or laid_feeds:
         dsn.write_text(fix_wires(dsn.read_text()))
+    if feeds:
+        dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
     if planes:
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
