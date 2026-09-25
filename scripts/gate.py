@@ -5,7 +5,9 @@
                                      # class A reference connected, zero electrical violations under the rules
                                      # measured off that board (D50, D55)
     python3 scripts/gate.py b        # class B: the same re-route on every class B reference (four layers, planes,
-                                     # net classes, a USB pair), in the order the plan lists them (D75)
+                                     # net classes, a USB pair), in the order the plan lists them (D75, D84),
+                                     # under the class's configuration (`CLASS_B`: the GND plane fed and handed
+                                     # to the router, D86)
     python3 scripts/gate.py escape   # BGA escape (class B+): every bus ball on every BGA of every bus reference,
                                      # zero electrical violations under the reference's constraints; every
                                      # synthetic case complete and DRC clean
@@ -31,7 +33,7 @@ import sys
 
 import _path  # noqa: F401
 from waffle_eda.bench import harness, references as refs, synthetic
-from waffle_eda.kicad import board as kb, refill
+from waffle_eda.kicad import board as kb
 
 
 def bus_references():
@@ -136,14 +138,15 @@ def gate_m4() -> list[tuple[str, bool, str]]:
     gate judges only what the tool produces: stage 5's baseline, Freerouting behind `route.freerouting` (D55,
     D56), with the DSN, session and log of every board left under `build/fr/<key>/`.
     """
-    return _reroute_gate(m4_references())
+    return _reroute_gate(m4_references(), CLASS_A)
 
 
 def gate_b() -> list[tuple[str, bool, str]]:
     """Class B: the same full re-route from placement, on the class B references (plan.md, milestone B), under
-    the rules measured off each board. What class B adds to the criterion (widths per net class, the pair's gap
-    and skew, plane integrity, return vias) is added here as each is measured to matter, never before."""
-    return _reroute_gate(class_b_references())
+    the rules measured off each board, in the configuration D86 made the class's baseline (`CLASS_B`). What
+    class B adds to the criterion (widths per net class, the pair's gap and skew, plane integrity, return vias)
+    is added here as each is measured to matter, never before."""
+    return _reroute_gate(class_b_references(), CLASS_B)
 
 
 def router_budget() -> dict:
@@ -159,38 +162,62 @@ def router_budget() -> dict:
     return out
 
 
-# Which of a reference's recorded pours the router gets before the export, as planes on layers typed power
-# (D81): none, as class A does (every pour laid after the import); "gnd", the ground plane's inner layers; or
-# "inner", every inner-layer pour. `WAFFLE_PLANES` selects it while the class B rungs are measured.
-PLANES = os.environ.get("WAFFLE_PLANES", "none")
-# The plane feeds and the stitching (route/planes.py, D85) for the inner pours' nets: a fixed via and stub
-# beside every SMD pad of theirs before the router, one more feed for every piece left after the fill.
-# `WAFFLE_FEEDS=1` selects it while the class B rungs are measured.
-FEEDS = os.environ.get("WAFFLE_FEEDS", "0") == "1"
-# The exit stubs (D51/D52's corridor rule and D85's fine-pitch rule) as fixed wires before the router:
-# `WAFFLE_STUBS=1` selects them while the class B rungs are measured (off on class A, D57 and D83).
-STUBS = os.environ.get("WAFFLE_STUBS", "0") == "1"
+# The configuration a class's rows run under. `planes`: which of a reference's recorded pours the router gets
+# before the export, on layers typed power (D81): "none", every pour laid after the import; "gnd", the ground
+# plane's inner layers; "inner", every inner-layer pour. `feeds`: the plane feeds and the stitching
+# (route/planes.py, D85) for the inner pours' nets, a fixed via and stub beside every SMD pad of theirs before
+# the router and one more feed for every piece left after the fill. `stubs`: the exit stubs (D51/D52's corridor
+# rule and D85's fine-pitch rule) out of every pad as fixed wires (measured worse on both classes: D57, D83,
+# D85). `rounds`: the closure loop's rounds (`route.freerouting.route_rounds`, D86), a round that leaves a
+# fine-pitch pad open followed by one with a fixed exit stub out of that pad. `gui`: the jar's window under
+# Xvfb (D85: its renderer dies drawing a plane, so class B runs without). Class A's is the configuration its
+# gate passed under (D73); class B's is the baseline of D86. `WAFFLE_PLANES`, `WAFFLE_FEEDS`, `WAFFLE_STUBS`,
+# `WAFFLE_ROUNDS` and `WAFFLE_ROUTER_GUI` override a class's values for a measurement, and the row says so.
+# `timeout_s` caps one run of the router where the wrapper's own cap (1200 s) is too short for the class's
+# passes: upduino's 30 passes took 1305 s on 2026-09-25's container, and the cap killed the row in pass 26.
+CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True}
+CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 2400.0}
 
 
-def plane_split(board, pours: list[dict]) -> tuple[list[dict], list[dict]]:
+def configuration(defaults: dict) -> dict:
+    """The class's configuration with the environment's overrides applied."""
+    out = dict(defaults)
+    if os.environ.get("WAFFLE_PLANES"):
+        out["planes"] = os.environ["WAFFLE_PLANES"]
+    if os.environ.get("WAFFLE_FEEDS"):
+        out["feeds"] = os.environ["WAFFLE_FEEDS"] == "1"
+    if os.environ.get("WAFFLE_STUBS"):
+        out["stubs"] = os.environ["WAFFLE_STUBS"] == "1"
+    if os.environ.get("WAFFLE_ROUNDS"):
+        out["rounds"] = int(os.environ["WAFFLE_ROUNDS"])
+    if os.environ.get("WAFFLE_ROUTER_GUI"):
+        out["gui"] = os.environ["WAFFLE_ROUTER_GUI"] != "0"
+    return out
+
+
+def plane_split(board, pours: list[dict], planes: str) -> tuple[list[dict], list[dict]]:
     outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
-    if PLANES == "inner":
-        planes = [p for p in pours if p["layer"] not in outer]
-    elif PLANES == "gnd":
-        planes = [p for p in pours if p["layer"] not in outer and p["net"] == "GND"]
+    if planes == "inner":
+        before = [p for p in pours if p["layer"] not in outer]
+    elif planes == "gnd":
+        before = [p for p in pours if p["layer"] not in outer and p["net"] == "GND"]
+    elif planes == "none":
+        before = []
     else:
-        planes = []
-    return planes, [p for p in pours if p not in planes]
+        raise ValueError(f"WAFFLE_PLANES={planes!r}: none, gnd or inner")
+    return before, [p for p in pours if p not in before]
 
 
-def _reroute_gate(references) -> list[tuple[str, bool, str]]:
+def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
     from waffle_eda.bench import rebuild
-    from waffle_eda.route import freerouting
+    from waffle_eda.route import freerouting, planes as feedlib
     rows = []
     missing = freerouting.available()
-    budget = router_budget()
-    if PLANES != "none":
-        budget = {**budget}  # the row says which planes it ran with (D38)
+    cfg = configuration(defaults)
+    overridden = {k: v for k, v in cfg.items() if v != defaults[k]}
+    budget = router_budget()  # the environment's, over the class's own cap
+    cap = {"timeout_s": cfg["timeout_s"]} if "timeout_s" in cfg else {}
+    budget = {**cap, **budget}
     for ref in references:
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
@@ -198,37 +225,41 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
         if missing:
             rows.append((ref.key, False, missing))
             continue
+        out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
+        finishing: dict = {}
+
+        def finish(routed, _work):  # the gate's finishing of a routed board: the child-process fill with D14's
+            finishing.update(feedlib.finish(routed, out, rules, plane_nets or set()))  # fallbacks (the
+            return out  # in-process fill can take an hour), the plane nets stitched, the file scored below
+
         try:
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
-            board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
-            planes, pours = plane_split(board, info["pours"])
+            board = kb.load_board(bare)
+            planes, pours = plane_split(board, info["pours"], cfg["planes"])
             outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
-            plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if FEEDS else None
-            result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=pours, planes=planes, feeds=plane_nets, stubs=STUBS, **budget)
+            plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if cfg["feeds"] else None
+            _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
+                                                       rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
+                                                       stubs=cfg["stubs"], gui=cfg["gui"], **budget)
+            result = results[-1]
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
-        out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
-        kb.save_board(board, out)
-        fill = refill.refill_file(out)  # a child process with D14's fallbacks; the in-process fill can take an hour
-        stitched = []
-        if plane_nets:
-            from waffle_eda.route import planes as feedlib
-            routed = kb.load_board(out)
-            stitched = feedlib.stitch(routed, rules, plane_nets)
-            if stitched:
-                kb.save_board(routed, out)
-                fill = refill.refill_file(out)
+        fill, stitched = finishing["fill"], finishing["stitched"]
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
         fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
-        budget_note = ((f" | router budget overridden: {budget}" if budget else "")
-                       + (f" | planes {PLANES}" if PLANES != "none" else "")
+        # the row names the configuration that produced it (definition.md section 5)
+        config_note = ((f" | router budget overridden: {router_budget()}" if router_budget() else "")
+                       + (f" | cap {cap['timeout_s']:.0f} s" if cap else "")
+                       + (f" | configuration overridden: {overridden}" if overridden else "")
+                       + (f" | planes {cfg['planes']}" if cfg["planes"] != "none" else "")
                        + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else "")
-                       + (f" | stubs {result.stubs}" if STUBS else ""))
-        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
+                       + (f" | stubs {result.stubs}" if cfg["stubs"] else "")
+                       + (f" | rounds {len(results)} of {cfg['rounds']}, exits {list(result.exits)}" if cfg["rounds"] > 1 else "")
+                       + (" | no window" if not cfg["gui"] else ""))
+        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + config_note))
     return rows
 
 

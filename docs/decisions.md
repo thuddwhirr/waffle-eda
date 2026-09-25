@@ -444,6 +444,35 @@ section orders them (stubs only for the pads a run left open, laid for a second 
 determinism check), then makes the configuration `gate.py b`'s default and measures `pico-ice-rev3` under it.
 Owner, 2026-09-25.
 
+**D87. The closure loop's exit stubs do not converge on `upduino-v3.01`** (2026-09-25, `scripts/rung.py
+upduino-v3.01 gnd 30 2400 feeds rounds=2`, then `open=` and `exits=` for a third round; the loop is
+`route.freerouting.route_rounds`). Round 1, D86's baseline: 81 of 86, 0 violations, the router at 32 unrouted
+after 30 passes. Its five open nets leave eight pads untouched, five on the QFNs (U2-44, U3-1, U3-5, U3-14,
+U3-21); another net's track crosses the exit of three of them, U3-1 and U3-5 have a free exit and stay open.
+Round 2, a fixed exit stub out of those five: 82 of 86 with one clearance the repair could not settle (0.133
+mm between two In2 tracks), four of the five connected, three other QFN pads opened (U2-40, U2-42, U3-17).
+Round 3, all eight stubbed: 80 of 86, 0 violations, four of round 1's nets open again with their stubbed pads
+reached and the other end untouched (J2-7, R3-1, TP1-1: no other net's copper within 1.2 mm on any layer).
+The loop is a tool (`WAFFLE_ROUNDS`), not the class B default. Measurement.
+
+**D88. What leaves upduino's nets open is the router's insertion at the fixed feeds, not its search**
+(2026-09-25, the router's log of D87's rounds and four-pass runs of `scripts/rung.py`). "No connection was
+found" 70 times in round 1, 7 and 11 with the stubs: the stubs open the exits. "The new connection could not
+be inserted" 117, 85 and 118 times, on the same nets every round (D3 to U2-38..40 and J2-4..6, U3-4, U3-13,
+U3-16, U3-19, J3-2 and J3-3 to U5): the maze finds a path and the shove that lays it fails
+(`FoundConnectionInserter.insertTrace` in the fork). Four passes: no plane, no feeds 11 failed insertions,
+28 paths not found, 25 standing violations; the plane alone 26, 16, 25; plane and feeds 38, 14, 127. The 102
+are the feeds': 41 of 82 feed vias sit over another pad of their own net and 33 stubs cross one (legal to
+KiCad, a violation to the router with via-in-pad off, D85). A feed kept to its own pad (56 for 88) took them
+to 29 and measured worse, 63 of 86 for 67, GND and +3V3 in pieces, 46 failed insertions; dropped. Measurement.
+
+**D89. The jar's autorouting stage is single-threaded: threads are settled by reading, not measured**
+(2026-09-25, `javap -p -c` on the 2.4.1 jar). `BatchAutorouter.autoroutePassMultiThread` calls
+`AutoroutePassRunner.runMultiThread`, and nothing in the jar calls it; the batch loop calls `autoroutePass`,
+the single-threaded runner. `max_threads` (`-mt`) reaches only the optimiser (`BatchOptimizerMultiThreaded`),
+which is off (D65). A class B row runs one thread whatever the machine has, D65's determinism is not at risk
+from threads, and a threads measurement waits on a build of the fork, if ever. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

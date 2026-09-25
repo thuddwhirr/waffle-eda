@@ -180,3 +180,23 @@ def test_another_nets_pour_keeps_a_stitch_via_out(tmp_path):
     fill = [z for z in loaded.Zones() if z.GetNetname() == "SIG"][0].GetFilledPolysList(pcbnew.F_Cu)
     via = feeds["C1-1"].via
     assert not fill.Collide(pcbnew.VECTOR2I(kb.nm(via[0]), kb.nm(via[1])), kb.nm(0.3 + 0.2))
+
+
+def test_feeds_keep_clear_of_copper_already_on_the_board_when_asked():
+    """A fixed exit stub of another net laid before the feeds (the closure loop's, D86): placed against the pads
+    alone a feed lands on it; placed with the board's copper as obstacles it slides clear."""
+    b = _board()
+    nets = b.GetNetsByName()
+    blind = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}["C1-1"].via
+    track = pcbnew.PCB_TRACK(b)  # a signal track right across C1's exit, where the blind feed's via sits
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(blind[0]), kb.nm(-2.0)))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(blind[0]), kb.nm(2.0)))
+    track.SetWidth(kb.nm(0.2))
+    track.SetLayer(pcbnew.F_Cu)
+    track.SetNet(nets["SIG"])
+    b.Add(track)
+    assert {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}["C1-1"].via == blind  # pads only: unmoved
+    seeing = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, copper=True)}["C1-1"]
+    assert seeing.via != blind
+    assert abs(seeing.via[0] - blind[0]) >= 0.3 + 0.1 + 0.2 - 1e-9  # the via's radius, the track's half width, the rule
+

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 import pcbnew
 
@@ -59,6 +60,7 @@ class _Rect:
     hole_r: float  # 0 for an SMD pad
     reach: float  # the rectangle's circumradius, to skip far pads quickly
     local: float  # the pad's own clearance, mm (a fiducial's 0.375 on upduino), 0 without one
+    name: str = ""  # "REF-N" for a pad; empty for a track, a via or a fill
 
     def distance(self, p: tuple[float, float]) -> float:
         """From a point to the rectangle's copper (0 inside)."""
@@ -113,7 +115,8 @@ def _rects(board, copper: bool = False) -> list[_Rect]:
             drill = pad.GetDrillSize()
             hole_r = max(kb.mm(drill.x), kb.mm(drill.y)) / 2
             rects.append(_Rect(pad.GetNetCode(), centre, axis, half_len, half_wid, hole_r,
-                               math.hypot(half_len, half_wid), _local_clearance_mm(pad)))
+                               math.hypot(half_len, half_wid), _local_clearance_mm(pad),
+                               f"{fp.GetReference()}-{pad.GetNumber()}"))
     if copper:
         for t in kb.track_segments(board):
             (ax, ay), (bx, by) = (kb.mm(t.GetStart().x), kb.mm(t.GetStart().y)), (kb.mm(t.GetEnd().x), kb.mm(t.GetEnd().y))
@@ -160,6 +163,11 @@ class _Search:
     def copper(self, o: _Rect) -> float:
         """The clearance copper must keep from this pad: the rule, or the pad's own if larger."""
         return max(self.clear, o.local + MARGIN_MM)
+
+    # A feed may touch any copper of its own net, another pad of it included: 41 of upduino's 82 feed vias sit
+    # over a neighbouring same-net pad, which the router counts as a violation with via-in-pad off (D85) and
+    # which is legal to KiCad. A rule keeping a feed's copper to its own pad fed 56 pads for 88 and measured
+    # worse at four passes (D88: 63 of 86 for 67, GND and +3V3 in pieces, the failed insertions 46 for 38).
 
     def via_clear(self, net: int, p: tuple[float, float], rects: list[_Rect]) -> bool:
         x0, y0, x1, y1 = self.bbox
@@ -235,14 +243,14 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
             if not stack:
                 continue
             net = pad.GetNetCode()
+            name = f"{fp.GetReference()}-{pad.GetNumber()}"
             centre, (ux, uy), half_len, half_wid = _geometry(pad)
             rects = search.near(centre)
             feed = None
             # a via in the pad only where the pad is a package's thermal pad, two vias wide at least: the
             # references put none in a passive's pad
             if half_len >= via_mm and half_wid >= via_mm and search.via_clear(net, centre, rects):
-                feed = Feed(pad.GetNetname(), stack[0], f"{fp.GetReference()}-{pad.GetNumber()}", centre, centre,
-                            width_mm, via_mm, drill_mm)
+                feed = Feed(pad.GetNetname(), stack[0], name, centre, centre, width_mm, via_mm, drill_mm)
             else:
                 radial = (centre[0] - fx, centre[1] - fy)
                 directions = [(ux, uy, half_len), (-ux, -uy, half_len), (-uy, ux, half_wid), (uy, -ux, half_wid)]
@@ -256,8 +264,8 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
                         p = (centre[0] + dx * d, centre[1] + dy * d)
                         edge = (centre[0] + dx * extent, centre[1] + dy * extent)
                         if search.via_clear(net, p, rects) and search.stub_clear(net, edge, p, rects, stack[0]):
-                            feed = Feed(pad.GetNetname(), stack[0], f"{fp.GetReference()}-{pad.GetNumber()}",
-                                        centre, (round(p[0], 4), round(p[1], 4)), width_mm, via_mm, drill_mm)
+                            feed = Feed(pad.GetNetname(), stack[0], name, centre, (round(p[0], 4), round(p[1], 4)),
+                                        width_mm, via_mm, drill_mm)
                         d += STEP_MM
                     if feed is not None:
                         break
@@ -365,3 +373,20 @@ def stitch(board, rules, nets: set[str]) -> list[Feed]:
                 lay_feeds(board, found[:1])
                 laid.append(found[0])
     return laid
+
+
+def finish(board, out: Path, rules, nets: set[str]) -> dict:
+    """A routed board's finishing, the gate's own: saved to ``out``, its zones filled in a child process
+    (`kicad/refill.py`, D14), every plane net stitched (one feed for every piece beyond the largest) and filled
+    again when a feed was added. Returns the fill's report and the feeds the stitching laid."""
+    from waffle_eda.kicad import refill
+    kb.save_board(board, out)
+    fill = refill.refill_file(out)
+    stitched: list[Feed] = []
+    if nets:
+        routed = kb.load_board(out)
+        stitched = stitch(routed, rules, nets)
+        if stitched:
+            kb.save_board(routed, out)
+            fill = refill.refill_file(out)
+    return {"fill": fill, "stitched": stitched}

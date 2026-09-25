@@ -38,8 +38,13 @@ what its fanout stage does; `docs/plan.md`'s next-step section says how to clone
   to the router therefore goes on a layer typed `power`, or not at all.
 
 Salvaged mechanics (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `staged_route.sh`) that class A does not
-need yet and that are not implemented here: plane layers typed `power` (class B), rule areas dropped from the
-export (class B+), and staged routing through `(pins)` removal (class C).
+need and that are not implemented here: rule areas dropped from the export (class B+) and staged routing
+through `(pins)` removal (class C). Plane layers typed `power` came in with class B (D81, D85).
+
+Class B's rows (`scripts/gate.py b`) run the wrapper with the GND plane before the export on a layer typed
+`power`, the plane nets fed (`route/planes.py`), no window, and one round (D86); :func:`route_rounds` is the
+closure loop around it, measured on upduino not to converge (D87). What the router's log says leaves that
+board's nets open is its insertion, not its search (D88): the maze finds a path and the shove fails.
 """
 from __future__ import annotations
 
@@ -1515,6 +1520,7 @@ class Stub:
     layer: int
     width_mm: float
     points: tuple  # ((x, y), ...) in mm, from the pad centre outwards
+    pad: str = ""  # "REF-N", the pad the stub leaves (set by the fine-pitch rule; the closure loop keys on it)
 
     def length_mm(self) -> float:
         import math
@@ -1642,10 +1648,11 @@ def _pitch_mm(fp) -> float:
 
 
 def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str], pitch_mm: float,
-                     edge_mm: float = 0.0, hole_mm: float = 0.0) -> list[Stub]:
+                     edge_mm: float = 0.0, hole_mm: float = 0.0, pads: set[str] | None = None) -> list[Stub]:
     """A straight exit of `STUB_EXIT_MM` out of every SMD pad of a package at ``pitch_mm`` or finer, along the
     pad's long axis away from the package, shortened where another net's pad is in the way and dropped under
-    `STUB_EXIT_MIN_MM`; a package's thermal pad (over 2 mm both ways) gets none."""
+    `STUB_EXIT_MIN_MM`; a package's thermal pad (over 2 mm both ways) gets none. With ``pads`` ("REF-N"), only
+    those pads get one: the closure loop's stubs for the pads a run left open (D86)."""
     import math
     from waffle_eda.route import planes
     rects = planes._rects(board)
@@ -1659,7 +1666,10 @@ def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str]
         cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
         for pad in fp.Pads():
             stack = pad.GetLayerSet().CuStack()
+            name = f"{fp.GetReference()}-{pad.GetNumber()}"
             if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD or not stack:
+                continue
+            if pads is not None and name not in pads:
                 continue
             (px, py), (ux, uy), half_len, half_wid = _pad_geometry(pad)
             if half_len > 1.0 and half_wid > 1.0:
@@ -1681,8 +1691,40 @@ def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str]
             if length < STUB_EXIT_MIN_MM:
                 continue
             end = (px + ux * (half_len + length), py + uy * (half_len + length))
-            stubs.append(Stub(net=pad.GetNetname(), layer=stack[0], width_mm=width_mm, points=((px, py), end)))
+            stubs.append(Stub(net=pad.GetNetname(), layer=stack[0], width_mm=width_mm, points=((px, py), end), pad=name))
     return stubs
+
+
+def exit_stubs(board, rules, pads: set[str]) -> list[Stub]:
+    """The fine-pitch rule's straight exits for the named pads only ("REF-N"), on whatever nets they carry: the
+    closure loop's stubs (D86). A run leaves a QFN pad untouched when another net's track crosses its exit
+    within 0.4 mm before the pad's net is routed (D85); a fixed stub out of that pad alone reserves the exit for
+    the next run, where a stub out of every pad of the package walled more in (71 of 86 on upduino, D85).
+    Measured on upduino (D87): the stubs open the exits and the nets stay open, since what fails is the
+    router's insertion (D88); the loop stays a tool."""
+    nets = {pad.GetNetname() for fp in board.GetFootprints() for pad in fp.Pads()
+            if f"{fp.GetReference()}-{pad.GetNumber()}" in pads}
+    return fine_pitch_stubs(board, rules.min_track_mm, rules.clearance_mm, nets, STUB_PITCH_MM,
+                            edge_mm=rules.edge_clearance_mm, hole_mm=rules.hole_to_copper_mm, pads=pads)
+
+
+def untouched_pads(board, nets: set[str]) -> set[str]:
+    """The pads of ``nets`` that no track or via of their own net reaches ("REF-N"), by KiCad's connectivity:
+    what a run left for the next one. A pad joined to its net by a fill alone counts as reached; another net's
+    copper across the pad (a short, which the connectivity reports too) does not."""
+    board.BuildConnectivity()
+    conn = board.GetConnectivity()
+    out = set()
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() not in nets:
+                continue
+            code = pad.GetNetCode()
+            reached = [x for x in list(conn.GetConnectedTracks(pad)) + list(conn.GetConnectedPads(pad))
+                       if x.GetNetCode() == code]
+            if not reached:
+                out.add(f"{fp.GetReference()}-{pad.GetNumber()}")
+    return out
 
 
 def lay_stubs(board, stubs: list[Stub]) -> list:
@@ -1724,14 +1766,14 @@ def fix_wires(dsn_text: str) -> str:
 
 
 def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANOUT,
-                  edge_clearance_mm: float | None = None) -> Path:
+                  edge_clearance_mm: float | None = None, gui: bool = GUI) -> Path:
     """Freerouting's settings file for this run, in the work directory: telemetry off, the log there, the fanout
     stage as configured. The file must carry a version and a profile id or the jar stops with an exception."""
     import json
     import uuid
     cfg = {"version": VERSION,
            "profile": {"id": str(uuid.uuid4()), "email": "", "allow_telemetry": False, "allow_contact": False},
-           "gui": {"enabled": GUI, "input_directory": "", "dialog_confirmation_timeout": 5,
+           "gui": {"enabled": gui, "input_directory": "", "dialog_confirmation_timeout": 5,
                    "show_routing_summary": False},
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
@@ -1775,6 +1817,7 @@ class FreeroutingResult:
     rules: DsnRules
     renamed: int
     stubs: int = 0
+    exits: tuple = ()  # the pads whose exits a fixed stub reserved: the closure loop's stubs (D86)
     feeds: int = 0  # plane feeds laid before the export (route/planes.py, D85)
     pours: int = 0
     joined: int = 0  # tracks laid between a pad's piece groups the router left apart
@@ -1847,11 +1890,11 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
 
 
 def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float,
-            edge_clearance_mm: float | None = None, fanout: bool = FANOUT) -> tuple[int | None, bool]:
+            edge_clearance_mm: float | None = None, fanout: bool = FANOUT, gui: bool = GUI) -> tuple[int | None, bool]:
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm)
+    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm, gui=gui)
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
@@ -1876,7 +1919,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
-                fanout: bool = FANOUT, feeds: set[str] | None = None) -> FreeroutingResult:
+                fanout: bool = FANOUT, feeds: set[str] | None = None,
+                stub_pads: set[str] | None = None, gui: bool = GUI) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1888,14 +1932,21 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     own fanout stage first (a via beside every SMD pad; off by default, D57). ``feeds`` names the plane nets:
     a fixed via and stub go beside every SMD pad of theirs before the export (`route/planes.py`, D85) and
     their pins leave the router's network, so their pours and feeds connect them and the router routes the
-    other nets around them."""
+    other nets around them. ``stub_pads`` names pads ("REF-N") whose exit a fixed stub reserves
+    (:func:`exit_stubs`): the pads an earlier run left open, in the closure loop of :func:`route_rounds`.
+    ``gui`` gives the jar its window under Xvfb, as every class A row runs it; class B's rows run without
+    (`GUI`, D85: the renderer dies drawing a plane and the session comes back empty)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = work_dir / "board.dsn", work_dir / "board.ses", work_dir / "run.log"
     laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm, fine_pitch_mm=STUB_PITCH_MM,
                         edge_mm=rules.edge_clearance_mm, hole_mm=rules.hole_to_copper_mm) if stubs else []
+    exits = exit_stubs(board, rules, set(stub_pads)) if stub_pads else []
+    laid += [x for x in exits if (x.net, x.points[0]) not in {(y.net, y.points[0]) for y in laid}]
     lay_stubs(board, laid)
+    if stub_pads:
+        say(f"exit stubs laid for {len(exits)} of {len(stub_pads)} pads left open: {sorted(x.pad for x in exits)}")
     laid_feeds = []
     if planes:
         hole_rule_areas(board, rules)
@@ -1905,7 +1956,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
     if feeds:
         from waffle_eda.route import planes as feedlib
-        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds))
+        # the feeds slide around the copper already on the board, the exit stubs above included: placed
+        # against the pads alone, four GND feeds landed on or within 0.13 mm of the closure loop's five stubs
+        # on upduino (one shorting a stub), 4 standing violations more for the router (2026-09-25)
+        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True)
         feedlib.lay_feeds(board, laid_feeds, in_pad=False)  # the vias in pads come after the import
         say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
@@ -1925,10 +1979,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     if router_edge_mm is None:  # the router's own margin closed rp2040's last corridor at the rule (D68)
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
     code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm,
-                              fanout=fanout)
+                              fanout=fanout, gui=gui)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
-                               feeds=len(laid_feeds), exported_layers=layers,
+                               exits=tuple(sorted(x.pad for x in exits)), feeds=len(laid_feeds), exported_layers=layers,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
                                exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
     if ses.is_file():
@@ -1962,3 +2016,46 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     result.digest = geometry_digest(board)
     result.seconds = round(time.time() - t0, 1)
     return result
+
+
+def route_rounds(problem: Path, rules, work_dir: Path, finish, rounds: int = 1, say=lambda _m: None,
+                 stub_pads: set[str] | None = None, **kw) -> tuple[Path, list[FreeroutingResult]]:
+    """The closure loop around :func:`route_board` (D86; D87: 81, 82, 80 of 86 over three rounds on upduino, so
+    a tool for a measurement and not the class B default): every round routes the problem board afresh, and the
+    pads a round leaves open on a fine-pitch package get a fixed exit stub in the next (:func:`exit_stubs`,
+    added to ``stub_pads``). The loop ends when a round leaves no net open, when the open pads add no stub, or
+    when the rounds are spent. ``finish(board, work_dir)`` is the caller's own finishing of a routed board
+    (save, fill, stitch) and returns the file the open nets are read from; the last round's files stay in
+    ``work_dir``, every earlier round's move to ``work_dir/round-<k>``. Returns that file and each round's
+    result, the last one carrying the loop's verdict."""
+    pads: set[str] = set(stub_pads or ())
+    results: list[FreeroutingResult] = []
+    out = None
+    for k in range(1, rounds + 1):
+        board = kb.load_board(problem)
+        result = route_board(board, rules, work_dir, say=say, stub_pads=pads or None, **kw)
+        results.append(result)
+        out = finish(board, work_dir)
+        final = kb.load_board(out)
+        open_nets = set(kb.open_nets(final))
+        if not open_nets or k == rounds:
+            break
+        more = {x.pad for x in exit_stubs(final, rules, untouched_pads(final, open_nets))} - pads
+        say(f"round {k}: {len(open_nets)} nets open; {len(more)} pads get an exit stub for round {k + 1}: {sorted(more)}")
+        if not more:
+            break
+        pads |= more
+        shelve_round(work_dir, k)
+    return out, results
+
+
+def shelve_round(work_dir: Path, k: int) -> Path:
+    """Move a round's files out of the way, into ``work_dir/round-<k>``, before the next round writes there."""
+    into = work_dir / f"round-{k}"
+    if into.exists():
+        shutil.rmtree(into)
+    into.mkdir()
+    for item in list(work_dir.iterdir()):
+        if item != into and not item.name.startswith("round-"):
+            shutil.move(str(item), str(into / item.name))
+    return into

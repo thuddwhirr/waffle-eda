@@ -880,3 +880,72 @@ def test_fine_pitch_stubs_leave_every_pad_straight_and_stop_at_pads_and_the_edge
     by_net2 = {s.net: s for s in stubs2}
     assert set(by_net2) == {"N0", "N1", "N3", "N4"}  # pad 3 (N2): the resistor pad 0.15 mm ahead leaves under the minimum
     assert all(abs(s.length_mm() - (0.45 + 0.5)) < 1e-6 for s in stubs2)  # half the pad plus the exit
+
+
+def test_exit_stubs_are_laid_for_the_named_pads_only_and_name_them():
+    """D86: the closure loop reserves the exits of the pads a run left open, not every pad of the package."""
+    b = _qfn_board(edge_y=-8.0)
+    from tests.test_planes import RULES
+    stubs = fr.exit_stubs(b, RULES, {"U1-1", "U1-4", "U1-3", "R1-2"})
+    assert sorted(s.pad for s in stubs) == ["U1-1", "U1-4"]  # pad 3's exit is blocked; R1 is not fine pitch
+    assert {s.net for s in stubs} == {"N0", "N3"}
+    assert all(len(s.points) == 2 for s in stubs)
+
+
+def test_untouched_pads_are_the_pads_no_copper_reaches():
+    b = _qfn_board(edge_y=-8.0)
+    nets = b.GetNetsByName()
+    track = pcbnew.PCB_TRACK(b)  # N0 from the QFN pad to the resistor pad: both reached
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(-1.0), kb.nm(-2.5)))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(10.0), kb.nm(5.0)))
+    track.SetWidth(kb.nm(0.15))
+    track.SetLayer(pcbnew.F_Cu)
+    track.SetNet(nets["N0"])
+    b.Add(track)
+    assert fr.untouched_pads(b, {"N0", "N1"}) == {"U1-2", "R1-2"}
+
+
+def test_the_rounds_loop_stubs_the_open_pads_and_stops_when_no_stub_is_left_to_add(monkeypatch, tmp_path):
+    """D86: round one leaves every net open; round two runs with an exit stub out of each open fine-pitch pad
+    whose exit is free; the nets no stub can help stay open and end the loop with a round to spare."""
+    from tests.test_planes import RULES
+    problem = tmp_path / "problem.kicad_pcb"
+    kb.save_board(_qfn_board(edge_y=-8.0), problem)
+    seen = []
+
+    def stand_in(board, rules, work_dir, say=lambda _m: None, stub_pads=None, **kw):
+        """Connects every net whose QFN pad got a stub, by a track to its resistor pad; the rest stay open."""
+        seen.append(set(stub_pads or ()))
+        (work_dir / "board.ses").write_text("stand-in")
+        nets = board.GetNetsByName()
+        for fp in board.GetFootprints():
+            if fp.GetReference() != "U1":
+                continue
+            for pad in fp.Pads():
+                if f"U1-{pad.GetNumber()}" in (stub_pads or ()):
+                    k = int(pad.GetNumber()) - 1
+                    track = pcbnew.PCB_TRACK(board)
+                    track.SetStart(pad.GetPosition())
+                    track.SetEnd(pcbnew.VECTOR2I(kb.nm(10 + k), kb.nm(5)))
+                    track.SetWidth(kb.nm(0.15))
+                    track.SetLayer(pcbnew.F_Cu)
+                    track.SetNet(nets[f"N{k}"])
+                    board.Add(track)
+        return fr.FreeroutingResult(dsn=work_dir / "board.dsn", ses=work_dir / "board.ses", log=work_dir / "run.log",
+                                    rules=None, renamed=0, exits=tuple(sorted(stub_pads or ())))
+
+    monkeypatch.setattr(fr, "route_board", stand_in)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    def finish(board, work_dir):
+        out = work_dir / "routed.kicad_pcb"
+        kb.save_board(board, out)
+        return out
+
+    out, results = fr.route_rounds(problem, RULES, work, finish, rounds=4)
+    assert seen == [set(), {"U1-1", "U1-2", "U1-4", "U1-5"}]  # pad 3's exit is blocked by the resistor pad
+    assert len(results) == 2 and results[-1].exits == ("U1-1", "U1-2", "U1-4", "U1-5")
+    assert set(kb.open_nets(kb.load_board(out))) == {"N2", "N5"}  # no stub can help these: the loop ended
+    assert (work / "round-1" / "board.ses").read_text() == "stand-in" and (work / "board.ses").is_file()
+    assert not (work / "round-2").exists()  # the last round's files stay in the work directory
