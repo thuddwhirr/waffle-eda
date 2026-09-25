@@ -498,13 +498,12 @@ any shape at 3 mm, so they stay the router's with their nearest feeds fixed as v
 **D92. The reserved form at 30 passes does not beat the fixed one; the fixed form stays class B's default**
 (2026-09-25, `WAFFLE_FEEDS_MODE=reserved python3 scripts/gate.py b upduino-v3.01`). 80 of 86, 0 violations,
 the router at 8 unrouted for the fixed form's 32, 788 s; with a plane net's plated pins counted as pads no
-feed reaches (J2-9 was the +3V3 stray), as committed: 78 of 86, 2 clearances the repair could not settle,
-10 unrouted, 996 s, the three +3V3 capacitor pads at U2 joined to each other and not to a via. What fails
-under it is named: U3-48 aimed at the plane it cannot reach ("layers are disabled") instead of its fixed
-via, the capacitors routed to each other, and the same three signal nets as under every form (U3-1 to the
-oscillator, U3-5 to R3, U3-21 to TP1), all at U3 and its capacitors. The nine pads no feed reaches are
-back-side pads under the QFNs (C14-1, C30-1, R5-2, U8-8 on B.Cu); the reference gives them no feed but a 0.5
-mm back-side track to a via 1.4 to 8 mm away, and our search holds a stub clear of the other side's pads
+feed reaches (J2-9 was the +3V3 stray), as committed: 78 of 86, 2 clearances, 10 unrouted, 996 s, the three
++3V3 capacitor pads at U2 joined to each other and not to a via. What fails under it: U3-48 aimed at the
+plane it cannot reach ("layers are disabled") instead of its fixed via, and the same three signal nets as
+under every form (U3-1 to the oscillator, U3-5 to R3, U3-21 to TP1). The nine pads no feed reaches are
+back-side pads under the QFNs (C14-1, C30-1, R5-2, U8-8 on B.Cu); the reference gives them no feed but a
+0.5 mm back-side track to a via 1.4 to 8 mm away, and our search holds a stub clear of the other side's pads
 (layer-blind). The reserved form is the measured alternative; class A's digests are unchanged. Measurement.
 
 ## BGA escape (the class B+ machinery; passes its gate)

@@ -38,8 +38,11 @@ fails under the reserved form, since it is named and small where the fixed form'
 router's shove at large: (a) a pad no feed reaches that the router aims at the plane it cannot reach
 ("layers are disabled") instead of the fixed via beside it (U3-48; in the jar the airline goes to the
 nearest item of the net, the plane under the pad): hand those pads' nets no plane at all, or fix the via
-*in* the pad's exit so it is the nearest item; (b) the three +3V3 capacitor pads at U2 (C14-1, C30-1, R5-2)
-the router joins to each other: one target for the group, not two per pad; (c) the same three signal nets
+*in* the pad's exit so it is the nearest item; (b) the pads no feed reaches are back-side pads under the QFNs (C14-1, C30-1, R5-2 under U2,
+U8-8; D92), which the reference connects with a 0.5 mm back-side track to a via 1.4 to 8 mm away: the feed
+search holds a stub clear of pads on the *other* side of the board, so a layer-aware `stub_clear` with a
+longer reach for such pads is the smallest change, and its failing case is those four pads on the bare
+board; (c) the same three signal nets
 as in every form, all at U3 and its capacitors (U3-1 to the oscillator, U3-5 to R3, U3-21 to TP1, their
 untouched ends and stubs in D87 and D91): the reference's own copper there is the answer key to read
 (`references/` has it), before anything else is built. Each is a four-pass measurement (six minutes) with a
