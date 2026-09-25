@@ -167,6 +167,9 @@ PLANES = os.environ.get("WAFFLE_PLANES", "none")
 # beside every SMD pad of theirs before the router, one more feed for every piece left after the fill.
 # `WAFFLE_FEEDS=1` selects it while the class B rungs are measured.
 FEEDS = os.environ.get("WAFFLE_FEEDS", "0") == "1"
+# The exit stubs (D51/D52's corridor rule and D85's fine-pitch rule) as fixed wires before the router:
+# `WAFFLE_STUBS=1` selects them while the class B rungs are measured (off on class A, D57 and D83).
+STUBS = os.environ.get("WAFFLE_STUBS", "0") == "1"
 
 
 def plane_split(board, pours: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -203,7 +206,7 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
             outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
             plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if FEEDS else None
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=pours, planes=planes, feeds=plane_nets, **budget)
+                                             pours=pours, planes=planes, feeds=plane_nets, stubs=STUBS, **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
@@ -223,7 +226,8 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
         fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
         budget_note = ((f" | router budget overridden: {budget}" if budget else "")
                        + (f" | planes {PLANES}" if PLANES != "none" else "")
-                       + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else ""))
+                       + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else "")
+                       + (f" | stubs {result.stubs}" if STUBS else ""))
         rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
     return rows
 
