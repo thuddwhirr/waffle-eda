@@ -72,6 +72,9 @@ DRILL_STEP_MM = 0.001
 # block in the DSN carried it too, but placed before the structure's rule block it made the loader drop every
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
+# `WAFFLE_VIA_COSTS` overrides it for a measurement: with vias this cheap the router spreads a four-layer
+# board's signals over its inner layers (a third of upduino's tracks on the GND plane's layer, D85), where
+# the reference keeps 8 of 1585; the tool's own default is 50.
 FANOUT = False  # the fanout stage necks its stubs to 75 % of the width, below the rule, and is fragile (D57)
 # The jar's own window under Xvfb, as every class A measurement ran it. Its renderer draws a plane's detailed
 # fill from the search tree the router is changing and dies of a NullPointerException, after which the session
@@ -1635,7 +1638,7 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
-                      "scoring": {"via_costs": VIA_COSTS},
+                      "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))},
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
