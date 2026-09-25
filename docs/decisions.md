@@ -404,6 +404,15 @@ pours are laid over the router's tracks on In1 and In2 and the tracks cut them, 
 plane-integrity criterion is for. So the rung is not a budget question; the fine-pitch exits and the plane
 layers are its cases (D81). Measurement.
 
+**D83. The escape stubs do not help `pico-ice-rev3` either** (2026-09-25, `scripts/rung.py pico-ice-rev3 none 4
+900 stubs`). `freerouting.escape_stubs` lays 19 stubs on the board (the rows whose corridor is under 0.02 mm);
+with them the router leaves 69, 55, 46, 42 unrouted after passes 1 to 4 against 56, 57, 43, 47 without, with
+25 standing violations against 13; imported and re-laid (a fixed wire does not come back in the session, D57):
+65 of 95 nets, 43 missing links, 8 electrical (4 clearances, a short, 3 tracks crossing the re-laid stubs). The
+class A finding (D57) holds on class B: the stubs stay off. What the rung has left, in order: the plane
+layers kept for the planes (D82), the 13 standing violations every run reports from its first pass (conflicts
+among fixed items under the router's rules, to be named), and threads. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

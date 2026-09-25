@@ -1,11 +1,18 @@
-"""One class B gate row with the plane handling selectable, for iterating on a rung (D77 budgets).
+#!/usr/bin/env python3
+"""One class B gate row on one reference, with the plane handling and the escape stubs selectable: the tool
+for iterating on a rung under a short budget (D77), where `gate.py b <key>` is the verdict.
 
-    python3 run_rung.py <key> <mode> <passes> <timeout_s>
-    mode: none    - no planes in the DSN, every recorded pour laid after the import (class A's way)
-          signal  - the inner-layer pours laid before the export on signal layers (D80; Freerouting then calls
-                    the layer a dedicated power plane and writes an empty session)
-          power   - the inner pours before the export and their layers typed power in the DSN
-          gnd     - only the ground plane's layer before the export, typed power; the rest after
+    python3 scripts/rung.py <key> <mode> <passes> <timeout_s> [stubs]
+
+    mode: none    no planes in the DSN, every recorded pour laid after the import (class A's way; the gate's default)
+          signal  the inner-layer pours before the export on signal layers (broken: the router calls the layer a
+                  dedicated power plane and writes an empty session, D81; kept for the record)
+          power   the inner pours before the export, their layers typed power (D81: costs the routing layers)
+          gnd     only the ground plane before the export, typed power (D81: worse still)
+    stubs: the fine-pitch exits laid as fixed wires (D51/D52; D83: worse on pico-ice)
+
+Writes build/fr/<key>-<mode>[-stubs]/ with the DSN, the session, the router's log, the imported and the routed
+board; prints the router's summary, the score and the nets left open with their pieces.
 """
 import re, sys, time
 from pathlib import Path

@@ -59,14 +59,14 @@ stays open after four passes is measured: 30 missing links, all signals of the t
 pitch, the iCE40 at 0.5) to each other and to the headers, with the router laying a third of its tracks on the
 layer the reference keeps as its GND plane. Time alone does not close it (D82): thirty passes in 67 minutes
 drift from 30 to 19 unrouted, and the pours laid afterwards over the router's tracks on In1 and In2 come out
-in pieces (+3V3 and +1V1 in four each). So the rung's cases are, in this order, each behind a measurement on
-pico-ice under a short budget (D77): the fine-pitch exits (`freerouting.escape_stubs`, D51/D52, whose class A
-measurement was confounded, D57; a four-pass run with them is the measurement this commit leaves running,
-`build/fr/pico-ice-rev3-none-stubs/`); the plane layers kept for the planes (the router routing on In1 and In2
-is what fragments them, and what class B's plane-integrity criterion, "B." below, will score; the reference
-itself routes 273 tracks on In2 beside its split planes, so the rule is not "no tracks" but "no track through
-a plane"); more threads for the router (4 cores here; D65's determinism must hold: two runs to the digest).
-Then the full-budget row: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+in pieces (+3V3 and +1V1 in four each). The fine-pitch exits as fixed stubs make it worse (D83), as on class
+A. So the rung's cases are, in this order, each behind a measurement on pico-ice under a short budget (D77,
+`scripts/rung.py pico-ice-rev3 none 4 900`): the plane layers kept for the planes (the router routing on In1
+and In2 is what fragments them, and what class B's plane-integrity criterion, "B." below, will score; the
+reference itself routes 273 tracks on In2 beside its split planes, so the rule is not "no tracks" but "no
+track through a plane"); the 13 violations the router reports from its first pass on every run (conflicts
+among fixed items under its rules: name them, as D70 did for crkbd); more threads for the router (4 cores here;
+D65's determinism must hold: two runs to the digest). Then the full-budget row: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
 tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
 pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
 the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B
@@ -195,7 +195,7 @@ design (an MCU with USB and a buck regulator) to fab outputs. *First task, in pr
 to D79 are what it took). `gate.py b` exists (the class A gate's mechanics over the class B ladder); its first
 rung, `pico-ice-rev3`, fails at the class A configuration (D80): 72 of 95 nets after four passes and after
 thirty (D82), the rest the QFNs' fine-pitch exits and the planes the router's tracks cut; the planes stay out
-of the router's DSN (D81); the escape stubs are being measured (see the next-step section).
+of the router's DSN (D81) and the stubs stay off (D83); the next cases are in the next-step section.
 
 ### B+. A BGA without a matched bus
 
@@ -236,6 +236,7 @@ rising order; the target board to fab outputs.
 | `designs/temperature-sensor/` | the class A synthetic design: `design.md`, `bom.csv`, `kicad/` (schematic and board in one project), `netlist.net`, `spec.toml`, `reports/`, `out/` |
 | `scripts/gate.py` | the gates: `a`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work) |
 | `scripts/design.py` | `run <name>` (stages in order, stopping at a failing gate), `status <name>` (each gate, what waits on the owner) |
+| `scripts/rung.py` | one class B gate row with the plane handling and the stubs selectable, for iterating on a rung under a short budget (D77, D81 to D83) |
 | `tests/` | 263 tests: 117 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
