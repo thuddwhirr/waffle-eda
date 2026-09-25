@@ -1495,6 +1495,7 @@ STUB_LEG_MM = 0.40  # the 45-degree leg
 # is routed (upduino, 8 pads after 30 passes). A straight fixed stub out of every pad of a fine-pitch package
 # reserves the exit; it is shortened where another net's pad sits in the way and dropped under a minimum.
 STUB_PITCH_MM = 0.5  # packages with a pad pitch at or under this get exit stubs
+POUR_EXIT_MM = 0.5  # the free patch kept beyond a pin left to the pour (D95), a circle of this diameter
 STUB_EXIT_MM = 0.50  # the straight exit beyond the pad's edge
 STUB_EXIT_MIN_MM = 0.20  # shorter than this is not worth reserving
 
@@ -1657,6 +1658,28 @@ def _pitch_mm(fp) -> float:
             if 0.05 < d < best:
                 best = d
     return best
+
+
+def pour_pins(board, pours: list[dict], nets: set[str], pitch_mm: float = STUB_PITCH_MM) -> set[str]:
+    """The SMD pins ("REF-N") of packages at ``pitch_mm`` or finer that belong to one of ``nets`` and sit on a
+    layer where that net has a pour among ``pours`` (the pours laid after the import): the reference leaves
+    them to the pour, with no via near them (D95: none within 1.5 mm of U3's twelve GND pins on upduino),
+    where a feed via beside each sat in the corridor the router fails in most (22 of 86 stop points)."""
+    poured = {(p["net"], p["layer"]) for p in pours}
+    out = set()
+    for fp in board.GetFootprints():
+        if fp.GetPadCount() < 4 or _pitch_mm(fp) > pitch_mm + 1e-6:
+            continue
+        for pad in fp.Pads():
+            stack = pad.GetLayerSet().CuStack()
+            if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD or not stack:
+                continue
+            (_c, _a, half_len, half_wid) = _pad_geometry(pad)
+            if half_len > 1.0 and half_wid > 1.0:  # a thermal pad keeps its via in the pad
+                continue
+            if (pad.GetNetname(), board.GetLayerName(stack[0])) in poured:
+                out.add(f"{fp.GetReference()}-{pad.GetNumber()}")
+    return out
 
 
 def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str], pitch_mm: float,
@@ -1934,7 +1957,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
                 fanout: bool = FANOUT, feeds: set[str] | None = None,
                 stub_pads: set[str] | None = None, gui: bool = GUI,
-                feeds_mode: str = "fixed", via_in_pad: bool = False) -> FreeroutingResult:
+                feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1956,7 +1979,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     keepouts in the DSN, the pins out of its network, the feeds laid after the import where the keepouts held
     their room; "vias", the feed vias alone fixed in the DSN, the fed pads out of its network and the pads with
     no feed left in it, the stubs laid after the import. ``via_in_pad`` puts a feed's via in any pad it fits
-    (D93, the fab's filled-and-capped option), laid after the import as a thermal pad's is."""
+    (D93, the fab's filled-and-capped option), laid after the import as a thermal pad's is. ``pour_pins_rule``
+    leaves a fine-pitch pin of a plane net to the pour of its own layer (:func:`pour_pins`, D95): no feed
+    beside it, its pin out of the router's network, the pour and the stitching connecting it after the import."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1978,12 +2003,15 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
     if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias"):
         raise ValueError(f"feeds_mode {feeds_mode!r}: fixed, routable, after, reserved or vias")
+    left_to_pour: set[str] = pour_pins(board, pours or [], set(feeds)) if feeds and pour_pins_rule else set()
+    if left_to_pour:
+        say(f"fine-pitch pins left to their layer's pour, no feed: {len(left_to_pour)}")
     if feeds and feeds_mode != "after":
         from waffle_eda.route import planes as feedlib
         # the feeds slide around the copper already on the board, the exit stubs above included: placed
         # against the pads alone, four GND feeds landed on or within 0.13 mm of the closure loop's five stubs
         # on upduino (one shorting a stub), 4 standing violations more for the router (2026-09-25)
-        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True, via_in_pad=via_in_pad)
+        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True, via_in_pad=via_in_pad, skip=left_to_pour)
         # a plated pin of a plane net whose pour comes after the import (+3V3 on upduino) has nothing of its
         # net in the DSN to reach; it counts as a pad no feed reaches (J2-9 stray under the reserved form)
         poured_after = set(feeds) - {p["net"] for p in (planes or [])}
@@ -2020,6 +2048,23 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         dsn.write_text(keepouts_dsn(dsn.read_text(), sites))
         say(f"feed sites reserved as keepouts: {len(sites)}; {len(targets)} feeds fixed as vias for the "
             f"{len(feedlib.unfed_pads(board, laid_feeds, set(feeds), pth_nets=poured_after))} pads no feed reaches")
+    if left_to_pour:  # the pour connects them after the import; the router is not to try, and it keeps off
+        dsn.write_text(drop_pins(dsn.read_text(), left_to_pour))  # each pin's exit so the pour can reach it
+        sites = []  # (13 of 15 pins came out as islands with the exits fenced by tracks, 2026-09-25)
+        for fp in board.GetFootprints():
+            cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
+            for pad in fp.Pads():
+                name = f"{fp.GetReference()}-{pad.GetNumber()}"
+                if name not in left_to_pour:
+                    continue
+                (px, py), (ux, uy), half_len, half_wid = _pad_geometry(pad)
+                if (px - cx) * ux + (py - cy) * uy < 0:  # the exit points away from the package centre
+                    ux, uy = -ux, -uy
+                r = POUR_EXIT_MM / 2
+                sites.append(PadKeepout("pour", name, px + ux * (half_len + r), py + uy * (half_len + r), r, 0.0,
+                                        (board.GetLayerName(pad.GetLayerSet().CuStack()[0]),)))
+        dsn.write_text(keepouts_dsn(dsn.read_text(), sites))
+        say(f"pin exits reserved for the pour: {len(sites)}")
     if feeds:
         if feeds_mode == "after":  # the plane nets are not the router's at all: the feeds, pours and stitching
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))  # after the import connect them

@@ -42,7 +42,12 @@ UTC): **FAIL, 80 of 86**, one clearance of 0.011 mm the repair could not settle,
 999 s, digests imported 9c9e33a96f and final d7a1a2db6c; open are the same three nets and /FLASH_MISO,
 /FT_SSn, /IOT_49A. The 81 of D85 was the configuration with 88 straight feeds and no keepouts; a change to
 the DSN moves this board's row by a net or two either way (78 to 82 across D87 to D94), so neither number
-judges the L-shaped feeds, which pass their test and feed eight more pads. **The next step** is what
+judges the L-shaped feeds, which pass their test and feed eight more pads. The feeds beside U3's GND pins,
+which the reference does not have, were then left to the pour as the reference leaves them (D95): the router
+gains little (43 unrouted for 51) and the pins come out as islands, with or without their exits kept free,
+because the reference's pour reaches its pins only through routing that leaves the ring free. The feeds'
+form has now been measured seven ways (D91, D94, D95) without a pass, and the router's shove against its
+own copper around U3 is what stands in every one of them. **The next step** is what
 fails under the reserved form, since it is named and small where the fixed form's failures are the
 router's shove at large: (a) a pad no feed reaches that the router aims at the plane it cannot reach
 ("layers are disabled") instead of the fixed via beside it (U3-48; in the jar the airline goes to the

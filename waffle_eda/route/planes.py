@@ -238,12 +238,13 @@ IN_PAD_MARGIN_MM = 0.05  # a via in a pad keeps its ring this far inside the pad
 
 def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via_mm: float | None = None,
                 drill_mm: float | None = None, pads: set[str] | None = None, copper: bool = False,
-                via_in_pad: bool = False) -> list[Feed]:
+                via_in_pad: bool = False, skip: set[str] | None = None) -> list[Feed]:
     """The feeds for every SMD pad of ``nets`` that has room for one (only the pads named "REF-N" in ``pads``
     when given). Nothing is added to the board; :func:`lay_feeds` does that. Width and via default to the
     board's smallest. With ``copper`` the board's tracks and vias are obstacles too (a routed board). With
     ``via_in_pad`` (D93: the fab fills and caps its vias) the via goes in any pad it fits, ring and margin
-    inside the copper; without, only in a thermal pad, as the references do."""
+    inside the copper; without, only in a thermal pad, as the references do. Pads named in ``skip`` get no
+    feed (the pins left to their layer's pour, D95)."""
     width_mm = width_mm or rules.min_track_mm
     via_mm = via_mm or rules.min_via_mm
     drill_mm = drill_mm or rules.min_drill_mm
@@ -256,6 +257,8 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
             if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD:
                 continue
             if pads is not None and f"{fp.GetReference()}-{pad.GetNumber()}" not in pads:
+                continue
+            if skip and f"{fp.GetReference()}-{pad.GetNumber()}" in skip:
                 continue
             stack = pad.GetLayerSet().CuStack()
             if not stack:

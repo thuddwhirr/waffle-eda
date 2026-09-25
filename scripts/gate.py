@@ -180,10 +180,12 @@ def router_budget() -> dict:
 # keepouts, laid after the import); `WAFFLE_FEEDS_MODE` selects another for a measurement.
 # `via_in_pad`: a feed's via in any pad it fits, the fab's filled-and-capped option (D93: routing before cost);
 # `WAFFLE_VIA_IN_PAD=1` selects it for a measurement.
+# `pour_pins`: a fine-pitch pin of a plane net left to the pour of its own layer, no feed beside it (D95, the
+# reference's way at a QFN's GND pins); `WAFFLE_POUR_PINS=1` selects it for a measurement.
 CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True, "feeds_mode": "fixed",
-           "via_in_pad": False}
+           "via_in_pad": False, "pour_pins": False}
 CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 2400.0,
-           "feeds_mode": "fixed", "via_in_pad": False}
+           "feeds_mode": "fixed", "via_in_pad": False, "pour_pins": False}
 
 
 def configuration(defaults: dict) -> dict:
@@ -203,6 +205,8 @@ def configuration(defaults: dict) -> dict:
         out["feeds_mode"] = os.environ["WAFFLE_FEEDS_MODE"]
     if os.environ.get("WAFFLE_VIA_IN_PAD"):
         out["via_in_pad"] = os.environ["WAFFLE_VIA_IN_PAD"] == "1"
+    if os.environ.get("WAFFLE_POUR_PINS"):
+        out["pour_pins"] = os.environ["WAFFLE_POUR_PINS"] == "1"
     return out
 
 
@@ -253,7 +257,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
                                                        stubs=cfg["stubs"], gui=cfg["gui"], feeds_mode=cfg["feeds_mode"],
-                                                       via_in_pad=cfg["via_in_pad"], **budget)
+                                                       via_in_pad=cfg["via_in_pad"], pour_pins_rule=cfg["pour_pins"], **budget)
             result = results[-1]
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
@@ -267,7 +271,8 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                        + (f" | cap {cap['timeout_s']:.0f} s" if cap else "")
                        + (f" | configuration overridden: {overridden}" if overridden else "")
                        + (f" | planes {cfg['planes']}" if cfg["planes"] != "none" else "")
-                       + (f" | feeds {result.feeds} {result.feeds_mode}{' via-in-pad' if cfg['via_in_pad'] else ''}, stitched {len(stitched)}" if plane_nets else "")
+                       + (f" | feeds {result.feeds} {result.feeds_mode}{' via-in-pad' if cfg['via_in_pad'] else ''}"
+                          f"{' pour-pins' if cfg['pour_pins'] else ''}, stitched {len(stitched)}" if plane_nets else "")
                        + (f" | stubs {result.stubs}" if cfg["stubs"] else "")
                        + (f" | rounds {len(results)} of {cfg['rounds']}, exits {list(result.exits)}" if cfg["rounds"] > 1 else "")
                        + (" | no window" if not cfg["gui"] else ""))

@@ -949,3 +949,17 @@ def test_the_rounds_loop_stubs_the_open_pads_and_stops_when_no_stub_is_left_to_a
     assert set(kb.open_nets(kb.load_board(out))) == {"N2", "N5"}  # no stub can help these: the loop ended
     assert (work / "round-1" / "board.ses").read_text() == "stand-in" and (work / "board.ses").is_file()
     assert not (work / "round-2").exists()  # the last round's files stay in the work directory
+
+
+def test_fine_pitch_plane_pins_are_left_to_their_layers_pour():
+    """D95: a 0.5 mm package's pin on a net that pours on the pin's layer gets no feed and leaves the router's
+    network; a pin of a net with no pour there, a passive's pad and a thermal pad do not."""
+    b = _qfn_board(edge_y=-8.0)
+    pours = [{"net": "N0", "layer": "F.Cu"}, {"net": "N1", "layer": "B.Cu"}]
+    left = fr.pour_pins(b, pours, {"N0", "N1", "N5"})
+    assert left == {"U1-1"}  # N0 pours on F.Cu where pad 1 sits; N1 pours on B.Cu only; N5 is the thermal pad
+    assert fr.pour_pins(b, [], {"N0"}) == set()
+    from tests.test_planes import RULES
+    from waffle_eda.route import planes
+    feeds = planes.plane_feeds(b, RULES, {"N0", "N1"}, skip=left)
+    assert "U1-1" not in {f.pad for f in feeds} and "U1-2" in {f.pad for f in feeds}

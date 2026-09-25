@@ -526,6 +526,17 @@ inside a pad costs the other layers a site the router had, and the pinning is by
 vias (D90). The option stays (`WAFFLE_VIA_IN_PAD=1`, `via_in_pad` in `CLASS_B`), not the default; the in-pad
 keepouts apply to the thermal pads' vias too, which were open to the same shorts. Measurement.
 
+**D95. The reference's way at a QFN's ground pins does not survive our router: pins left to the pour come out
+as islands** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds pourpins`, `route_board(pour_pins_rule
+=True)`). The reference puts no via within 1.5 mm of U3's twelve GND pins; its front-side pour connects them,
+and 22 of the fixed form's 86 stop points lie within 1.5 mm of the feed vias we lay beside such pins. Fifteen
+fine-pitch plane pins with a pour on their layer left without a feed and out of the router's network: the
+router 43 unrouted, 116 standing violations, 39 failed insertions (51, 127, 38 fixed), but 13 of the 15 pins
+are GND islands, the pour fenced off by the router's tracks and the stitching finding no room; 64 of 86. With
+a 0.5 mm patch beyond each pin's end kept as a keepout on its layer: the stitching feeds 3, 10 stay islands, the
+router 48, 131, 32; 64 of 86 with a clearance. The reference's pour reaches its pins because the designer's
+routing leaves the ring free; ours will not without a rule for it. Option kept (`WAFFLE_POUR_PINS=1`). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
