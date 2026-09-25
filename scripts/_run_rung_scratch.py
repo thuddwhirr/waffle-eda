@@ -15,6 +15,7 @@ from waffle_eda.kicad import board as kb, refill
 from waffle_eda.route import freerouting as fr
 
 key, mode, passes, timeout_s = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4])
+stubs = len(sys.argv) > 5 and sys.argv[5] == "stubs"  # the fine-pitch exits laid as fixed wires (D51/D52)
 ref = refs.REFERENCES[key]
 bare, info = rebuild.strip_all(ref)
 rules = rebuild.measure_rules(ref)
@@ -30,11 +31,11 @@ elif mode == "gnd":
     after = [p for p in info["pours"] if p not in planes]
 else:
     raise SystemExit(mode)
-work = refs.repo_root() / "build" / "fr" / f"{key}-{mode}"
+work = refs.repo_root() / "build" / "fr" / f"{key}-{mode}{'-stubs' if stubs else ''}"
 if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's typing
     fr.type_layers_power = lambda text, layers: text
 t0 = time.time()
-result = fr.route_board(board, rules, work, passes=passes, timeout_s=timeout_s, pours=after, planes=planes, say=print)
+result = fr.route_board(board, rules, work, passes=passes, timeout_s=timeout_s, pours=after, planes=planes, say=print, stubs=stubs)
 print("ROUTER:", result.summary())
 out = work / f"{key}-routed.kicad_pcb"
 kb.save_board(board, out)
