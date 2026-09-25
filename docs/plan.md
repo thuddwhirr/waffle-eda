@@ -16,6 +16,18 @@ order the class B paragraph below gives: stubs only for the pads a run left open
 second run; then threads with the determinism check; then the configuration becomes `gate.py b`'s default and
 `pico-ice-rev3` is measured under it. Not a fourth stub for every pad (D57, D83, D85).
 
+**Freerouting's source is at hand.** The owner forked it to <https://github.com/thuddwhirr/freerouting>, for
+reading and for changes if a measurement ever asks for one; `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1
+https://github.com/thuddwhirr/freerouting /home/user/thuddwhirr/freerouting` puts it on disk (a fresh container
+has it no more than the references). Read it as a guide, not as the jar: the fork's main (`a9689b2` on
+2026-09-25) is ahead of the 2.4.1 jar we run, with a `router.plane_nets` setting, plane nets routed first,
+`plane_via_costs`, a `fanout.pin_sorting_order` and a relaxed plane validation, none of which the jar's classes
+carry (its strings were checked). What it settled today (D85): a via over or touching a pad of its own net
+counts as a violation while via-in-pad is off (`Via.isObstacle`, `Pin.isObstacle`), which KiCad's export leaves
+it; the fanout stage vias every SMD pin with a net (`BatchFanout`); conduction areas are obstacles only when
+`BoardRules.ignoreConduction` is off. Building the fork needs Gradle 9.7.1 from services.gradle.org and the
+JDK 25 under `build/tools/`; whether the proxy serves the download is unknown, untried.
+
 **Confirm the state first.** A fresh container has no references, no tools and no `build/`; fetching takes a few
 minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver numpy shapely pytest`).
 
@@ -247,6 +259,7 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/busplan.py`, `busplanner.py` | the bus plan and its check, gate `busplan` PASS 3 of 3 (D41) |
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
 | `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java |
+| Freerouting's source | the owner's fork, <https://github.com/thuddwhirr/freerouting>, cloned when needed (the next-step section says how); ahead of the 2.4.1 jar, a guide to what the jar counts and refuses (D85) |
 | `waffle_eda/route/planes.py` | class B's plane feeds and stitching (D85): a fixed via and stub beside every plane-net SMD pad with room before the router, one more for every piece left after the fill |
 | `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
 | `waffle_eda/design/` | the six stages on a design directory (D74): `stage1_design` to `stage6_outputs`, `gate` (a stage's criteria, escalations and report), `schematic` (the generator, from the salvage), `board_build`, `placer` (edges, corners, annealing, compaction, silkscreen references) |

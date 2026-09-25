@@ -6,7 +6,10 @@ no copper) and the rules the class A gate measures off the reference (`bench/reb
 DSN, runs the jar under a virtual display, imports the session file and hands the routed board back. The gate
 then refills the zones and scores it exactly as before.
 
-What the wrapper has to know, each found by running it (`docs/decisions.md` D56):
+What the wrapper has to know, each found by running it (`docs/decisions.md` D56), and since 2026-09-25 also by
+reading: the owner's fork of the source, https://github.com/thuddwhirr/freerouting, is ahead of the 2.4.1 jar
+but explained what the jar counts as a violation (a via touching its own net's pad while via-in-pad is off) and
+what its fanout stage does; `docs/plan.md`'s next-step section says how to clone it and what differs.
 
 * **The version is 2.4.1 and it needs Java 25.** The container's Java is 21; `scripts/fetch_tools.py` puts a JDK
   and the jar under `build/tools/`, and :func:`java` prefers that JDK over the one on the path.
