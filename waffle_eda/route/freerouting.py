@@ -1804,13 +1804,16 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     if feeds:
         from waffle_eda.route import planes as feedlib
         laid_feeds = feedlib.plane_feeds(board, rules, set(feeds))
-        feedlib.lay_feeds(board, laid_feeds)
-        say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
+        feedlib.lay_feeds(board, laid_feeds, in_pad=False)  # the vias in pads come after the import
+        say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid or laid_feeds:
         dsn.write_text(fix_wires(dsn.read_text()))
     if feeds:
-        dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
+        if planes:  # the planes connect the fed pads; a pad fed in the pad has nothing the router could add
+            dsn.write_text(drop_pins(dsn.read_text(), {x.pad for x in laid_feeds if x.in_pad}))
+        else:  # no plane in the DSN: the pours laid after the import and the feeds connect the nets
+            dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
     if planes:
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
@@ -1834,6 +1837,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             from waffle_eda.route import planes as feedlib
             relaid = feedlib.lay_feeds(board, laid_feeds)
             say(f"plane feeds re-laid after the import: {len(relaid)} items")
+        if laid:  # likewise the stubs: before the pruning, which took a track ending on a stub for dangling,
+            lay_stubs(board, laid)  # and before the repair, which then knows them (D83's crossings)
         result.joined = len(join_piece_groups(board, rules))
         result.pruned = prune_dangling(board)
         result.widened = widen_tracks(board, d.width_mm)
@@ -1851,8 +1856,6 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
         result.vias = len(kb.vias(board))
         say(f"imported {ses.name}: tracks+vias {before} -> {result.tracks + result.vias}")
-        if laid:  # the session file does not carry fixed wires; the import dropped them with the rest
-            lay_stubs(board, laid)
     restore_references(board, renamed)
     result.digest = geometry_digest(board)
     result.seconds = round(time.time() - t0, 1)
