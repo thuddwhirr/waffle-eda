@@ -163,6 +163,10 @@ def router_budget() -> dict:
 # (D81): none, as class A does (every pour laid after the import); "gnd", the ground plane's inner layers; or
 # "inner", every inner-layer pour. `WAFFLE_PLANES` selects it while the class B rungs are measured.
 PLANES = os.environ.get("WAFFLE_PLANES", "none")
+# The plane feeds and the stitching (route/planes.py, D85) for the inner pours' nets: a fixed via and stub
+# beside every SMD pad of theirs before the router, one more feed for every piece left after the fill.
+# `WAFFLE_FEEDS=1` selects it while the class B rungs are measured.
+FEEDS = os.environ.get("WAFFLE_FEEDS", "0") == "1"
 
 
 def plane_split(board, pours: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -196,18 +200,30 @@ def _reroute_gate(references) -> list[tuple[str, bool, str]]:
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
             planes, pours = plane_split(board, info["pours"])
+            outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
+            plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if FEEDS else None
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=pours, planes=planes, **budget)
+                                             pours=pours, planes=planes, feeds=plane_nets, **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
         out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
         kb.save_board(board, out)
         fill = refill.refill_file(out)  # a child process with D14's fallbacks; the in-process fill can take an hour
+        stitched = []
+        if plane_nets:
+            from waffle_eda.route import planes as feedlib
+            routed = kb.load_board(out)
+            stitched = feedlib.stitch(routed, rules, plane_nets)
+            if stitched:
+                kb.save_board(routed, out)
+                fill = refill.refill_file(out)
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
         fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
-        budget_note = (f" | router budget overridden: {budget}" if budget else "") + (f" | planes {PLANES}" if PLANES != "none" else "")
+        budget_note = ((f" | router budget overridden: {budget}" if budget else "")
+                       + (f" | planes {PLANES}" if PLANES != "none" else "")
+                       + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else ""))
         rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
     return rows
 
