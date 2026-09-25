@@ -101,7 +101,9 @@ def _local_clearance_mm(pad) -> float:
     return kb.mm(value)
 
 
-def _rects(board) -> list[_Rect]:
+def _rects(board, copper: bool = False) -> list[_Rect]:
+    """Every pad as a rectangle; with ``copper``, every track segment (a rectangle bounding its round ends)
+    and via (a square) too, for a search on a routed board."""
     rects = []
     for fp in board.GetFootprints():
         for pad in fp.Pads():
@@ -112,14 +114,35 @@ def _rects(board) -> list[_Rect]:
             hole_r = max(kb.mm(drill.x), kb.mm(drill.y)) / 2
             rects.append(_Rect(pad.GetNetCode(), centre, axis, half_len, half_wid, hole_r,
                                math.hypot(half_len, half_wid), _local_clearance_mm(pad)))
+    if copper:
+        for t in kb.track_segments(board):
+            (ax, ay), (bx, by) = (kb.mm(t.GetStart().x), kb.mm(t.GetStart().y)), (kb.mm(t.GetEnd().x), kb.mm(t.GetEnd().y))
+            length, half_w = math.hypot(bx - ax, by - ay), kb.mm(t.GetWidth()) / 2
+            axis = ((bx - ax) / length, (by - ay) / length) if length > 0 else (1.0, 0.0)
+            rects.append(_Rect(t.GetNetCode(), ((ax + bx) / 2, (ay + by) / 2), axis, length / 2 + half_w, half_w, 0.0,
+                               length / 2 + half_w, 0.0))
+        for v in kb.vias(board):
+            r = kb.via_diameter_mm(v) / 2
+            rects.append(_Rect(v.GetNetCode(), (kb.mm(v.GetPosition().x), kb.mm(v.GetPosition().y)), (1.0, 0.0), r, r,
+                               kb.via_drill_mm(v) / 2, r * math.sqrt(2), 0.0))
     return rects
 
 
 class _Search:
     """The clearance tests for one board's rules; the feeds already placed count as obstacles."""
 
-    def __init__(self, board, rules, width_mm: float, via_mm: float, drill_mm: float):
-        self.rects = _rects(board)
+    def __init__(self, board, rules, width_mm: float, via_mm: float, drill_mm: float, copper: bool = False):
+        self.rects = _rects(board, copper)
+        # a filled zone's copper, by net and layer: a via must not land in another net's pour
+        self.fills: list[tuple[int, int, object]] = []
+        if copper:
+            for z in board.Zones():
+                if z.GetIsRuleArea() or not z.GetNetCode():
+                    continue
+                for lid in z.GetLayerSet().CuStack():
+                    poly = z.GetFilledPolysList(lid)
+                    if poly.OutlineCount():
+                        self.fills.append((z.GetNetCode(), lid, poly))
         self.clear = rules.clearance_mm + MARGIN_MM
         self.hole = rules.hole_to_copper_mm + MARGIN_MM
         self.edge = rules.edge_clearance_mm + MARGIN_MM
@@ -157,9 +180,14 @@ class _Search:
                     return False
             elif d < 2 * r + self.clear or d < r + self.drill_r + self.hole:
                 return False
+        point = pcbnew.VECTOR2I(kb.nm(p[0]), kb.nm(p[1]))
+        for f_net, _lid, poly in self.fills:
+            if f_net != net and poly.Collide(point, kb.nm(r + self.clear)):
+                return False
         return True
 
-    def stub_clear(self, net: int, a: tuple[float, float], b: tuple[float, float], rects: list[_Rect]) -> bool:
+    def stub_clear(self, net: int, a: tuple[float, float], b: tuple[float, float], rects: list[_Rect],
+                   layer: int | None = None) -> bool:
         """The stub's copper from ``a`` to ``b`` (the parts outside the pad and the via) against other nets."""
         length = math.hypot(b[0] - a[0], b[1] - a[1])
         if length <= 0:
@@ -177,23 +205,31 @@ class _Search:
             for o_net, q in self.placed:
                 if o_net != net and math.hypot(q[0] - p[0], q[1] - p[1]) < half + self.via_r + self.clear:
                     return False
+            if self.fills and layer is not None:
+                point = pcbnew.VECTOR2I(kb.nm(p[0]), kb.nm(p[1]))
+                for f_net, lid, poly in self.fills:
+                    if f_net != net and lid == layer and poly.Collide(point, kb.nm(half + self.clear)):
+                        return False
         return True
 
 
 def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via_mm: float | None = None,
-                drill_mm: float | None = None) -> list[Feed]:
-    """The feeds for every SMD pad of ``nets`` that has room for one. Nothing is added to the board;
-    :func:`lay_feeds` does that. Width and via default to the board's smallest."""
+                drill_mm: float | None = None, pads: set[str] | None = None, copper: bool = False) -> list[Feed]:
+    """The feeds for every SMD pad of ``nets`` that has room for one (only the pads named "REF-N" in ``pads``
+    when given). Nothing is added to the board; :func:`lay_feeds` does that. Width and via default to the
+    board's smallest. With ``copper`` the board's tracks and vias are obstacles too (a routed board)."""
     width_mm = width_mm or rules.min_track_mm
     via_mm = via_mm or rules.min_via_mm
     drill_mm = drill_mm or rules.min_drill_mm
-    search = _Search(board, rules, width_mm, via_mm, drill_mm)
+    search = _Search(board, rules, width_mm, via_mm, drill_mm, copper)
     r = search.via_r
     feeds: list[Feed] = []
     for fp in board.GetFootprints():
         fx, fy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
         for pad in fp.Pads():
             if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD:
+                continue
+            if pads is not None and f"{fp.GetReference()}-{pad.GetNumber()}" not in pads:
                 continue
             stack = pad.GetLayerSet().CuStack()
             if not stack:
@@ -212,11 +248,14 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
                 directions = [(ux, uy, half_len), (-ux, -uy, half_len), (-uy, ux, half_wid), (uy, -ux, half_wid)]
                 directions.sort(key=lambda d: -(d[0] * radial[0] + d[1] * radial[1]))
                 for dx, dy, extent in directions:
-                    d = max(extent + r - STEP_MM, 0.0)
+                    # the clearance away from its own pad: the router holds a via to the clearance from a pad
+                    # of its own net while via-in-pad is off, which KiCad's export leaves it (its Via.isObstacle;
+                    # 2 violations per feed on upduino when the via touched the pad); the stub bridges the gap
+                    d = extent + r + search.clear
                     while d <= REACH_MM and feed is None:
                         p = (centre[0] + dx * d, centre[1] + dy * d)
                         edge = (centre[0] + dx * extent, centre[1] + dy * extent)
-                        if search.via_clear(net, p, rects) and search.stub_clear(net, edge, p, rects):
+                        if search.via_clear(net, p, rects) and search.stub_clear(net, edge, p, rects, stack[0]):
                             feed = Feed(pad.GetNetname(), stack[0], f"{fp.GetReference()}-{pad.GetNumber()}",
                                         centre, (round(p[0], 4), round(p[1], 4)), width_mm, via_mm, drill_mm)
                         d += STEP_MM
@@ -246,12 +285,16 @@ def _stub_at(board, feed: Feed):
     return None
 
 
-def lay_feeds(board, feeds: list[Feed]) -> list:
+def lay_feeds(board, feeds: list[Feed], in_pad: bool = True) -> list:
     """Add the feeds to the board (a stub and a via each, the via alone in a pad); a feed already there is
-    left alone, so the same list re-lays what a session import dropped. Returns the items added."""
+    left alone, so the same list re-lays what a session import dropped. Returns the items added. With
+    ``in_pad`` false the vias in pads are skipped: the router must not see them (a via in a same-net pad is a
+    violation to it while via-in-pad is off), and nothing routes through a pad anyway."""
     nets = board.GetNetsByName()
     made = []
     for feed in feeds:
+        if feed.in_pad and not in_pad:
+            continue
         net = nets[feed.net]
         if not feed.in_pad and _stub_at(board, feed) is None:
             track = pcbnew.PCB_TRACK(board)
@@ -273,3 +316,52 @@ def lay_feeds(board, feeds: list[Feed]) -> list:
             board.Add(via)
             made.append(via)
     return made
+
+
+def pieces(board, net: str) -> list[set[str]]:
+    """The net's pads grouped by what KiCad's connectivity joins (pads, tracks, vias and filled zones), read
+    one hop at a time as `kicad.board.open_nets` does: one group is a connected net. Pads are "REF-N"."""
+    board.BuildConnectivity()
+    conn = board.GetConnectivity()
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    names: dict[str, str] = {}
+    items = []
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname() == net:
+                names[pad.m_Uuid.AsString()] = f"{fp.GetReference()}-{pad.GetNumber()}"
+                items.append(pad)
+    items += [t for t in board.GetTracks() if t.GetNetname() == net]
+    items += [z for z in board.Zones() if not z.GetIsRuleArea() and z.GetNetname() == net]
+    for x in items:
+        xid = x.m_Uuid.AsString()
+        find(xid)
+        for y in list(conn.GetConnectedPads(x)) + list(conn.GetConnectedTracks(x)):
+            rx, ry = find(xid), find(y.m_Uuid.AsString())
+            if rx != ry:
+                parent[rx] = ry
+    groups: dict[str, set[str]] = {}
+    for uid, name in names.items():
+        groups.setdefault(find(uid), set()).add(name)
+    return sorted(groups.values(), key=lambda g: (-len(g), sorted(g)))
+
+
+def stitch(board, rules, nets: set[str]) -> list[Feed]:
+    """On a routed board with its zones filled: a feed for one pad of every piece of a plane net beyond the
+    largest, so a refill joins it to the plane (the class B stitching, D85). Returns what it laid."""
+    laid: list[Feed] = []
+    for net in sorted(nets):
+        groups = pieces(board, net)
+        for group in groups[1:]:
+            found = plane_feeds(board, rules, {net}, pads=group, copper=True)
+            if found:
+                lay_feeds(board, found[:1])
+                laid.append(found[0])
+    return laid

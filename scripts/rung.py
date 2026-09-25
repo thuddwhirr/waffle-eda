@@ -57,6 +57,14 @@ print("ROUTER:", result.summary())
 out = work / f"{key}-routed.kicad_pcb"
 kb.save_board(board, out)
 print("fill:", refill.refill_file(out))
+if feeds:  # the stitching (D85): one feed for every piece of a plane net beyond the largest, then a refill
+    from waffle_eda.route import planes as feedlib
+    routed = kb.load_board(out)
+    stitched = feedlib.stitch(routed, rules, {p["net"] for p in inner})
+    print(f"stitched: {len(stitched)} feeds at {[x.pad for x in stitched]}")
+    if stitched:
+        kb.save_board(routed, out)
+        print("fill:", refill.refill_file(out))
 s = rebuild.score(ref, out, work_dir=work / "score")
 print("SCORE:", s.summary())
 open_pieces = kb.open_nets(kb.load_board(out))
