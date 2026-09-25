@@ -502,8 +502,10 @@ feed reaches (J2-9 was the +3V3 stray), as committed: 78 of 86, 2 clearances the
 10 unrouted, 996 s, the three +3V3 capacitor pads at U2 joined to each other and not to a via. What fails
 under it is named: U3-48 aimed at the plane it cannot reach ("layers are disabled") instead of its fixed
 via, the capacitors routed to each other, and the same three signal nets as under every form (U3-1 to the
-oscillator, U3-5 to R3, U3-21 to TP1), all at U3 and its capacitors. The reserved form is the measured
-alternative; class A's five digests are unchanged by the session's code (14b00be3e1 to ea88c6d515). Measurement.
+oscillator, U3-5 to R3, U3-21 to TP1), all at U3 and its capacitors. The nine pads no feed reaches are
+back-side pads under the QFNs (C14-1, C30-1, R5-2, U8-8 on B.Cu); the reference gives them no feed but a 0.5
+mm back-side track to a via 1.4 to 8 mm away, and our search holds a stub clear of the other side's pads
+(layer-blind). The reserved form is the measured alternative; class A's digests are unchanged. Measurement.
 
 ## BGA escape (the class B+ machinery; passes its gate)
 
