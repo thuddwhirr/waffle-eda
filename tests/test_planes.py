@@ -256,3 +256,25 @@ def test_the_pads_no_feed_reaches_get_their_nearest_feeds_as_targets():
     _pad(j1, "1", nets["GND"], 15, 4, 1.7, 1.7, smd=False, drill=1.0)
     assert "J1-1" not in planes.unfed_pads(b, feeds, {"GND"})
     assert "J1-1" in planes.unfed_pads(b, feeds, {"GND"}, pth_nets={"GND"})
+
+
+def test_via_in_pad_feeds_any_pad_the_via_fits_and_never_a_qfn_pin():
+    """D93: with the fab's filled-and-capped option the via goes in a capacitor's pad; without, beside it as
+    the references do; a 0.25 mm QFN pin never holds a 0.6 mm via either way."""
+    b = _board()
+    nets = b.GetNetsByName()
+    u1 = [fp for fp in b.GetFootprints() if fp.GetReference() == "U1"][0]
+    _pad(u1, "5", nets["GND"], 2.0, -2.5, 0.3, 0.9)  # a GND pin in the QFN's row
+    c5 = pcbnew.FOOTPRINT(b)  # an 0603 capacitor: 0.9 x 0.95 pads, room for the 0.6 via and its margin
+    c5.SetReference("C5")
+    c5.SetPosition(pcbnew.VECTOR2I(kb.nm(15), kb.nm(-3)))
+    b.Add(c5)
+    _pad(c5, "1", nets["GND"], 14.2, -3, 0.9, 0.95)
+    _pad(c5, "2", nets["SIG"], 15.8, -3, 0.9, 0.95)
+    beside = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    inside = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, via_in_pad=True)}
+    assert not beside["C5-1"].in_pad and inside["C5-1"].in_pad  # the 0603 pad holds the via with the option only
+    assert not beside["C1-1"].in_pad and not inside["C1-1"].in_pad  # a 0.6 mm wide pad cannot hold a 0.6 mm via
+    assert beside["U1-9"].in_pad and inside["U1-9"].in_pad  # the thermal pad either way
+    assert not inside["U1-5"].in_pad  # the pin is 0.3 wide: the via goes beside it either way
+    assert "C2-1" not in inside  # hemmed in beside and too small for the via: unfed either way

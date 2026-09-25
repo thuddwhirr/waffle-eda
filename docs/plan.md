@@ -33,7 +33,16 @@ python3 scripts/gate.py b upduino-v3.01`): **80 of 86**, 0 violations, the route
 form's 32, 788 s; and, as committed, with a plane net's plated pins counted as pads no feed reaches (J2-9
 was the +3V3 stray): **78 of 86**, 2 clearances the repair could not settle, 10 unrouted, 996 s, the three
 +3V3 capacitor pads at U2 joined to each other and not to a via (D92). Neither beats 81, so the fixed form
-stays `CLASS_B`'s `feeds_mode` and the reserved form is the measured alternative. **The next step** is what
+stays `CLASS_B`'s `feeds_mode` and the reserved form is the measured alternative. **The owner's guidance
+(D93): routing before cost.** Via-in-pad, filled and capped, is allowed on class B; measured first (D94) it
+does not route upduino better (62 of 86 at four passes for 67, the failed insertions 40 for 38), so it stays
+an option. The class B row under the committed default (96 feeds, 8 of them L-shaped, the thermal pads'
+in-pad via sites reserved on the other layers; `python3 scripts/gate.py b upduino-v3.01`, 2026-09-25 19:27
+UTC): **FAIL, 80 of 86**, one clearance of 0.011 mm the repair could not settle, the router at 36 unrouted,
+999 s, digests imported 9c9e33a96f and final d7a1a2db6c; open are the same three nets and /FLASH_MISO,
+/FT_SSn, /IOT_49A. The 81 of D85 was the configuration with 88 straight feeds and no keepouts; a change to
+the DSN moves this board's row by a net or two either way (78 to 82 across D87 to D94), so neither number
+judges the L-shaped feeds, which pass their test and feed eight more pads. **The next step** is what
 fails under the reserved form, since it is named and small where the fixed form's failures are the
 router's shove at large: (a) a pad no feed reaches that the router aims at the plane it cannot reach
 ("layers are disabled") instead of the fixed via beside it (U3-48; in the jar the airline goes to the
@@ -88,9 +97,10 @@ python3 scripts/fetch_references.py     # clones the 23 reference boards into re
 python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 minutes; the first three boards alone
                                         # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
 python3 scripts/gate.py b upduino-v3.01   # class B's first rung (D84) under the class's configuration (D86, the
-                                        # gate's default since D87): FAIL, 81 of 86, about 22 minutes on this
-                                        # container (30 passes; the wrapper's 1200 s cap killed it in pass 26, so
-                                        # class B's rows run under a 2400 s cap)
+                                        # gate's default since D87): FAIL, 80 of 86 with one clearance (D94's
+                                        # row; 81 under D85's feeds), 17 to 22 minutes on this container (30
+                                        # passes; the wrapper's 1200 s cap killed it in pass 26, so class B's
+                                        # rows run under a 2400 s cap)
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays

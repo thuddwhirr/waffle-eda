@@ -506,6 +506,26 @@ back-side pads under the QFNs (C14-1, C30-1, R5-2, U8-8 on B.Cu); the reference 
 0.5 mm back-side track to a via 1.4 to 8 mm away, and our search holds a stub clear of the other side's pads
 (layer-blind). The reserved form is the measured alternative; class A's digests are unchanged. Measurement.
 
+**D93. Routing before cost: via-in-pad, filled and capped, is allowed on class B.** The owner's guidance
+(2026-09-25): a board that cannot be routed at all makes the price of its vias moot, so the feeds may put the
+via in the pad wherever the via fits, not only in a thermal pad, using the fab profile's advanced-tier
+options (`via_in_pad`, `filled_capped_vias`, `fab/profiles/pcbway.toml`) whose price stays unknown and
+escalated as the definition asks. Eight of the nine class B references put no via in a passive's pad (D92's
+count: only large connector, test-point and tab pads carry one; fomu's 91 are 0.10 mm microvias, an HDI
+tier), so this is a rule the references do not demonstrate, taken on the owner's word. The in-pad via is laid
+after the import, as the thermal pads' are; QFN pins at 0.5 mm pitch cannot hold the board's 0.6 mm via and
+keep their stub or the router. Measured first, ahead of the layer-aware stub check. Owner, 2026-09-25.
+
+**D94. Via-in-pad does not route upduino better** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds
+inpad`, against the fixed form's 51 unrouted, 127 standing violations, 38 failed insertions, 67 of 86). The
+option puts 54 of the 96 feeds' vias in their pads (6 before, the thermal pads) and feeds no pad more: the
+capacitor pads under U2 cannot take a via through the QFN pins above them. Laid after the import with the
+router unaware of the via's copper on the other layers, 15 shorts and 6 clearances (61 of 86); with every
+in-pad site reserved as a keepout on the other layers, 0 violations, 51 unrouted, 119, 40, 62 of 86: each via
+inside a pad costs the other layers a site the router had, and the pinning is by pads as much as by feed
+vias (D90). The option stays (`WAFFLE_VIA_IN_PAD=1`, `via_in_pad` in `CLASS_B`), not the default; the in-pad
+keepouts apply to the thermal pads' vias too, which were open to the same shorts. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

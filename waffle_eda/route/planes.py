@@ -233,11 +233,17 @@ class _Search:
         return True
 
 
+IN_PAD_MARGIN_MM = 0.05  # a via in a pad keeps its ring this far inside the pad's copper (D93)
+
+
 def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via_mm: float | None = None,
-                drill_mm: float | None = None, pads: set[str] | None = None, copper: bool = False) -> list[Feed]:
+                drill_mm: float | None = None, pads: set[str] | None = None, copper: bool = False,
+                via_in_pad: bool = False) -> list[Feed]:
     """The feeds for every SMD pad of ``nets`` that has room for one (only the pads named "REF-N" in ``pads``
     when given). Nothing is added to the board; :func:`lay_feeds` does that. Width and via default to the
-    board's smallest. With ``copper`` the board's tracks and vias are obstacles too (a routed board)."""
+    board's smallest. With ``copper`` the board's tracks and vias are obstacles too (a routed board). With
+    ``via_in_pad`` (D93: the fab fills and caps its vias) the via goes in any pad it fits, ring and margin
+    inside the copper; without, only in a thermal pad, as the references do."""
     width_mm = width_mm or rules.min_track_mm
     via_mm = via_mm or rules.min_via_mm
     drill_mm = drill_mm or rules.min_drill_mm
@@ -259,9 +265,11 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
             centre, (ux, uy), half_len, half_wid = _geometry(pad)
             rects = search.near(centre)
             feed = None
-            # a via in the pad only where the pad is a package's thermal pad, two vias wide at least: the
-            # references put none in a passive's pad
-            if half_len >= via_mm and half_wid >= via_mm and search.via_clear(net, centre, rects):
+            # a via in the pad where the pad is a package's thermal pad, two vias wide at least (the references
+            # put none in a passive's pad), or, with via_in_pad, wherever the ring fits inside the copper (D93)
+            fits = (half_len >= via_mm and half_wid >= via_mm) or (
+                via_in_pad and half_len >= via_mm / 2 + IN_PAD_MARGIN_MM and half_wid >= via_mm / 2 + IN_PAD_MARGIN_MM)
+            if fits and search.via_clear(net, centre, rects):
                 feed = Feed(pad.GetNetname(), stack[0], name, centre, centre, width_mm, via_mm, drill_mm)
             else:
                 radial = (centre[0] - fx, centre[1] - fy)
