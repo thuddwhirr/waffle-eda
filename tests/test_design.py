@@ -2,6 +2,7 @@
 synthetic temperature-sensor design, each on a copy of the committed design, and the pieces the stages rely
 on. Stage 5's router is not run here (the jar is measured by `scripts/design.py run`, not asserted in a test);
 its placer and board builder are."""
+import re
 import shutil
 from pathlib import Path
 
@@ -50,13 +51,20 @@ def test_a_position_is_free_or_an_edge():
         s1.parse_position("somewhere on the left")
 
 
+def _set_review(design, value: str) -> None:
+    text = re.sub(r"\| owner review \|[^\n]*\|", f"| owner review | {value} |", design.design_md.read_text(), count=1)
+    design.design_md.write_text(text)
+
+
 def test_stage1_passes_and_waits_on_the_owner(copy):
+    """The committed design carries the owner's provisional acceptance (D75); the gate is measured on both
+    states of the review row."""
+    _set_review(copy, "pending")
     r = s1.run(copy)
     assert r.passed, r.report()
     assert {c.criterion for c in r.escalated} == {"the cost ceiling", "owner review"}
     assert (copy.reports / "stage1-design.md").read_text().startswith("# Stage 1, design: PASS")
-    text = copy.design_md.read_text().replace("| owner review | pending |", "| owner review | accepted 2026-09-24 |")
-    copy.design_md.write_text(text)
+    _set_review(copy, "accepted 2026-09-24")
     assert [c.criterion for c in s1.run(copy).escalated] == ["the cost ceiling"]
 
 
