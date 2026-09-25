@@ -1723,11 +1723,11 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
 
 
 def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float,
-            edge_clearance_mm: float | None = None) -> tuple[int | None, bool]:
+            edge_clearance_mm: float | None = None, fanout: bool = FANOUT) -> tuple[int | None, bool]:
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, edge_clearance_mm=edge_clearance_mm)
+    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm)
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
@@ -1751,7 +1751,8 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
-                router_edge_mm: float | None = None, planes: list[dict] | None = None) -> FreeroutingResult:
+                router_edge_mm: float | None = None, planes: list[dict] | None = None,
+                fanout: bool = FANOUT) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1759,7 +1760,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     reach); ``planes`` are laid before the export, on inner layers, where every via reaches the fill: KiCad
     writes them as DSN `(plane ...)` entries, their layers are typed `power` in the DSN (on a `signal` layer
     the router calls the plane a dedicated power plane and writes an empty session, pitfalls above), and the
-    router connects their nets by via instead of routing them as tracks (D80, D81)."""
+    router connects their nets by via instead of routing them as tracks (D80, D81). ``fanout`` runs the router's
+    own fanout stage first (a via beside every SMD pad; off by default, D57)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1781,7 +1783,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
     if router_edge_mm is None:  # the router's own margin closed rp2040's last corridor at the rule (D68)
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm)
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm,
+                              fanout=fanout)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exported_layers=layers,
