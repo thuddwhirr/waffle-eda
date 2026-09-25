@@ -424,6 +424,18 @@ of 86 nets, 10 open (GND and +3V3 in two pieces each, 8 signals with 7 pads of U
 after the repair (pico-ice 3 to 9), 288 s the row (pico-ice about 15 minutes). The rest of the order and the
 milestone (all nine) are unchanged. Owner's decision on the measurement.
 
+**D85. Class B's planes and fine-pitch exits, measured on `upduino-v3.01`** (2026-09-25, `scripts/rung.py`, four
+passes unless said). No plane in the DSN (class A's way): 76 of 86 nets, GND and +3V3 in two pieces each, the
+router routing them as tracks (110 of its 270 items) and walling four GND pins in. The GND plane handed over on
+In1 typed `power`: the router vias no SMD pad to it (28 GND pads untouched, one via); its fanout stage vias
+every SMD pin (70 of 86). `route/planes.py` lays a feed beside 88 of 105 plane-net pads (a fixed via the
+clearance from the pad and a stub to it; in a thermal pad after the import; the references keep a via within
+1.5 mm of most): GND plane kept, In2 free, 30 passes: 81 of 86, DRC clean, GND and +3V3 whole, no track on In1,
+948 s. Both inner layers kept: 60 of 86. Via cost 50: 74 of 86, 7 electrical. The jar's window wrote D81's
+empty sessions (its renderer dies drawing a plane; `WAFFLE_ROUTER_GUI=0`); a via over a same-net pad is a
+violation to it. The five open nets are QFN pads with another net's track across the exit within 0.4 mm; straight
+fixed stubs out of every pad of a 0.5 mm package (78) are the stubs' third failure: 71 of 86. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
