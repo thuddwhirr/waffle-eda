@@ -57,14 +57,16 @@ class A configuration the router hits the 20-minute cap in its ninth pass with 2
 the reference's inner planes makes it worse or breaks its session (D81), so the gate hands over none. What
 stays open after four passes is measured: 30 missing links, all signals of the two QFNs (the RP2040 at 0.4 mm
 pitch, the iCE40 at 0.5) to each other and to the headers, with the router laying a third of its tracks on the
-layer the reference keeps as its GND plane. A 30-pass run (`_run_rung_scratch.py pico-ice-rev3 none 30 4200`)
-is the measurement this commit leaves running: where the router plateaus with time alone. The next session
-reads it (`build/fr/pico-ice-rev3-none/`, the scratchpad log), then takes the rung's cases in this order, each
-behind a measurement on pico-ice under a short budget (D77): the fine-pitch exits (`freerouting.escape_stubs`,
-D51/D52, whose class A measurement was confounded, D57); more threads for the router (4 cores here; D65's
-determinism must hold: two runs to the digest); and only then the plane layers (a track on a plane layer cuts
-the plane the reference relies on, which is class B's plane-integrity criterion, "B." below). Then the
-full-budget row: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
+layer the reference keeps as its GND plane. Time alone does not close it (D82): thirty passes in 67 minutes
+drift from 30 to 19 unrouted, and the pours laid afterwards over the router's tracks on In1 and In2 come out
+in pieces (+3V3 and +1V1 in four each). So the rung's cases are, in this order, each behind a measurement on
+pico-ice under a short budget (D77): the fine-pitch exits (`freerouting.escape_stubs`, D51/D52, whose class A
+measurement was confounded, D57; a four-pass run with them is the measurement this commit leaves running,
+`build/fr/pico-ice-rev3-none-stubs/`); the plane layers kept for the planes (the router routing on In1 and In2
+is what fragments them, and what class B's plane-integrity criterion, "B." below, will score; the reference
+itself routes 273 tracks on In2 beside its split planes, so the rule is not "no tracks" but "no track through
+a plane"); more threads for the router (4 cores here; D65's determinism must hold: two runs to the digest).
+Then the full-budget row: `pytest tests/test_rebuild.py -k "pico-ice or upduino or sensor-watch or
 tinkerforge-master or buspirate5 or olimex-esp32-poe or tinytapeout or mch2022 or fomu"` and `gate.py b
 pico-ice-rev3`. A board the benchmark cannot bracket is a failing test to fix in the benchmark first; a rung
 the router fails is the class's first real case, measured as class A's were (D57, D59), with the class B
@@ -191,9 +193,9 @@ design (an MCU with USB and a buck regulator) to fab outputs. *First task, in pr
 
 *State (2026-09-24, 23:20 UTC):* the first task is done: the sanity pair passes on all nine references (D76
 to D79 are what it took). `gate.py b` exists (the class A gate's mechanics over the class B ladder); its first
-rung, `pico-ice-rev3`, fails at the class A configuration (D80): 72 of 95 nets after four passes, the rest the
-QFNs' fine-pitch exits; the planes stay out of the router's DSN (D81); a 30-pass run is measuring the plateau
-(see the next-step section).
+rung, `pico-ice-rev3`, fails at the class A configuration (D80): 72 of 95 nets after four passes and after
+thirty (D82), the rest the QFNs' fine-pitch exits and the planes the router's tracks cut; the planes stay out
+of the router's DSN (D81); the escape stubs are being measured (see the next-step section).
 
 ### B+. A BGA without a matched bus
 

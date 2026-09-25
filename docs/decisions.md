@@ -393,6 +393,17 @@ other and to the headers J2 and J3, and the router lays 533 of its 1577 tracks o
 keeps as its GND plane (11 tracks). So the gate hands over no planes (`WAFFLE_PLANES` selects the others for a
 measurement), and the rung's cases are the fine-pitch exits and the plane layers. Measurement.
 
+**D82. Time alone does not close `pico-ice-rev3`: the plateau** (2026-09-25, `_run_rung_scratch.py pico-ice-rev3
+none 30 4200`, no planes in the DSN). Thirty passes in 67 minutes, about two minutes each; the router's own
+count after each pass 27, 27, 34, 32, 32, 27, 27, 33, 31, 39, 27, 27, 33, 23, 31, 23, 23, 25, 26, 28, 23, 23,
+24, 21, 22, 21, 21, 19, 29, 29, 19: a noisy drift from 30 to 19, never towards 0, with the same 13 standing
+violations throughout. Imported: 1679 tracks and 281 vias to the reference's 1689 and 189; after the repair
+(5 left by its index, worst 0.126 mm) and the pours, 72 of 95 nets, 35 missing links, 3 clearances: the same
+72 the four-pass run reached. Two nets the reference pours, +3V3 and +1V1, come out in four pieces each: the
+pours are laid over the router's tracks on In1 and In2 and the tracks cut them, which is what class B's
+plane-integrity criterion is for. So the rung is not a budget question; the fine-pitch exits and the plane
+layers are its cases (D81). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
