@@ -1470,6 +1470,13 @@ STUB_SLACK_MM = 0.02  # a corridor narrower than this needs a stub
 STUB_EXTRA_MM = 0.05  # how far past the last constraining neighbour a straight leg reaches
 STUB_STEP_MM = 0.10  # extra straight length per pad towards the row's centre, so each turn clears the outer one
 STUB_LEG_MM = 0.40  # the 45-degree leg
+# Class B (D85): on a QFN at 0.5 mm pitch the row's corridor is wide enough for the exit, and the router still
+# leaves pads untouched: other nets' tracks cross the exit within 0.2 to 0.4 mm of the pad before the pad's net
+# is routed (upduino, 8 pads after 30 passes). A straight fixed stub out of every pad of a fine-pitch package
+# reserves the exit; it is shortened where another net's pad sits in the way and dropped under a minimum.
+STUB_PITCH_MM = 0.5  # packages with a pad pitch at or under this get exit stubs
+STUB_EXIT_MM = 0.50  # the straight exit beyond the pad's edge
+STUB_EXIT_MIN_MM = 0.20  # shorter than this is not worth reserving
 
 
 def _unit(deg: float) -> tuple[float, float]:
@@ -1511,13 +1518,20 @@ class Stub:
         return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(self.points, self.points[1:]))
 
 
-def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | None = None) -> list[Stub]:
-    """The exit stubs for every pad whose row leaves no corridor for the router (see above). Nothing is added to
-    the board; :func:`lay_stubs` does that. Only pads of ``nets`` (default: nets on two or more pads) get one."""
+def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | None = None,
+                 fine_pitch_mm: float | None = None, edge_mm: float = 0.0, hole_mm: float = 0.0) -> list[Stub]:
+    """The exit stubs for every pad whose row leaves no corridor for the router (see above), and, with
+    ``fine_pitch_mm``, a straight exit out of every other pad of a package at that pitch or finer. Nothing is
+    added to the board; :func:`lay_stubs` does that. Only pads of ``nets`` (default: nets on two or more pads)
+    get one."""
     from waffle_eda.bench import rebuild
     nets = rebuild.routable_nets(board) if nets is None else nets
     reach = width_mm / 2 + clearance_mm
     stubs: list[Stub] = []
+    if fine_pitch_mm is not None:
+        stubs += fine_pitch_stubs(board, width_mm, clearance_mm, nets, fine_pitch_mm, edge_mm=edge_mm, hole_mm=hole_mm)
+    stubbed = {(s.net, s.points[0]) for s in stubs}
+    edges = _edge_shapes(board) if edge_mm else []
     for fp in board.GetFootprints():
         pads = [p for p in fp.Pads() if p.GetLayerSet().CuStack()]
         cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
@@ -1565,6 +1579,8 @@ def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | N
             if pad.GetNetname() not in nets or num not in walls:
                 continue
             (px, py), (ux, uy), half_len, half_wid = geo[num]
+            if (pad.GetNetname(), (px, py)) in stubbed:
+                continue
             n = (-uy, ux)
             left, right = depth(num, -1), depth(num, 1)
             k = min(left, right)
@@ -1582,8 +1598,87 @@ def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | N
             else:
                 x1, y1 = points[-1]
                 points[-1] = (x1 + ux * STUB_STEP_MM, y1 + uy * STUB_STEP_MM)
+            if edges and any(_near_edge(edges, q, edge_mm + width_mm / 2 + 0.01) for q in _along(points)):
+                continue  # a stub into the edge rule is worse than none (upduino's USB pins at the board's edge)
             stubs.append(Stub(net=pad.GetNetname(), layer=pad.GetLayerSet().CuStack()[0], width_mm=width_mm,
                               points=tuple(points)))
+    return stubs
+
+
+def _along(points, step_mm: float = 0.05):
+    """Points every ``step_mm`` along a polyline, its corners included."""
+    import math
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        length = math.hypot(bx - ax, by - ay)
+        n = max(1, int(length / step_mm))
+        for k in range(n + 1):
+            yield (ax + (bx - ax) * k / n, ay + (by - ay) * k / n)
+
+
+def _edge_shapes(board) -> list:
+    """The board outline's shapes (Edge.Cuts drawings), as KiCad's collision shapes."""
+    return [d.GetEffectiveShape() for d in board.GetDrawings() if d.GetLayer() == pcbnew.Edge_Cuts]
+
+
+def _near_edge(shapes: list, point: tuple[float, float], within_mm: float) -> bool:
+    p = pcbnew.VECTOR2I(kb.nm(point[0]), kb.nm(point[1]))
+    return any(s.Collide(p, kb.nm(within_mm)) for s in shapes)
+
+
+def _pitch_mm(fp) -> float:
+    """The finest centre-to-centre distance between two pads of the footprint."""
+    import math
+    pts = [(kb.mm(p.GetPosition().x), kb.mm(p.GetPosition().y)) for p in fp.Pads()]
+    best = math.inf
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            d = math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])
+            if 0.05 < d < best:
+                best = d
+    return best
+
+
+def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str], pitch_mm: float,
+                     edge_mm: float = 0.0, hole_mm: float = 0.0) -> list[Stub]:
+    """A straight exit of `STUB_EXIT_MM` out of every SMD pad of a package at ``pitch_mm`` or finer, along the
+    pad's long axis away from the package, shortened where another net's pad is in the way and dropped under
+    `STUB_EXIT_MIN_MM`; a package's thermal pad (over 2 mm both ways) gets none."""
+    import math
+    from waffle_eda.route import planes
+    rects = planes._rects(board)
+    half = width_mm / 2
+    edges = _edge_shapes(board)
+    keep = edge_mm + half + 0.01  # the stub's copper keeps the edge rule from the outline (upduino's USB tab)
+    stubs: list[Stub] = []
+    for fp in board.GetFootprints():
+        if fp.GetPadCount() < 4 or _pitch_mm(fp) > pitch_mm + 1e-6:
+            continue
+        cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
+        for pad in fp.Pads():
+            stack = pad.GetLayerSet().CuStack()
+            if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD or not stack:
+                continue
+            (px, py), (ux, uy), half_len, half_wid = _pad_geometry(pad)
+            if half_len > 1.0 and half_wid > 1.0:
+                continue
+            if (px - cx) * ux + (py - cy) * uy < 0:
+                ux, uy = -ux, -uy
+            net = pad.GetNetCode()
+            near = [o for o in rects if o.net != net and math.hypot(o.centre[0] - px, o.centre[1] - py) < half_len + STUB_EXIT_MM + o.reach + 0.5]
+            length = STUB_EXIT_MM
+            steps = int(STUB_EXIT_MM / 0.05)
+            for k in range(1, steps + 1):
+                d = half_len + 0.05 * k
+                q = (px + ux * d, py + uy * d)
+                outside = _near_edge(edges, q, keep)
+                if outside or any(o.distance(q) < half + max(clearance_mm, o.local) + 0.01
+                                  or o.hole_distance(q) < half + hole_mm + 0.01 for o in near):
+                    length = 0.05 * (k - 1)
+                    break
+            if length < STUB_EXIT_MIN_MM:
+                continue
+            end = (px + ux * (half_len + length), py + uy * (half_len + length))
+            stubs.append(Stub(net=pad.GetNetname(), layer=stack[0], width_mm=width_mm, points=((px, py), end)))
     return stubs
 
 
@@ -1795,7 +1890,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = work_dir / "board.dsn", work_dir / "board.ses", work_dir / "run.log"
-    laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm) if stubs else []
+    laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm, fine_pitch_mm=STUB_PITCH_MM,
+                        edge_mm=rules.edge_clearance_mm, hole_mm=rules.hole_to_copper_mm) if stubs else []
     lay_stubs(board, laid)
     laid_feeds = []
     if planes:
