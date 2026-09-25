@@ -436,6 +436,14 @@ empty sessions (its renderer dies drawing a plane; `WAFFLE_ROUTER_GUI=0`); a via
 violation to it. The five open nets are QFN pads with another net's track across the exit within 0.4 mm; straight
 fixed stubs out of every pad of a 0.5 mm package (78) are the stubs' third failure: 71 of 86. Measurement.
 
+**D86. The fed-planes configuration is class B's baseline; the next session works the walled-in exits.** The
+plane feeds, the GND plane handed over on a `power` layer with In2 left to the router, and the jar with no
+window (D85: 81 of 86 on `upduino-v3.01`, DRC clean, both planes whole) stay as the configuration every class B
+row is measured against. The session after this one takes the five walled-in QFN exits as the plan's next-step
+section orders them (stubs only for the pads a run left open, laid for a second run; then threads with the
+determinism check), then makes the configuration `gate.py b`'s default and measures `pico-ice-rev3` under it.
+Owner, 2026-09-25.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

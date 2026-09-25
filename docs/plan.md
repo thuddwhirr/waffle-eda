@@ -9,6 +9,13 @@ Everything else in this file serves that sentence.
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none.
 
+**The owner's direction for the next session (D86, 2026-09-25).** The fed-planes configuration (D85: the plane
+feeds of `route/planes.py`, the GND plane handed to the router on a `power` layer, In2 left to it, the jar with
+no window) is class B's baseline; the session's work is the walled-in QFN exits on `upduino-v3.01`, in the
+order the class B paragraph below gives: stubs only for the pads a run left open, on signal nets, laid for a
+second run; then threads with the determinism check; then the configuration becomes `gate.py b`'s default and
+`pico-ice-rev3` is measured under it. Not a fourth stub for every pad (D57, D83, D85).
+
 **Confirm the state first.** A fresh container has no references, no tools and no `build/`; fetching takes a few
 minutes. The Python dependencies are in `pyproject.toml` (`pip install z3-solver numpy shapely pytest`).
 
