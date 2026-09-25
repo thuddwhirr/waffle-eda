@@ -49,13 +49,14 @@ def m4_references():
     return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
-CLASS_B_ORDER = ["pico-ice-rev3", "upduino-v3.01", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
+CLASS_B_ORDER = ["upduino-v3.01", "pico-ice-rev3", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
                  "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
 
 
 def class_b_references():
-    """Class B's ladder in the order the plan lists its references (D75): two QFN boards with USB first, the
-    densest small board third, the WLCSP at 0.35 mm pitch last."""
+    """Class B's ladder in the order the plan lists its references (D75, reordered by D84): `upduino-v3.01`
+    first as the class's simplest routing problem measured, `pico-ice-rev3` second, the densest small board
+    third, the WLCSP at 0.35 mm pitch last."""
     return [refs.REFERENCES[k] for k in CLASS_B_ORDER if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 

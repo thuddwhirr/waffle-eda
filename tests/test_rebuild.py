@@ -11,9 +11,9 @@ from waffle_eda.kicad import board as kb
 
 # The class A ladder of D49, smallest first. The two largest are exercised by the gate rather than per test.
 LADDER = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "libresolar-mppt-2420"]
-# Class B, in the order the plan lists its references (D75): the benchmark was only asserted on class A, so
-# its sanity pair is the first thing class B measures (docs/plan.md, "B. A class B board", first task).
-LADDER_B = ["pico-ice-rev3", "upduino-v3.01", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
+# Class B, in the order the plan lists its references (D75, reordered by D84): the benchmark was only asserted
+# on class A, so its sanity pair is the first thing class B measures (docs/plan.md, "B. A class B board").
+LADDER_B = ["upduino-v3.01", "pico-ice-rev3", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
             "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
 # The class B boards cost minutes each here (one DRC of mch2022-badge takes 158 s, D77), so their cases carry the
 # `bench` marker: run by default, left out of a quick run with `pytest -m "not parked and not bench"` (a

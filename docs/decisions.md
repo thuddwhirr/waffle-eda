@@ -413,6 +413,17 @@ class A finding (D57) holds on class B: the stubs stay off. What the rung has le
 layers kept for the planes (D82), the 13 standing violations every run reports from its first pass (conflicts
 among fixed items under the router's rules, to be named), and threads. Measurement.
 
+**D84. Class B's first rung is `upduino-v3.01`; `pico-ice-rev3` is second** (owner, 2026-09-25). The ladder's
+order (D75) put pico-ice first as the class's most representative board; measured, upduino is the class's
+simplest routing problem: pico-ice without the RP2040 (91 nets to 97, 363 netted pads to 423, 106 pads at
+0.5 mm pitch or finer to 143, no 0.4 mm part against 66 pads, GND on In1 and +3V3 on In2 against a split In2).
+Class B's two smallest boards, `fomu-pvt` and `sensor-watch-c1`, are its two hardest fine-pitch cases (4.0 and
+9.3 mm² a net). At the class A configuration under the four-pass budget (`scripts/rung.py upduino-v3.01 none 4
+900`): 270 items handed over, 52, 29, 27, 14 unrouted after passes 1 to 4 (pico-ice 313; 56, 57, 43, 47), 76
+of 86 nets, 10 open (GND and +3V3 in two pieces each, 8 signals with 7 pads of U2 untouched), 0 violations
+after the repair (pico-ice 3 to 9), 288 s the row (pico-ice about 15 minutes). The rest of the order and the
+milestone (all nine) are unchanged. Owner's decision on the measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
