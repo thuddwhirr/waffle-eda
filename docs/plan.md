@@ -86,13 +86,19 @@ overwrites any per-layer cost handed to it (D97: the DSN block is read, then `ap
 replaces it; the settings file has no field for it). A wrong constraint of our own was found on the way (D98):
 another net's fill counted as copper, so on a board with a plane of another net a stitch via had no site
 anywhere; fixed, with its test corrected, and behind D91's after form and D95's islands, both to be
-re-measured. **The next step**, in this order: (1) the plane mode's verdict row, `WAFFLE_ROUTER_GUI=0 python3
-scripts/rung.py upduino-v3.01 signal 30 2400 stitch` (running at the time of this commit, not yet measured);
-(2) the after form at four passes with D98's fix (`rung.py upduino-v3.01 gnd 4 900 feeds after`; D91 measured
-it at 10 unrouted with 38 feeds finding room), then D95's pour pins, since both were measured under the
-wrong constraint; (3) the owner's decision on the fork: the smallest change with a measurement behind it is
-to have `applyBoardSpecificOptimizations` keep the trace costs the DSN sets (D97), which makes the plane mode
-usable (planes reachable, tracks priced off them); the build through the proxy is untried. The class B gate's
+re-measured. The plane mode's verdict row (D99): **FAIL, 77 of 86**, 10 clearances at the LED D3, the router at
+12 unrouted, 1055 s; its two strays are a thermal pad whose centre other nets' tracks took (the stitch now
+searches inside the pad) and a plated pin the router's own tracks on In2 fence off from the fill, which only
+the jar can mend. The after form re-measured under D98 (D100): **75 of 86 at four passes**, the best four-pass
+count of any form, the router at 10 unrouted with nothing of the plane nets before it, but 44 feeds find room
+for 88 pads after the router and +3V3 is left in 28 pieces: the router's copper takes the sites. **The next
+step**, in this order: (1) the after form with via-in-pad, the in-pad sites reserved on the other layers before
+the router and laid after it (`rung.py upduino-v3.01 gnd 4 900 feeds after inpad`; a pad's own copper is the
+site the router cannot take; the QFN pins keep the after search), measured at four passes against D100's 75,
+28 and 10 pieces; if the planes come whole, its 30-pass row; (2) D95's pour pins re-measured under D98;
+(3) the owner's decision on the fork: the smallest change with a measurement behind it is to have
+`applyBoardSpecificOptimizations` keep the trace costs the DSN sets (D97), which makes the plane mode usable
+(planes reachable, tracks priced off them); the build through the proxy is untried. The class B gate's
 default is unchanged (fixed feeds on a `power` plane); `feeds_mode="none"` (`stitch` in rung) and
 `layer_trace_costs` are options. Class A ran once with the wrapper's changes in place (`python3 scripts/gate.py a`,
 2026-09-25 22:52 UTC: PASS 5 of 5); the `planes.py` change came after that run and is outside class A's path,

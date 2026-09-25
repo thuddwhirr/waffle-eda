@@ -568,6 +568,25 @@ track (that board's 197 vias through both planes: 0 electrical violations). The 
 form (38 of 88 feeds found room) and D95's islands (13 of 15); both are to be re-measured. Test corrected to the
 legal target: `test_another_nets_pour_does_not_move_a_stitch_via`. Measurement.
 
+**D99. The plane mode's verdict row, and what strays** (2026-09-25, `WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py
+upduino-v3.01 signal 30 2400 stitch`): **FAIL, 77 of 86**, 10 clearances the repair could not settle (0.0075 mm,
+all in the knot at the LED D3), the router at 12 unrouted and 25 standing violations (the fixed feeds' row: 80 of
+86, 1 clearance, 36 unrouted), 1055 s, 228 vias, In1 335 tracks (551 mm), In2 196 (525 mm). Open: GND, +3V3,
++5VD, /VCC_PLL, /LED_G, /IOB_3B_G6, /EE_CLK, TP10, /V_PHY, not the three nets of every feed form. The strays: U2-49,
+whose thermal pad's centre a through via cannot take with other nets' tracks under the pad on In1, so the search
+now looks inside the pad (a 0.2 mm grid, `Feed.inside`; found 0.4 mm off centre, and the refill closes GND); J2-9,
+a plated +3V3 pin the DSN's plane reaches and KiCad's fill does not, fenced off on In2 by the router's own tracks
+(D82's mechanism), which no stitch mends from outside the jar. Measurement.
+
+**D100. The after form re-measured under D98** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds after`):
+75 of 86 at four passes, the best four-pass count of any form (fixed 67, plane mode 64 and 68), 0 electrical,
+the router at 10 unrouted with nothing of the plane nets before it; but 44 feeds find room for 88 pads (38 under
+the wrong constraint), the stitching 2 more, and +3V3 is left in 28 pieces, GND in 10: the router's copper, not
+the fills, takes the sites, since the feeds come after it. A pad's own copper is the one site the router cannot
+take: with via-in-pad (D93) every pad 0.7 mm wide holds its via, so the in-pad sites reserved on the other layers
+before the router (D94's keepouts) and laid after it are the next measurement; the QFN pins that hold no via
+keep the after search. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

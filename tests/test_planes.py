@@ -284,3 +284,24 @@ def test_via_in_pad_feeds_any_pad_the_via_fits_and_never_a_qfn_pin():
     assert beside["U1-9"].in_pad and inside["U1-9"].in_pad  # the thermal pad either way
     assert not inside["U1-5"].in_pad  # the pin is 0.3 wide: the via goes beside it either way
     assert "C2-1" not in inside  # hemmed in beside and too small for the via: unfed either way
+
+
+def test_a_thermal_pads_via_moves_inside_the_pad_off_another_nets_track_beneath():
+    """D99: on a routed board a track of another net under the thermal pad on another layer meets a through via at
+    the centre, so the via takes the nearest clear point inside the pad's copper, ring and margin inside, no stub."""
+    b = _board()
+    nets = b.GetNetsByName()
+    track = pcbnew.PCB_TRACK(b)  # a SIG track on B.Cu straight under the centre of U1-9
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(-2.0), 0))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(2.0), 0))
+    track.SetWidth(kb.nm(0.2))
+    track.SetLayer(pcbnew.B_Cu)
+    track.SetNet(nets["SIG"])
+    b.Add(track)
+    bare = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    assert bare["U1-9"].via == (0.0, 0.0)  # the bare board's search: the centre
+    feeds = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, copper=True)}
+    feed = feeds["U1-9"]
+    assert feed.in_pad and feed.legs == [] and feed.via != (0.0, 0.0)
+    assert abs(feed.via[1]) >= 0.1 + 0.3 + 0.2 and abs(feed.via[0]) <= 1.5 - 0.35 and abs(feed.via[1]) <= 1.5 - 0.35
+    assert len(planes.lay_feeds(b, [feed])) == 1  # one via, no stub

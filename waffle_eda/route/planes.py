@@ -42,10 +42,11 @@ class Feed:
     via_mm: float
     drill_mm: float
     corner: tuple[float, float] | None = None  # an L-shaped stub turns here (D91); None for a straight one
+    inside: bool = False  # the via inside the pad's copper but off its centre (D99): no stub either
 
     @property
     def in_pad(self) -> bool:
-        return self.via == self.start
+        return self.via == self.start or self.inside
 
     @property
     def legs(self) -> list[tuple[tuple[float, float], tuple[float, float]]]:
@@ -219,6 +220,7 @@ class _Search:
 
 
 IN_PAD_MARGIN_MM = 0.05  # a via in a pad keeps its ring this far inside the pad's copper (D93)
+INSIDE_STEP_MM = 0.2  # the grid a via searches inside a pad whose centre is taken (D99)
 
 
 def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via_mm: float | None = None,
@@ -259,7 +261,19 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
                 via_in_pad and half_len >= via_mm / 2 + IN_PAD_MARGIN_MM and half_wid >= via_mm / 2 + IN_PAD_MARGIN_MM)
             if fits and search.via_clear(net, centre, rects):
                 feed = Feed(pad.GetNetname(), stack[0], name, centre, centre, width_mm, via_mm, drill_mm)
-            else:
+            elif fits and copper:  # the centre taken on a routed board (another net's track under the pad on
+                # another layer meets a through via): the nearest clear point inside the copper, ring and
+                # margin inside (D99: U2-49's site under 335 tracks on In1)
+                inset_l, inset_w = half_len - (via_mm / 2 + IN_PAD_MARGIN_MM), half_wid - (via_mm / 2 + IN_PAD_MARGIN_MM)
+                kl, kw = int(inset_l / INSIDE_STEP_MM), int(inset_w / INSIDE_STEP_MM)
+                points = sorted(((a * a + b * b, a, b) for a in (i * INSIDE_STEP_MM for i in range(-kl, kl + 1))
+                                 for b in (j * INSIDE_STEP_MM for j in range(-kw, kw + 1))))
+                for _d, a, b in points:
+                    q = (round(centre[0] + ux * a - uy * b, 4), round(centre[1] + uy * a + ux * b, 4))
+                    if search.via_clear(net, q, rects):
+                        feed = Feed(pad.GetNetname(), stack[0], name, centre, q, width_mm, via_mm, drill_mm, inside=True)
+                        break
+            if feed is None:
                 radial = (centre[0] - fx, centre[1] - fy)
                 directions = [(ux, uy, half_len), (-ux, -uy, half_len), (-uy, ux, half_wid), (uy, -ux, half_wid)]
                 directions.sort(key=lambda d: -(d[0] * radial[0] + d[1] * radial[1]))
