@@ -306,6 +306,144 @@ pads, so nothing passes between them and every such pad needs an escape stub end
 lattice node; a failed net's copper must come off the board inside the run; a one-way graph and copper left
 behind were both found only by running. Measurement, 2026-09-21.
 
+**D74. The synthetic temperature-sensor design goes through all six stages to fab outputs**
+(`scripts/design.py run temperature-sensor`, 2026-09-24, commit of this entry). Stage 1 `design.md`: 9 blocks, 5
+nets, the locked set; stage 2 `bom.csv`: 9 parts, each symbol and footprint found in KiCad's libraries; stage 3: a
+four-sheet schematic, ERC 0 errors and 0 warnings, its netlist matching the design one to one (5 nets, 19 pins);
+stage 4 `spec.toml`: two layers, clearance 0.14 mm held 0.01 under the SOT-563's 0.15 mm pad gap; stage 5: placed,
+routed and pulled in to 22.5 x 12.7 mm in one attempt, 5 of 5 nets, 0 violations, 0 DRC warnings, 13 s; stage 6:
+nine Gerbers, drill files (14 plated and 2 non-plated holes), positions, the vendor BOM, the assembly drawing, the
+stack-up note and an IPC-D-356 netlist grouping the pins as the schematic does, every file re-parsed. Found on the
+way: the container lacks KiCad's libraries (fetched at the release's tag); ERC warns on every symbol without project
+library tables; a board built in memory and handed to the router segfaults `pcbnew` (saved and reloaded instead).
+Waiting on the owner: the review of `design.md` and the outputs; prices and lead times, unknown. Measurement.
+
+**D75. Milestone A's fab outputs are taken as correct for now; class B starts.** The owner checks
+`designs/temperature-sensor/out/` with the manufacturer, which takes time; until that check is recorded here the
+design's `owner review` reads "accepted, provisional" and milestone A's completion is provisional on it. The
+prices and lead times the BOM and the spec escalate stay unknown. Class B begins with the first task the plan
+names, the benchmark's sanity pair on the nine class B references, in the order the plan lists them. Owner,
+2026-09-24.
+
+**D76. The benchmark reads a reference as it is: measured on class B** (2026-09-24). Three of the nine class B
+references failed the sanity pair's first half, the original not meeting its own measured rules. `upduino-v3.01`
+leaves its QFN's exposed pad and its USB shield with no net while GND vias and tracks stitch them (24 shorts, 36
+clearances; the clearance search poisoned to 0.0495); `sensor-watch-c1` pours to 0.0894 mm of a non-plated hole,
+under the search's 0.10 floor, and runs a track over a no-net polygon that is its buzzer contact;
+`tinkerforge-master-v3.2`'s copper sits 0.19 mm from a hole against a board-setup minimum of 0.25 that KiCad
+enforces under any rules file. The benchmark now reads an answer board (`rebuild.answer_board`): the checkout's
+board with every no-net pad the reference's own copper overlaps given that net (probed at a 0.001 mm clearance:
+a rule of zero reports no short), a no-net polygon paired with its net and the pairing forgiven in scoring, the
+DRC copy's setup minimums zeroed, the searches from zero. All three measure (clearance / hole: 0.1495 / 0.2495,
+0.087 / 0.0893, 0.1464 / 0.1557); class A still brackets. Measurement.
+
+**D77. A run fails in minutes, not an hour: every long call bounded** (2026-09-24). The first class B sanity run
+spent 28 minutes in KiCad's zone fill of `mch2022-badge` in this process (D14's pathology: every zone alone fills
+in seconds), and its rule measurement was 21 DRC runs of 158 s each. Now: the benchmark's and the gate's fills run
+in the child process with D14's caps (`kicad/refill.py`); every `kicad-cli` DRC has a budget
+(`WAFFLE_DRC_TIMEOUT_S`, 900 s) and fails with a message, and each report records its seconds; the measurement
+bisects the three constraints in one DRC per step, 7 runs instead of 21, to the same values (the smoke board:
+0.1964 / 0.4253 / 0.5479 either way, 8 s); a gate row takes a shorter router budget through
+`WAFFLE_ROUTER_PASSES` and `WAFFLE_ROUTER_TIMEOUT_S` for an iteration and says so in its detail (D38), never
+for a milestone. Owner (fail faster), the rest measured, 2026-09-24.
+
+**D78. The reference's fill is not refilled: a fill by KiCad 9 is other copper** (2026-09-24). D76's first
+version refilled the answer board's zones (after D58), and the class A gate went red, 3 of 5: `olimex-rp2040-pico-pc`
+measured a clearance of 0.212 mm where its own pours sit 0.153 from its tracks (the refill under the project's
+settings keeps more), so the router was asked for a rule the board never demonstrated, routed differently (a
+different DSN) and left one net open; `libresolar-mppt-2420` kept 8 clearances the repair could not settle.
+Without the refill the two read 0.1558 / 0.2534 and 0.1182 / 0.2456 (clearance / hole), still not the earlier
+0.1534 / 0.2526 and 0.1179 / 0.2464: the bisection's path, hence its value, depends on its bounds, and D76 had
+moved them to zero; under the 0.0024 mm stricter rule the RP2040 board's route changed and one clearance stayed.
+So the bounds class A was measured with stand (`SEARCHES`), and a board that fails at a bound is searched below it
+(sensor-watch: 0.0878 / 0.0893). Under that, the class A rules reproduce exactly. The file's fill is the copper
+the designer had made; only a candidate's pours are filled here (D62). Measurement.
+
+**D79. Connectivity is read from KiCad's own graph; the DRC report's unconnected list stops at about 500.**
+The class B sanity pair's second half (2026-09-24, 39 minutes for the nine, 31 of them `mch2022-badge`'s rule
+measurement): the three largest boards stripped bare scored 0.574, 0.693 and 0.302 (`buspirate5-rev10`,
+`tinytapeout-demo`, `mch2022-badge`), their reports listing 499, 501 and 501 unconnected items with 78, 42 and
+125 of their nets never named, so those read as connected with no copper on the board. D18's cap, on another
+list. `kb.open_nets` now joins each net's pads, tracks, vias and fills through KiCad's one-hop connectivity
+queries in a union-find (the whole-cluster query needs a vector type the bindings do not wrap) and
+`kb.unconnected_count` is KiCad's own uncapped count; `rebuild.score` and stage 5 use them, the DRC report only
+for violations. Stripped `buspirate5-rev10`: 183 nets open of 183, 0.1 s; its answer: 0. Under it the second
+half passes on all nine class B boards and the four class A ones tested (5.5 minutes, 5 of them mch2022's two
+DRC runs), and the five class A routed boards re-score 1.000. Measurement.
+
+**D80. Class B's first rung, `pico-ice-rev3`, measured at the class A configuration** (`gate.py b
+pico-ice-rev3`, 2026-09-24): the router hit the 20-minute cap in its ninth pass and, killed, wrote no session
+(D70), so 0 of 95 nets; passes of about two minutes each left 313, 56, 57, 43, 47, 35, 27, 32, 27, 27 items
+unrouted after passes 0 to 9, with 13 standing violations from the first pass on. Every layer went to the router
+as `signal` and the reference's planes were stripped with the rest of its copper (D50), so the ground and
+supply nets that the reference pours on In1 and In2 (GND; +3V3, VBUS, VDC) were being routed as tracks. KiCad
+exports a zone laid before the export as a DSN `(plane NET (polygon LAYER ...))`, which Freerouting connects to
+by via (the salvaged exporter's way). The reference routes 273 tracks on In2 and 11 on In1 beside its planes,
+so the layers stay `signal`. Measurement; the change it asks for is the next step.
+
+**D81. The planes stay out of the router's DSN on class B; what stays open on `pico-ice-rev3`** (2026-09-25,
+four passes each, `scripts/_run_rung_scratch.py`). The reference's inner-layer pours handed over before the
+export: on `signal` layers Freerouting 2.4.1 calls each "a dedicated power plane" (a conduction area over half
+the board) and writes an empty session, three runs; typed `power`, In1 and In2 both: 132 and 119 items
+unrouted after passes 1 and 2 against 56 and 57 with no planes; In1 (GND) alone: 102, 83, 73, 76 after passes 1
+to 4, 68 of 95 nets, 51 missing links, 9 clearances, GND itself in 3 pieces. No planes, every pour laid after
+the import (class A's way, D62): 56, 57, 43, 47; 72 of 95 nets, 30 missing links, 1 clearance, 517 s. The 30
+missing links are all signals of the two QFNs (U3, the RP2040 at 0.4 mm pitch; U6, the iCE40 at 0.5) to each
+other and to the headers J2 and J3, and the router lays 533 of its 1577 tracks on In1, which the reference
+keeps as its GND plane (11 tracks). So the gate hands over no planes (`WAFFLE_PLANES` selects the others for a
+measurement), and the rung's cases are the fine-pitch exits and the plane layers. Measurement.
+
+**D82. Time alone does not close `pico-ice-rev3`: the plateau** (2026-09-25, `_run_rung_scratch.py pico-ice-rev3
+none 30 4200`, no planes in the DSN). Thirty passes in 67 minutes, about two minutes each; the router's own
+count after each pass 27, 27, 34, 32, 32, 27, 27, 33, 31, 39, 27, 27, 33, 23, 31, 23, 23, 25, 26, 28, 23, 23,
+24, 21, 22, 21, 21, 19, 29, 29, 19: a noisy drift from 30 to 19, never towards 0, with the same 13 standing
+violations throughout. Imported: 1679 tracks and 281 vias to the reference's 1689 and 189; after the repair
+(5 left by its index, worst 0.126 mm) and the pours, 72 of 95 nets, 35 missing links, 3 clearances: the same
+72 the four-pass run reached. Two nets the reference pours, +3V3 and +1V1, come out in four pieces each: the
+pours are laid over the router's tracks on In1 and In2 and the tracks cut them, which is what class B's
+plane-integrity criterion is for. So the rung is not a budget question; the fine-pitch exits and the plane
+layers are its cases (D81). Measurement.
+
+**D83. The escape stubs do not help `pico-ice-rev3` either** (2026-09-25, `scripts/rung.py pico-ice-rev3 none 4
+900 stubs`). `freerouting.escape_stubs` lays 19 stubs on the board (the rows whose corridor is under 0.02 mm);
+with them the router leaves 69, 55, 46, 42 unrouted after passes 1 to 4 against 56, 57, 43, 47 without, with
+25 standing violations against 13; imported and re-laid (a fixed wire does not come back in the session, D57):
+65 of 95 nets, 43 missing links, 8 electrical (4 clearances, a short, 3 tracks crossing the re-laid stubs). The
+class A finding (D57) holds on class B: the stubs stay off. What the rung has left, in order: the plane
+layers kept for the planes (D82), the 13 standing violations every run reports from its first pass (conflicts
+among fixed items under the router's rules, to be named), and threads. Measurement.
+
+**D84. Class B's first rung is `upduino-v3.01`; `pico-ice-rev3` is second** (owner, 2026-09-25). The ladder's
+order (D75) put pico-ice first as the class's most representative board; measured, upduino is the class's
+simplest routing problem: pico-ice without the RP2040 (91 nets to 97, 363 netted pads to 423, 106 pads at
+0.5 mm pitch or finer to 143, no 0.4 mm part against 66 pads, GND on In1 and +3V3 on In2 against a split In2).
+Class B's two smallest boards, `fomu-pvt` and `sensor-watch-c1`, are its two hardest fine-pitch cases (4.0 and
+9.3 mm² a net). At the class A configuration under the four-pass budget (`scripts/rung.py upduino-v3.01 none 4
+900`): 270 items handed over, 52, 29, 27, 14 unrouted after passes 1 to 4 (pico-ice 313; 56, 57, 43, 47), 76
+of 86 nets, 10 open (GND and +3V3 in two pieces each, 8 signals with 7 pads of U2 untouched), 0 violations
+after the repair (pico-ice 3 to 9), 288 s the row (pico-ice about 15 minutes). The rest of the order and the
+milestone (all nine) are unchanged. Owner's decision on the measurement.
+
+**D85. Class B's planes and fine-pitch exits, measured on `upduino-v3.01`** (2026-09-25, `scripts/rung.py`, four
+passes unless said). No plane in the DSN (class A's way): 76 of 86 nets, GND and +3V3 in two pieces each, the
+router routing them as tracks (110 of its 270 items) and walling four GND pins in. The GND plane handed over on
+In1 typed `power`: the router vias no SMD pad to it (28 GND pads untouched, one via); its fanout stage vias
+every SMD pin (70 of 86). `route/planes.py` lays a feed beside 88 of 105 plane-net pads (a fixed via the
+clearance from the pad and a stub to it; in a thermal pad after the import; the references keep a via within
+1.5 mm of most): GND plane kept, In2 free, 30 passes: 81 of 86, DRC clean, GND and +3V3 whole, no track on In1,
+948 s. Both inner layers kept: 60 of 86. Via cost 50: 74 of 86, 7 electrical. The jar's window wrote D81's
+empty sessions (its renderer dies drawing a plane; `WAFFLE_ROUTER_GUI=0`); a via over a same-net pad is a
+violation to it. The five open nets are QFN pads with another net's track across the exit within 0.4 mm; straight
+fixed stubs out of every pad of a 0.5 mm package (78) are the stubs' third failure: 71 of 86. Measurement.
+
+**D86. The fed-planes configuration is class B's baseline; the next session works the walled-in exits.** The
+plane feeds, the GND plane handed over on a `power` layer with In2 left to the router, and the jar with no
+window (D85: 81 of 86 on `upduino-v3.01`, DRC clean, both planes whole) stay as the configuration every class B
+row is measured against. The session after this one takes the five walled-in QFN exits as the plan's next-step
+section orders them (stubs only for the pads a run left open, laid for a second run; then threads with the
+determinism check), then makes the configuration `gate.py b`'s default and measures `pico-ice-rev3` under it.
+Owner, 2026-09-25.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

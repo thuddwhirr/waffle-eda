@@ -1,0 +1,85 @@
+{
+ "stage": 2,
+ "name": "bom",
+ "checks": [
+  {
+   "criterion": "the BOM parses",
+   "ok": true,
+   "detail": "9 lines"
+  },
+  {
+   "criterion": "one part per block of the design",
+   "ok": true,
+   "detail": "9 blocks"
+  },
+  {
+   "criterion": "references are unique and well formed",
+   "ok": true,
+   "detail": "U1, J1, C1, R1, R2, D1, R3, H1, H2"
+  },
+  {
+   "criterion": "every part is 'specific' or 'generic'",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "every part has a symbol in KiCad's libraries",
+   "ok": true,
+   "detail": "9 symbols found under build/tools/kicad-symbols"
+  },
+  {
+   "criterion": "every part has a footprint in KiCad's libraries",
+   "ok": true,
+   "detail": "9 footprints found under build/tools/kicad-footprints"
+  },
+  {
+   "criterion": "every pin the design names is on the block's symbol",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "every alternate named by symbol has the same pins and footprint",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "every specific part has a datasheet reference and every generic part a specification",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "every specific part has a manufacturer part number",
+   "ok": true,
+   "detail": "TMP102AIDRLR (from the symbol's part name; confirm at order)"
+  },
+  {
+   "criterion": "cost within the ceiling",
+   "ok": null,
+   "detail": "no price for ['U1', 'J1', 'C1', 'R1', 'R2', 'D1', 'R3']; ceiling unknown: no price captured; every cost decision escalates to the owner: prices come from the owner or a captured quote (definition.md section 4)"
+  },
+  {
+   "criterion": "long-lead parts flagged",
+   "ok": null,
+   "detail": "lead time unknown for ['U1', 'J1', 'C1', 'R1', 'R2', 'D1', 'R3']: stock and lead time come from the assembler's quote"
+  },
+  {
+   "criterion": "every part names its schematic sheet (function group)",
+   "ok": true,
+   "detail": "host, indicator, mechanical, sensor"
+  }
+ ],
+ "outputs": [
+  "bom.csv"
+ ],
+ "numbers": {
+  "parts": 9,
+  "specific": 1,
+  "generic": 8,
+  "dnp": 0,
+  "known cost": 0.0
+ },
+ "next": "stage 3: the schematic and its netlist",
+ "seconds": 2.4,
+ "when": "2026-09-24 20:15 UTC",
+ "passed": true
+}

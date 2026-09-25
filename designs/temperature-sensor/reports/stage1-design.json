@@ -1,0 +1,83 @@
+{
+ "stage": 1,
+ "name": "design",
+ "checks": [
+  {
+   "criterion": "the document parses",
+   "ok": true,
+   "detail": "'Temperature-sensor breakout'"
+  },
+  {
+   "criterion": "every locked constraint is explicit (size, cost, interfaces, features)",
+   "ok": true,
+   "detail": "size: at most 25 x 15 mm, cost: unknown: no price captured; every cost decision escalates to the owner, interfaces: host on the left edge, features: the capabilities above"
+  },
+  {
+   "criterion": "the size limit is a number",
+   "ok": true,
+   "detail": "at most 25 x 15 mm"
+  },
+  {
+   "criterion": "the cost ceiling",
+   "ok": null,
+   "detail": "unknown: no price captured; every cost decision escalates to the owner: until a ceiling and prices are captured, every cost decision escalates (definition.md section 4)"
+  },
+  {
+   "criterion": "every interface has a stated position or is marked free",
+   "ok": true,
+   "detail": "host: left edge, centred; indicator: free; mounting: free"
+  },
+  {
+   "criterion": "every positioned interface is named in the locked set",
+   "ok": true,
+   "detail": "host"
+  },
+  {
+   "criterion": "every block the interfaces and nets name is in Blocks, and every block is used",
+   "ok": true,
+   "detail": "9 blocks"
+  },
+  {
+   "criterion": "every net joins at least two pins",
+   "ok": true,
+   "detail": "5 nets, 19 pins"
+  },
+  {
+   "criterion": "no pin is on two nets",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "a pin marked unconnected is on no net",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "the fab profile exists",
+   "ok": true,
+   "detail": "'pcbway'; available ['pcbway']"
+  },
+  {
+   "criterion": "owner review",
+   "ok": true,
+   "detail": "accepted 2026-09-24, provisional: the fab outputs under out/ are still to be checked with the manufacturer (D75)"
+  }
+ ],
+ "outputs": [
+  "design.md"
+ ],
+ "numbers": {
+  "blocks": 9,
+  "interfaces": 3,
+  "nets": 5,
+  "pins": 19,
+  "max size mm": [
+   25.0,
+   15.0
+  ]
+ },
+ "next": "stage 2: bom.csv, one part per block",
+ "seconds": 0.0,
+ "when": "2026-09-24 20:44 UTC",
+ "passed": true
+}

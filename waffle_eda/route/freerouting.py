@@ -6,7 +6,10 @@ no copper) and the rules the class A gate measures off the reference (`bench/reb
 DSN, runs the jar under a virtual display, imports the session file and hands the routed board back. The gate
 then refills the zones and scores it exactly as before.
 
-What the wrapper has to know, each found by running it (`docs/decisions.md` D56):
+What the wrapper has to know, each found by running it (`docs/decisions.md` D56), and since 2026-09-25 also by
+reading: the owner's fork of the source, https://github.com/thuddwhirr/freerouting, is ahead of the 2.4.1 jar
+but explained what the jar counts as a violation (a via touching its own net's pad while via-in-pad is off) and
+what its fanout stage does; `docs/plan.md`'s next-step section says how to clone it and what differs.
 
 * **The version is 2.4.1 and it needs Java 25.** The container's Java is 21; `scripts/fetch_tools.py` puts a JDK
   and the jar under `build/tools/`, and :func:`java` prefers that JDK over the one on the path.
@@ -27,6 +30,12 @@ What the wrapper has to know, each found by running it (`docs/decisions.md` D56)
 * **Two Freerouting runs at once can leave an empty session file.** Twice, with other instances routing other
   boards on the same machine, a run finished its passes, logged "Saving", and wrote 0 bytes (2026-09-24); no
   run alone has ever done that, and memory was not short. Run one board at a time; the gate does.
+* **A plane on a `signal` layer makes 2.4.1 call the layer "a dedicated power plane" and its session comes
+  back empty.** A zone laid before the export goes into the DSN as a `(plane ...)`; when it covers more than
+  half the board the router logs "Layer 'In1.Cu' has been automatically configured as a dedicated power
+  plane", routes, logs "Saving", and writes 0 bytes: three runs on `pico-ice-rev3` (D81), alone on the
+  machine, while a run with the same layers typed `(type power)` in the DSN wrote its session. A plane handed
+  to the router therefore goes on a layer typed `power`, or not at all.
 
 Salvaged mechanics (`salvage/waffle-fpga/hw/tools/export_dsn.py`, `staged_route.sh`) that class A does not
 need yet and that are not implemented here: plane layers typed `power` (class B), rule areas dropped from the
@@ -66,7 +75,15 @@ DRILL_STEP_MM = 0.001
 # block in the DSN carried it too, but placed before the structure's rule block it made the loader drop every
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
+# `WAFFLE_VIA_COSTS` overrides it for a measurement: with vias this cheap the router spreads a four-layer
+# board's signals over its inner layers (a third of upduino's tracks on the GND plane's layer, D85), where
+# the reference keeps 8 of 1585; the tool's own default is 50.
 FANOUT = False  # the fanout stage necks its stubs to 75 % of the width, below the rule, and is fragile (D57)
+# The jar's own window under Xvfb, as every class A measurement ran it. Its renderer draws a plane's detailed
+# fill from the search tree the router is changing and dies of a NullPointerException, after which the session
+# file is written empty (upduino with the planes and 90 fixed feeds, 2026-09-25); `WAFFLE_ROUTER_GUI=0` runs
+# the jar with no window, for the measurement.
+GUI = os.environ.get("WAFFLE_ROUTER_GUI", "1") != "0"
 OPTIMIZER_PASSES = 0  # the optimiser reworks copper for length and via count, which the gate does not score; it took
 # 11 of the esp32c3's 12 minutes and, drawing on Java's random generator, gave a different board each run (D65)
 
@@ -1247,6 +1264,22 @@ def drop_pins(dsn_text: str, names: set[str]) -> str:
     return dsn_text[:start] + _PINS.sub(strip, dsn_text[start:])
 
 
+def drop_net_pins(dsn_text: str, nets: set[str]) -> str:
+    """Empty the pin lists of the named nets in the network section: the router then routes nothing of them
+    and keeps its clearance from their pads and fixed copper as it does from any other net's (D85: a plane
+    net is connected by its pours and its feeds, not by the router)."""
+    start = dsn_text.find("(network")
+    if start < 0 or not nets:
+        return dsn_text
+
+    def strip(m: re.Match) -> str:
+        name = m.group(1).strip('"')
+        return m.group(0) if name not in nets else f"(net {m.group(1)}\n{m.group(2)}(pins )"
+
+    pattern = re.compile(r'\(net ("[^"]*"|\S+)\n(\s*)\(pins [^)]*\)')
+    return dsn_text[:start] + pattern.sub(strip, dsn_text[start:])
+
+
 def piece_groups(fp) -> dict[str, list[list[int]]]:
     """Per pad number, the groups of pieces joined by their own copper (indices into the footprint's pads)."""
     pads = list(fp.Pads())
@@ -1440,6 +1473,13 @@ STUB_SLACK_MM = 0.02  # a corridor narrower than this needs a stub
 STUB_EXTRA_MM = 0.05  # how far past the last constraining neighbour a straight leg reaches
 STUB_STEP_MM = 0.10  # extra straight length per pad towards the row's centre, so each turn clears the outer one
 STUB_LEG_MM = 0.40  # the 45-degree leg
+# Class B (D85): on a QFN at 0.5 mm pitch the row's corridor is wide enough for the exit, and the router still
+# leaves pads untouched: other nets' tracks cross the exit within 0.2 to 0.4 mm of the pad before the pad's net
+# is routed (upduino, 8 pads after 30 passes). A straight fixed stub out of every pad of a fine-pitch package
+# reserves the exit; it is shortened where another net's pad sits in the way and dropped under a minimum.
+STUB_PITCH_MM = 0.5  # packages with a pad pitch at or under this get exit stubs
+STUB_EXIT_MM = 0.50  # the straight exit beyond the pad's edge
+STUB_EXIT_MIN_MM = 0.20  # shorter than this is not worth reserving
 
 
 def _unit(deg: float) -> tuple[float, float]:
@@ -1481,13 +1521,20 @@ class Stub:
         return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(self.points, self.points[1:]))
 
 
-def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | None = None) -> list[Stub]:
-    """The exit stubs for every pad whose row leaves no corridor for the router (see above). Nothing is added to
-    the board; :func:`lay_stubs` does that. Only pads of ``nets`` (default: nets on two or more pads) get one."""
+def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | None = None,
+                 fine_pitch_mm: float | None = None, edge_mm: float = 0.0, hole_mm: float = 0.0) -> list[Stub]:
+    """The exit stubs for every pad whose row leaves no corridor for the router (see above), and, with
+    ``fine_pitch_mm``, a straight exit out of every other pad of a package at that pitch or finer. Nothing is
+    added to the board; :func:`lay_stubs` does that. Only pads of ``nets`` (default: nets on two or more pads)
+    get one."""
     from waffle_eda.bench import rebuild
     nets = rebuild.routable_nets(board) if nets is None else nets
     reach = width_mm / 2 + clearance_mm
     stubs: list[Stub] = []
+    if fine_pitch_mm is not None:
+        stubs += fine_pitch_stubs(board, width_mm, clearance_mm, nets, fine_pitch_mm, edge_mm=edge_mm, hole_mm=hole_mm)
+    stubbed = {(s.net, s.points[0]) for s in stubs}
+    edges = _edge_shapes(board) if edge_mm else []
     for fp in board.GetFootprints():
         pads = [p for p in fp.Pads() if p.GetLayerSet().CuStack()]
         cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
@@ -1535,6 +1582,8 @@ def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | N
             if pad.GetNetname() not in nets or num not in walls:
                 continue
             (px, py), (ux, uy), half_len, half_wid = geo[num]
+            if (pad.GetNetname(), (px, py)) in stubbed:
+                continue
             n = (-uy, ux)
             left, right = depth(num, -1), depth(num, 1)
             k = min(left, right)
@@ -1552,8 +1601,87 @@ def escape_stubs(board, width_mm: float, clearance_mm: float, nets: set[str] | N
             else:
                 x1, y1 = points[-1]
                 points[-1] = (x1 + ux * STUB_STEP_MM, y1 + uy * STUB_STEP_MM)
+            if edges and any(_near_edge(edges, q, edge_mm + width_mm / 2 + 0.01) for q in _along(points)):
+                continue  # a stub into the edge rule is worse than none (upduino's USB pins at the board's edge)
             stubs.append(Stub(net=pad.GetNetname(), layer=pad.GetLayerSet().CuStack()[0], width_mm=width_mm,
                               points=tuple(points)))
+    return stubs
+
+
+def _along(points, step_mm: float = 0.05):
+    """Points every ``step_mm`` along a polyline, its corners included."""
+    import math
+    for (ax, ay), (bx, by) in zip(points, points[1:]):
+        length = math.hypot(bx - ax, by - ay)
+        n = max(1, int(length / step_mm))
+        for k in range(n + 1):
+            yield (ax + (bx - ax) * k / n, ay + (by - ay) * k / n)
+
+
+def _edge_shapes(board) -> list:
+    """The board outline's shapes (Edge.Cuts drawings), as KiCad's collision shapes."""
+    return [d.GetEffectiveShape() for d in board.GetDrawings() if d.GetLayer() == pcbnew.Edge_Cuts]
+
+
+def _near_edge(shapes: list, point: tuple[float, float], within_mm: float) -> bool:
+    p = pcbnew.VECTOR2I(kb.nm(point[0]), kb.nm(point[1]))
+    return any(s.Collide(p, kb.nm(within_mm)) for s in shapes)
+
+
+def _pitch_mm(fp) -> float:
+    """The finest centre-to-centre distance between two pads of the footprint."""
+    import math
+    pts = [(kb.mm(p.GetPosition().x), kb.mm(p.GetPosition().y)) for p in fp.Pads()]
+    best = math.inf
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            d = math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])
+            if 0.05 < d < best:
+                best = d
+    return best
+
+
+def fine_pitch_stubs(board, width_mm: float, clearance_mm: float, nets: set[str], pitch_mm: float,
+                     edge_mm: float = 0.0, hole_mm: float = 0.0) -> list[Stub]:
+    """A straight exit of `STUB_EXIT_MM` out of every SMD pad of a package at ``pitch_mm`` or finer, along the
+    pad's long axis away from the package, shortened where another net's pad is in the way and dropped under
+    `STUB_EXIT_MIN_MM`; a package's thermal pad (over 2 mm both ways) gets none."""
+    import math
+    from waffle_eda.route import planes
+    rects = planes._rects(board)
+    half = width_mm / 2
+    edges = _edge_shapes(board)
+    keep = edge_mm + half + 0.01  # the stub's copper keeps the edge rule from the outline (upduino's USB tab)
+    stubs: list[Stub] = []
+    for fp in board.GetFootprints():
+        if fp.GetPadCount() < 4 or _pitch_mm(fp) > pitch_mm + 1e-6:
+            continue
+        cx, cy = kb.mm(fp.GetPosition().x), kb.mm(fp.GetPosition().y)
+        for pad in fp.Pads():
+            stack = pad.GetLayerSet().CuStack()
+            if pad.GetNetname() not in nets or pad.GetAttribute() != pcbnew.PAD_ATTRIB_SMD or not stack:
+                continue
+            (px, py), (ux, uy), half_len, half_wid = _pad_geometry(pad)
+            if half_len > 1.0 and half_wid > 1.0:
+                continue
+            if (px - cx) * ux + (py - cy) * uy < 0:
+                ux, uy = -ux, -uy
+            net = pad.GetNetCode()
+            near = [o for o in rects if o.net != net and math.hypot(o.centre[0] - px, o.centre[1] - py) < half_len + STUB_EXIT_MM + o.reach + 0.5]
+            length = STUB_EXIT_MM
+            steps = int(STUB_EXIT_MM / 0.05)
+            for k in range(1, steps + 1):
+                d = half_len + 0.05 * k
+                q = (px + ux * d, py + uy * d)
+                outside = _near_edge(edges, q, keep)
+                if outside or any(o.distance(q) < half + max(clearance_mm, o.local) + 0.01
+                                  or o.hole_distance(q) < half + hole_mm + 0.01 for o in near):
+                    length = 0.05 * (k - 1)
+                    break
+            if length < STUB_EXIT_MIN_MM:
+                continue
+            end = (px + ux * (half_len + length), py + uy * (half_len + length))
+            stubs.append(Stub(net=pad.GetNetname(), layer=stack[0], width_mm=width_mm, points=((px, py), end)))
     return stubs
 
 
@@ -1574,6 +1702,17 @@ def lay_stubs(board, stubs: list[Stub]) -> list:
     return made
 
 
+def type_layers_power(dsn_text: str, layers: list[str]) -> str:
+    """Type the given layers `power` in the DSN's structure section, as the salvaged exporter did for its
+    plane layers: the router then only drops vias into them and its session survives (D81)."""
+    for layer in layers:
+        dsn_text, n = re.subn(r"\(layer %s\n(\s*)\(type signal\)" % re.escape(layer),
+                              lambda m, layer=layer: f"(layer {layer}\n{m.group(1)}(type power)", dsn_text)
+        if n != 1:
+            raise ValueError(f"layer {layer!r} not found once as a signal layer in the DSN ({n} matches)")
+    return dsn_text
+
+
 def fix_wires(dsn_text: str) -> str:
     """Type every exported wire as fixed: on a problem board the only wires at export time are the stubs."""
     return dsn_text.replace("(type route)", "(type fix)")
@@ -1592,12 +1731,12 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
     import uuid
     cfg = {"version": VERSION,
            "profile": {"id": str(uuid.uuid4()), "email": "", "allow_telemetry": False, "allow_contact": False},
-           "gui": {"enabled": True, "input_directory": "", "dialog_confirmation_timeout": 5,
+           "gui": {"enabled": GUI, "input_directory": "", "dialog_confirmation_timeout": 5,
                    "show_routing_summary": False},
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
-                      "scoring": {"via_costs": VIA_COSTS},
+                      "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))},
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
@@ -1636,6 +1775,7 @@ class FreeroutingResult:
     rules: DsnRules
     renamed: int
     stubs: int = 0
+    feeds: int = 0  # plane feeds laid before the export (route/planes.py, D85)
     pours: int = 0
     joined: int = 0  # tracks laid between a pad's piece groups the router left apart
     widened: int = 0  # tracks the router necked below the rule, set back to it
@@ -1662,7 +1802,8 @@ class FreeroutingResult:
         state = "timed out" if self.timed_out else f"exit {self.exit_code}"
         return (f"freerouting {VERSION}: {state}, {self.passes} passes, router reports {self.unrouted} unrouted "
                 f"and {self.violations} violations; imported {self.tracks} tracks, {self.vias} vias, "
-                f"{self.widened} widened, {self.joined} joined, pruned {self.pruned or 'none'}, repair {self.repair or 'none'}; dsn {self.dsn_md5} "
+                f"{self.widened} widened, {self.joined} joined, {self.feeds} feeds, pruned {self.pruned or 'none'}, "
+                f"repair {self.repair or 'none'}; dsn {self.dsn_md5} "
                 f"imported {self.imported} "
                 f"final {self.digest}; "
                 f"{self.seconds:.0f}s")
@@ -1706,11 +1847,11 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
 
 
 def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float,
-            edge_clearance_mm: float | None = None) -> tuple[int | None, bool]:
+            edge_clearance_mm: float | None = None, fanout: bool = FANOUT) -> tuple[int | None, bool]:
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, edge_clearance_mm=edge_clearance_mm)
+    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm)
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
@@ -1734,34 +1875,72 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
 def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1,
                 timeout_s: float = 1200.0, stubs: bool = False, slack_all: bool = True,
                 pours: list[dict] | None = None, say=lambda _m: None,
-                router_edge_mm: float | None = None) -> FreeroutingResult:
+                router_edge_mm: float | None = None, planes: list[dict] | None = None,
+                fanout: bool = FANOUT, feeds: set[str] | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
-    for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log."""
+    for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
+
+    ``pours`` are laid after the import (D62: on an outer layer the router trusted a plane its fill could not
+    reach); ``planes`` are laid before the export, on inner layers, where every via reaches the fill: KiCad
+    writes them as DSN `(plane ...)` entries, their layers are typed `power` in the DSN (on a `signal` layer
+    the router calls the plane a dedicated power plane and writes an empty session, pitfalls above), and the
+    router connects their nets by via instead of routing them as tracks (D80, D81). ``fanout`` runs the router's
+    own fanout stage first (a via beside every SMD pad; off by default, D57). ``feeds`` names the plane nets:
+    a fixed via and stub go beside every SMD pad of theirs before the export (`route/planes.py`, D85) and
+    their pins leave the router's network, so their pours and feeds connect them and the router routes the
+    other nets around them."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
     dsn, ses, log = work_dir / "board.dsn", work_dir / "board.ses", work_dir / "run.log"
-    laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm) if stubs else []
+    laid = escape_stubs(board, rules.min_track_mm, rules.clearance_mm, fine_pitch_mm=STUB_PITCH_MM,
+                        edge_mm=rules.edge_clearance_mm, hole_mm=rules.hole_to_copper_mm) if stubs else []
     lay_stubs(board, laid)
+    laid_feeds = []
+    if planes:
+        hole_rule_areas(board, rules)
+        # the fill keeps its clearance from a via's pad, not its hole (D62): the plane's clearance allows for
+        # the smallest ring the rules give a via, since the vias come after the plane here
+        laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
+        say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
+    if feeds:
+        from waffle_eda.route import planes as feedlib
+        laid_feeds = feedlib.plane_feeds(board, rules, set(feeds))
+        feedlib.lay_feeds(board, laid_feeds, in_pad=False)  # the vias in pads come after the import
+        say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
-    if laid:
+    if laid or laid_feeds:
         dsn.write_text(fix_wires(dsn.read_text()))
+    if feeds:
+        if planes:  # the planes connect the fed pads; a pad fed in the pad has nothing the router could add
+            dsn.write_text(drop_pins(dsn.read_text(), {x.pad for x in laid_feeds if x.in_pad}))
+        else:  # no plane in the DSN: the pours laid after the import and the feeds connect the nets
+            dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
+    if planes:
+        dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
     if router_edge_mm is None:  # the router's own margin closed rp2040's last corridor at the rule (D68)
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm)
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm,
+                              fanout=fanout)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
-                               exported_layers=layers,
+                               feeds=len(laid_feeds), exported_layers=layers,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
                                exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
     if ses.is_file():
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
+        if laid_feeds:  # the session carries no fixed copper (D57): the feeds come back before the pruning
+            from waffle_eda.route import planes as feedlib
+            relaid = feedlib.lay_feeds(board, laid_feeds)
+            say(f"plane feeds re-laid after the import: {len(relaid)} items")
+        if laid:  # likewise the stubs: before the pruning, which took a track ending on a stub for dangling,
+            lay_stubs(board, laid)  # and before the repair, which then knows them (D83's crossings)
         result.joined = len(join_piece_groups(board, rules))
         result.pruned = prune_dangling(board)
         result.widened = widen_tracks(board, d.width_mm)
@@ -1772,15 +1951,13 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"repair: {result.repair}")
         via_ring, pin_ring = smallest_ring_mm(board)
         rings = [r for r in (via_ring, pin_ring) if r is not None]
-        if pours:
+        if pours and not planes:
             hole_rule_areas(board, rules)
-        result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None))
+        result.pours = len(add_pours(board, pours or [], rules, ring_mm=min(rings) if rings else None)) + len(planes or [])
         say(f"pours: {result.pours}")
         result.tracks = len(kb.track_segments(board)) + len(kb.track_arcs(board))
         result.vias = len(kb.vias(board))
         say(f"imported {ses.name}: tracks+vias {before} -> {result.tracks + result.vias}")
-        if laid:  # the session file does not carry fixed wires; the import dropped them with the rest
-            lay_stubs(board, laid)
     restore_references(board, renamed)
     result.digest = geometry_digest(board)
     result.seconds = round(time.time() - t0, 1)

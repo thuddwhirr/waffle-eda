@@ -1,0 +1,196 @@
+(kicad_sch
+	(version 20250114)
+	(generator "waffle_eda")
+	(generator_version "9.0")
+	(uuid "f19e1ebe-7320-474b-a318-7ce6575abc60")
+	(paper "A4")
+	(title_block
+		(title "Temperature-sensor breakout")
+		(company "temperature-sensor")
+	)
+	(lib_symbols)
+	(sheet
+		(at 20.32 30.48)
+		(size 45.72 15.24)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "d4c1d8eb-9cf3-4444-9db1-ee00c8e619d4")
+		(property "Sheetname" "sensor"
+			(at 20.32 29.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "sheets/sensor.kicad_sch"
+			(at 20.32 46.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "temperature-sensor"
+				(path "/f19e1ebe-7320-474b-a318-7ce6575abc60"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 78.74 30.48)
+		(size 45.72 15.24)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "14ccf773-8e2f-4919-8457-f763f9aa94f1")
+		(property "Sheetname" "host"
+			(at 78.74 29.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "sheets/host.kicad_sch"
+			(at 78.74 46.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "temperature-sensor"
+				(path "/f19e1ebe-7320-474b-a318-7ce6575abc60"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 139.7 30.48)
+		(size 45.72 15.24)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "48004c7a-2c46-4d3a-b8ee-cd1fd6754cd9")
+		(property "Sheetname" "indicator"
+			(at 139.7 29.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "sheets/indicator.kicad_sch"
+			(at 139.7 46.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "temperature-sensor"
+				(path "/f19e1ebe-7320-474b-a318-7ce6575abc60"
+					(page "4")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 200.66 30.48)
+		(size 45.72 15.24)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "531ec703-79a9-45d9-9b5d-442879fb2076")
+		(property "Sheetname" "mechanical"
+			(at 200.66 29.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "sheets/mechanical.kicad_sch"
+			(at 200.66 46.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "temperature-sensor"
+				(path "/f19e1ebe-7320-474b-a318-7ce6575abc60"
+					(page "5")
+				)
+			)
+		)
+	)
+	(text "Temperature-sensor breakout: root sheet, one sheet per function group (generated; edit design.md and bom.csv)"
+		(exclude_from_sim no)
+		(at 20 15 0)
+		(effects
+			(font
+				(size 2 2)
+			)
+			(justify left)
+		)
+		(uuid "eeeb5d0b-2e75-4a1e-8afa-4083f0b0cb07")
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+)

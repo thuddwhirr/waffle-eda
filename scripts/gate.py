@@ -4,6 +4,8 @@
     python3 scripts/gate.py a        # class A: the whole board re-routed from placement: every net of every
                                      # class A reference connected, zero electrical violations under the rules
                                      # measured off that board (D50, D55)
+    python3 scripts/gate.py b        # class B: the same re-route on every class B reference (four layers, planes,
+                                     # net classes, a USB pair), in the order the plan lists them (D75)
     python3 scripts/gate.py escape   # BGA escape (class B+): every bus ball on every BGA of every bus reference,
                                      # zero electrical violations under the reference's constraints; every
                                      # synthetic case complete and DRC clean
@@ -24,11 +26,12 @@ ladder one board at a time; the milestone is the whole gate, never a subset.
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import _path  # noqa: F401
 from waffle_eda.bench import harness, references as refs, synthetic
-from waffle_eda.kicad import board as kb
+from waffle_eda.kicad import board as kb, refill
 
 
 def bus_references():
@@ -44,6 +47,17 @@ def m4_references():
     order = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "olimex-rp2040-pico-pc",
              "libresolar-mppt-2420"]  # crkbd-corne-cherry left the ladder (D72)
     return [refs.REFERENCES[k] for k in order if k in refs.REFERENCES and (not ONLY or k in ONLY)]
+
+
+CLASS_B_ORDER = ["upduino-v3.01", "pico-ice-rev3", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
+                 "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
+
+
+def class_b_references():
+    """Class B's ladder in the order the plan lists its references (D75, reordered by D84): `upduino-v3.01`
+    first as the class's simplest routing problem measured, `pico-ice-rev3` second, the densest small board
+    third, the WLCSP at 0.35 mm pitch last."""
+    return [refs.REFERENCES[k] for k in CLASS_B_ORDER if k in refs.REFERENCES and (not ONLY or k in ONLY)]
 
 
 def gate_m1() -> list[tuple[str, bool, str]]:
@@ -122,11 +136,62 @@ def gate_m4() -> list[tuple[str, bool, str]]:
     gate judges only what the tool produces: stage 5's baseline, Freerouting behind `route.freerouting` (D55,
     D56), with the DSN, session and log of every board left under `build/fr/<key>/`.
     """
+    return _reroute_gate(m4_references())
+
+
+def gate_b() -> list[tuple[str, bool, str]]:
+    """Class B: the same full re-route from placement, on the class B references (plan.md, milestone B), under
+    the rules measured off each board. What class B adds to the criterion (widths per net class, the pair's gap
+    and skew, plane integrity, return vias) is added here as each is measured to matter, never before."""
+    return _reroute_gate(class_b_references())
+
+
+def router_budget() -> dict:
+    """The router's passes and time cap: the defaults of `route_board` for a milestone run, or shorter ones
+    from `WAFFLE_ROUTER_PASSES` and `WAFFLE_ROUTER_TIMEOUT_S` to fail faster while iterating on a board (D77).
+    A row routed under an override says so; a milestone is never claimed on one."""
+    import os
+    out = {}
+    if os.environ.get("WAFFLE_ROUTER_PASSES"):
+        out["passes"] = int(os.environ["WAFFLE_ROUTER_PASSES"])
+    if os.environ.get("WAFFLE_ROUTER_TIMEOUT_S"):
+        out["timeout_s"] = float(os.environ["WAFFLE_ROUTER_TIMEOUT_S"])
+    return out
+
+
+# Which of a reference's recorded pours the router gets before the export, as planes on layers typed power
+# (D81): none, as class A does (every pour laid after the import); "gnd", the ground plane's inner layers; or
+# "inner", every inner-layer pour. `WAFFLE_PLANES` selects it while the class B rungs are measured.
+PLANES = os.environ.get("WAFFLE_PLANES", "none")
+# The plane feeds and the stitching (route/planes.py, D85) for the inner pours' nets: a fixed via and stub
+# beside every SMD pad of theirs before the router, one more feed for every piece left after the fill.
+# `WAFFLE_FEEDS=1` selects it while the class B rungs are measured.
+FEEDS = os.environ.get("WAFFLE_FEEDS", "0") == "1"
+# The exit stubs (D51/D52's corridor rule and D85's fine-pitch rule) as fixed wires before the router:
+# `WAFFLE_STUBS=1` selects them while the class B rungs are measured (off on class A, D57 and D83).
+STUBS = os.environ.get("WAFFLE_STUBS", "0") == "1"
+
+
+def plane_split(board, pours: list[dict]) -> tuple[list[dict], list[dict]]:
+    outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
+    if PLANES == "inner":
+        planes = [p for p in pours if p["layer"] not in outer]
+    elif PLANES == "gnd":
+        planes = [p for p in pours if p["layer"] not in outer and p["net"] == "GND"]
+    else:
+        planes = []
+    return planes, [p for p in pours if p not in planes]
+
+
+def _reroute_gate(references) -> list[tuple[str, bool, str]]:
     from waffle_eda.bench import rebuild
     from waffle_eda.route import freerouting
     rows = []
     missing = freerouting.available()
-    for ref in m4_references():
+    budget = router_budget()
+    if PLANES != "none":
+        budget = {**budget}  # the row says which planes it ran with (D38)
+    for ref in references:
         if not refs.is_fetched(ref):
             rows.append((ref.key, False, "not fetched"))
             continue
@@ -137,17 +202,33 @@ def gate_m4() -> list[tuple[str, bool, str]]:
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)  # route_board modifies it in place and returns what it did
+            planes, pours = plane_split(board, info["pours"])
+            outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
+            plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if FEEDS else None
             result = freerouting.route_board(board, rules, refs.repo_root() / "build" / "fr" / ref.key,
-                                             pours=info["pours"])
+                                             pours=pours, planes=planes, feeds=plane_nets, stubs=STUBS, **budget)
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
         out = rebuild.problem_path(ref).with_name(f"{ref.key}-routed.kicad_pcb")
-        kb.refill_zones(board)
         kb.save_board(board, out)
+        fill = refill.refill_file(out)  # a child process with D14's fallbacks; the in-process fill can take an hour
+        stitched = []
+        if plane_nets:
+            from waffle_eda.route import planes as feedlib
+            routed = kb.load_board(out)
+            stitched = feedlib.stitch(routed, rules, plane_nets)
+            if stitched:
+                kb.save_board(routed, out)
+                fill = refill.refill_file(out)
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
-        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary()))
+        fill_note = "" if fill["mode"] == "all" else f" | fill {fill}"
+        budget_note = ((f" | router budget overridden: {budget}" if budget else "")
+                       + (f" | planes {PLANES}" if PLANES != "none" else "")
+                       + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else "")
+                       + (f" | stubs {result.stubs}" if STUBS else ""))
+        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + budget_note))
     return rows
 
 
@@ -173,6 +254,7 @@ def gate_m3() -> list[tuple[str, bool, str]]:
 
 GATES = {
     "a": gate_m4, "m4": gate_m4,
+    "b": gate_b,
     "escape": gate_m2, "m2": gate_m2,
     "busplan": gate_m3a, "m3a": gate_m3a,
     "bus": gate_m3, "m3b": gate_m3, "m3": gate_m3,

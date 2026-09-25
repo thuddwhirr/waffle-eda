@@ -1,0 +1,15 @@
+# 2026-09-24 19:58 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 22.5x14.0 mm: placement cost 41.14 overlaps []; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest bcd257b667; 11 s
+# 2026-09-24 20:01 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 20.0x14.0 mm: placement cost 49.07 overlaps []; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest 68b5a43d82; 13 s
+# 2026-09-24 20:04 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 20.0x14.0 mm: placement cost None overlaps None; router None unrouted; DRC electrical None  unconnected items None; nets 0/0; fail; digest ; 0 s; error no room for U1 inside the outline (100.3, 100.3, 119.7, 113.7)
+attempt 2 seed 1 outline 22.5x15.0 mm: placement cost 51.89 overlaps []; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest 7651dda288; 12 s
+# 2026-09-24 20:06 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 22.0x14.0 mm: placement cost 53.55 overlaps []; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest 159226d4fa; 12 s
+# 2026-09-24 20:07 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 20.5x12.9 mm: placement cost 57.2 overlaps [] compaction 'pulled in from (100.0, 100.0, 122.0, 114.0) to (100.0, 100.6, 120.5, 113.5)'; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest cbe25db07b; 11 s
+# 2026-09-24 20:08 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 22.5x12.7 mm: placement cost 66.64 overlaps [] compaction 'pulled in from (100.0, 100.0, 124.5, 114.5) to (100.0, 100.8, 122.5, 113.5)'; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest 867cd3d88e; 11 s
+# 2026-09-24 20:21 UTC stage 5 on temperature-sensor
+attempt 1 seed 0 outline 22.5x12.7 mm: placement cost 66.64 overlaps [] compaction 'pulled in from (100.0, 100.0, 124.5, 114.5) to (100.0, 100.8, 122.5, 113.5)'; router 0 unrouted; DRC electrical 0  unconnected items 0; nets 5/5; PASS; digest 6c9299ff71; 12 s

@@ -1,0 +1,7 @@
+Item,Designator,Quantity,Manufacturer,MPN,Description,Package,DNP
+1,C1,1,any,any,"100 nF, 16 V or more, X7R, 0603",C_0603_1608Metric,no
+2,D1,1,any,any,"LED, green, 0603",LED_0603_1608Metric,no
+3,J1,1,any,any,"1x4 pin header, 2.54 mm, vertical",PinHeader_1x04_P2.54mm_Vertical,no
+4,"R1,R2",2,any,any,"10 kOhm, 1 %, 0603",R_0603_1608Metric,no
+5,R3,1,any,any,"1 kOhm, 5 %, 0603",R_0603_1608Metric,no
+6,U1,1,Texas Instruments,TMP102AIDRLR (from the symbol's part name; confirm at order),TMP102 digital temperature sensor SOT-563,SOT-563,no
