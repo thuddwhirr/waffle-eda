@@ -473,6 +473,38 @@ the single-threaded runner. `max_threads` (`-mt`) reaches only the optimiser (`B
 which is off (D65). A class B row runs one thread whatever the machine has, D65's determinism is not at risk
 from threads, and a threads measurement waits on a build of the fork, if ever. Measurement.
 
+**D90. Where the router's insertion stops: against its own copper, pinned near fixed items; the clearance
+slack is not the constraint** (2026-09-25, the jar's own "insert trace failed" lines, logged at DEBUG with the
+stop point in 0.1 um units, y flipped, read back onto the routed board by a scratch script). 86 stops in D87's
+round 3 (plane, 88 feeds, 8 stubs): the nearest copper is the router's own track or via at 69, a pad at 13, a
+feed via at 4; 20 of 86 lie within 0.3 mm of a fixed item. The corridor between the two nearest fixed items
+is 1.3 to 1.6 mm at the median and under a trace's 0.4314 mm need at 1 of 86; counting the router's own
+copper it is under the need at 37 of 86 (plane alone: 11 of 19; no plane, no feeds: 1 of 5). So the shove
+that lays a found path fails where the router's earlier copper sits between the fixed items and cannot give
+way. Slack 0.03 for 0.0072 at four passes: 37 failed insertions for 38, 68 of 86 for 67, and 3 clearances
+the repair could not take back (worst 0.028 mm); the slack stays 0.0072. Measurement.
+
+**D91. The form the router meets the feeds in, measured on upduino at four passes** (2026-09-25,
+`scripts/rung.py upduino-v3.01 gnd 4 900 feeds <form>`, `route_board(feeds_mode=...)`; D85's fixed form:
+51 unrouted, 127 standing violations, 38 failed insertions, 67 of 86). Routable (the router's own wires):
+identical, it moved none. After (no feeds, no plane pins in its network, the feeds laid after the import):
+10, 25, 30, but 38 of 88 feeds find room, +3V3 in 32 pieces, 75 of 86. Vias (the feed vias alone fixed):
+31, 116, 45, 64. Reserved (the via sites as keepouts, the feeds laid after): 24, 25, 32, 64, GND in 4 pieces
+and +3V3 in 8 from the pads no feed reaches; with L-shaped sites (`planes._l_site`, 96 feeds for 88) 24, 25,
+26, GND in 3 and +3V3 in 5; the nine pads left are boxed in by other nets' pads touching theirs, no site of
+any shape at 3 mm, so they stay the router's with their nearest feeds fixed as vias to route to (11): 30,
+51, 17, 63 of 86, the planes in 2 pieces each. Measurement.
+
+**D92. The reserved form at 30 passes does not beat the fixed one; the fixed form stays class B's default**
+(2026-09-25, `WAFFLE_FEEDS_MODE=reserved python3 scripts/gate.py b upduino-v3.01`). 80 of 86, 0 violations,
+the router at 8 unrouted for the fixed form's 32, 788 s; with a plane net's plated pins counted as pads no
+feed reaches (J2-9 was the +3V3 stray), as committed: 78 of 86, 2 clearances the repair could not settle,
+10 unrouted, 996 s, the three +3V3 capacitor pads at U2 joined to each other and not to a via. What fails
+under it is named: U3-48 aimed at the plane it cannot reach ("layers are disabled") instead of its fixed
+via, the capacitors routed to each other, and the same three signal nets as under every form (U3-1 to the
+oscillator, U3-5 to R3, U3-21 to TP1), all at U3 and its capacitors. The reserved form is the measured
+alternative; class A's five digests are unchanged by the session's code (14b00be3e1 to ea88c6d515). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

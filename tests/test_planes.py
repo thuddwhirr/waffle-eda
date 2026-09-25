@@ -200,3 +200,59 @@ def test_feeds_keep_clear_of_copper_already_on_the_board_when_asked():
     assert seeing.via != blind
     assert abs(seeing.via[0] - blind[0]) >= 0.3 + 0.1 + 0.2 - 1e-9  # the via's radius, the track's half width, the rule
 
+
+
+def test_feeds_can_be_laid_as_vias_alone_and_the_stubs_come_later():
+    """D91's "vias" form: the router sees the feed vias only; the stubs are laid after the import."""
+    b = _board()
+    feeds = planes.plane_feeds(b, RULES, {"GND"})
+    assert len(planes.lay_feeds(b, feeds, in_pad=False, stubs=False)) == 1  # C1-1's via, nothing else
+    assert len(kb.track_segments(b)) == 0 and len(kb.vias(b)) == 1
+    assert len(planes.lay_feeds(b, feeds)) == 2  # the stub, and the via in the thermal pad
+    assert len(kb.track_segments(b)) == 1 and len(kb.vias(b)) == 2
+
+
+def test_a_pad_with_no_straight_site_gets_an_l_shaped_feed():
+    """D91: the straight exits of a pad blocked within the reach on all four sides, a free corner beyond one
+    of them; the feed turns once, its two legs are laid and re-laid idempotently."""
+    b = _board()
+    nets = b.GetNetsByName()
+    c4 = pcbnew.FOOTPRINT(b)  # a GND pad boxed in by signal pads on its four axes, with room diagonally
+    c4.SetReference("C4")
+    c4.SetPosition(pcbnew.VECTOR2I(kb.nm(5), kb.nm(3.5)))
+    b.Add(c4)
+    _pad(c4, "1", nets["GND"], 5, 3.5, 0.6, 0.6)
+    for k, (dx, dy) in enumerate(((1.3, 0), (-1.3, 0), (0, 1.3), (0, -1.3))):  # a straight site needs 1.52 mm
+        _pad(c4, str(k + 2), nets["SIG"], 5 + dx, 3.5 + dy, 0.4, 0.4)
+    feeds = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    f = feeds["C4-1"]
+    assert f.corner is not None and not f.in_pad
+    assert f.length_mm <= 2 * planes.REACH_MM
+    # the via clears the four signal pads and its own pad by the rules
+    rects = [r for r in planes._rects(b) if r.name.startswith("C4-")]
+    for r in rects:
+        need = 0.3 + (0.2 if r.name != "C4-1" else 0.2)
+        assert r.distance(f.via) >= need - 1e-9, (r.name, r.distance(f.via))
+    made = planes.lay_feeds(b, [f])
+    assert len(made) == 3  # two legs and the via
+    assert planes.lay_feeds(b, [f]) == []
+
+
+def test_the_pads_no_feed_reaches_get_their_nearest_feeds_as_targets():
+    """D91's reserved form: a pad with no site keeps its pin for the router and its net's nearest feeds go to
+    the router as fixed vias, within a reach, two at most."""
+    b = _board()
+    feeds = planes.plane_feeds(b, RULES, {"GND"})
+    assert planes.unfed_pads(b, feeds, {"GND"}) == {"C2-1"}  # hemmed in (the first test)
+    targets = planes.targets_for_unfed(b, feeds, {"GND"}, reach_mm=20.0)
+    assert [t.pad for t in targets] == ["C1-1"]  # the thermal pad's via is in a pad, not a target
+    assert planes.targets_for_unfed(b, feeds, {"GND"}, reach_mm=5.0) == []
+    assert planes.plane_pads(b, {"GND"}) >= {"U1-9", "C1-1", "C2-1"}
+    nets = b.GetNetsByName()
+    j1 = pcbnew.FOOTPRINT(b)  # a plated GND pin: unfed only when GND's pour comes after the import
+    j1.SetReference("J1")
+    j1.SetPosition(pcbnew.VECTOR2I(kb.nm(15), kb.nm(4)))
+    b.Add(j1)
+    _pad(j1, "1", nets["GND"], 15, 4, 1.7, 1.7, smd=False, drill=1.0)
+    assert "J1-1" not in planes.unfed_pads(b, feeds, {"GND"})
+    assert "J1-1" in planes.unfed_pads(b, feeds, {"GND"}, pth_nets={"GND"})

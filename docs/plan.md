@@ -9,7 +9,7 @@ Everything else in this file serves that sentence.
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none.
 
-**Where the session of 2026-09-25 ended (D87 to D89), and the next step.** The closure loop was built and
+**Where the session of 2026-09-25 ended (D87 to D92), and the next step.** The closure loop was built and
 measured on `upduino-v3.01` (`route.freerouting.route_rounds`: the fine-pitch pads a round leaves untouched get
 a fixed exit stub in the next; `scripts/rung.py ... rounds=N`): 81 of 86, then 82 with a clearance the repair
 could not settle, then 80 with all eight stubs (D87). It does not converge and stays a tool (`WAFFLE_ROUNDS`).
@@ -18,25 +18,34 @@ fails ("the new connection could not be inserted", 117, 85 and 118 times a run, 
 the walled-in exits ("no connection was found") went from 70 to 7 with the stubs, so the stubs were not the
 missing constraint (D88). Four passes without the plane and the feeds: 11 failed insertions, 28 paths not
 found, 25 standing violations; with them 38, 14 and 127: the fixed feeds are what the shove cannot move, and
-102 of the standing violations are theirs under the router's rules (KiCad's DRC counts 0). **The next step is
-the feeds in a form the shove can work with**, measured under the four-pass budget against 51 unrouted and
-38 failed insertions (`WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py upduino-v3.01 gnd 4 900 feeds`, six minutes
-here; the failure counts are `grep -c "could not be inserted" build/fr/<dir>/freerouting.log`), a failing
-test or row first and the smallest change second, in this order: (1) the feeds handed to the router as its
-own wires (`(type route)` in the DSN's wiring, not `fix`), which it may shove and which come back in its
-session (a fixed wire does not, D57), the stitching re-feeding what it rips; (2) the feeds laid after the
-router instead of before, the stitching's way (`planes.plane_feeds(copper=True)` on the routed board, the
-plane nets' pins out of the DSN as the no-plane mode does), the pads left with no room being the count to
-report; (3) the verdict row, `python3 scripts/gate.py b upduino-v3.01` (30 passes, about 22 minutes on this
-container). The plane alone, no feeds, at four passes: 25 standing violations, 26 failed insertions, 66 of
-86, so the 102 are the feeds', and they were named offline: 41 of the 82 feed vias sat over another pad of
-their own net and 33 stubs crossed one (`plane_feeds` skipped same-net pads in its clearance check; KiCad
-allows it, the router counts each with via-in-pad off, D85, and cannot shove a fixed via). A feed kept to
-its own pad (56 feeds for 88) was measured at four passes against the 88 feeds' 67 of 86, 51 unrouted, 38
-failed insertions and 127 standing violations: 63 of 86, GND and +3V3 in pieces, 52 unrouted, 46 failed
-insertions, 29 standing violations. The violations were not the constraint either; the rule was dropped and
-the committed feeds are D85's. The plane alone already fails 26 insertions for 11 without it, so the case
-is the router's shove against the plane and the fixed feeds together, which is what (1) and (2) test.
+102 of the standing violations are theirs under the router's rules (KiCad's DRC counts 0). **The second half of the session (D90 to D92) worked the feeds' form.** The stop points of the failed
+insertions, read back from the jar's own "insert trace failed" lines, sit against the router's own earlier
+copper pinned between fixed items, not at a hair of clearance (D90; slack 0.03 measured as predicted: no
+change, three clearances the repair could not take back). So the feeds' form was measured, all at four passes
+on upduino against the fixed form's 51 unrouted, 127 standing violations, 38 failed insertions and 67 of 86
+(D91): routable, identical; nothing of the plane nets in front of the router ("after"), 10 unrouted but only
+38 feeds find room afterwards; the feed sites reserved as keepouts and the feeds laid after the import, 24
+unrouted, 25 violations, 26 failed insertions with the new L-shaped sites (96 feeds for 88), and GND and
++3V3 in 3 and 5 pieces from the nine pads boxed in by other nets' pads that no site reaches; those nine left
+in the router's network with their nearest feeds fixed as vias to route to, 30 unrouted, 51, 17 failed
+insertions, the planes in 2 pieces each. **The reserved form's verdict rows at 30 passes** (`WAFFLE_FEEDS_MODE=reserved
+python3 scripts/gate.py b upduino-v3.01`): **80 of 86**, 0 violations, the router at 8 unrouted for the fixed
+form's 32, 788 s; and, as committed, with a plane net's plated pins counted as pads no feed reaches (J2-9
+was the +3V3 stray): **78 of 86**, 2 clearances the repair could not settle, 10 unrouted, 996 s, the three
++3V3 capacitor pads at U2 joined to each other and not to a via (D92). Neither beats 81, so the fixed form
+stays `CLASS_B`'s `feeds_mode` and the reserved form is the measured alternative. **The next step** is what
+fails under the reserved form, since it is named and small where the fixed form's failures are the
+router's shove at large: (a) a pad no feed reaches that the router aims at the plane it cannot reach
+("layers are disabled") instead of the fixed via beside it (U3-48; in the jar the airline goes to the
+nearest item of the net, the plane under the pad): hand those pads' nets no plane at all, or fix the via
+*in* the pad's exit so it is the nearest item; (b) the three +3V3 capacitor pads at U2 (C14-1, C30-1, R5-2)
+the router joins to each other: one target for the group, not two per pad; (c) the same three signal nets
+as in every form, all at U3 and its capacitors (U3-1 to the oscillator, U3-5 to R3, U3-21 to TP1, their
+untouched ends and stubs in D87 and D91): the reference's own copper there is the answer key to read
+(`references/` has it), before anything else is built. Each is a four-pass measurement (six minutes) with a
+failing case first; the router's remaining failed insertions against its own copper (17 to 38 a run) sit
+inside the jar, where the fork is the place to work them (the shove's recursion depths are constants, 20
+and 5, in `AutorouteControl`), and the review the ladder rules call for after the fourth session says so.
 Threads are settled by reading (D89: the jar's autorouting stage is single-threaded). The configuration is the
 class B gate's default (`scripts/gate.py`, `CLASS_B`: the GND plane on a `power` layer, the feeds, no window,
 one round, a 2400 s cap per run). `pico-ice-rev3` under it (`WAFFLE_ROUTER_PASSES=20 WAFFLE_ROUTER_TIMEOUT_S=4200
@@ -84,7 +93,7 @@ python3 scripts/design.py run temperature-sensor      # re-runs all six stages, 
                                                       # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
-                                        # board, so `-m "not parked and not bench"` is the quick run, 131 tests in a minute
+                                        # board, so `-m "not parked and not bench"` is the quick run, 134 tests in a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
@@ -301,15 +310,16 @@ rising order; the target board to fab outputs.
 | `waffle_eda/route/bus.py`, `length.py`, `plan.py` | **parked**: the detailed bus router (42 of 55 on ButterStick, D43), length tuner, the earlier cell planner |
 | `waffle_eda/route/freerouting.py` | stage 5's baseline for class A: Freerouting 2.4.1 headless through KiCad's Specctra export and import, the measured rules written into the DSN, the pitfalls in its docstring (D56, D57); `scripts/fetch_tools.py` fetches the jar and its Java; the closure loop `route_rounds` (a round's untouched fine-pitch pads get a fixed exit stub in the next; D87: a tool, not a default) |
 | Freerouting's source | the owner's fork, <https://github.com/thuddwhirr/freerouting>, cloned when needed (the next-step section says how); ahead of the 2.4.1 jar, a guide to what the jar counts and refuses (D85) |
-| `waffle_eda/route/planes.py` | class B's plane feeds and stitching (D85): a fixed via and stub beside every plane-net SMD pad with room before the router, one more for every piece left after the fill |
+| `waffle_eda/route/planes.py` | class B's plane feeds and stitching (D85): a via and stub beside every plane-net SMD pad with room, straight or L-shaped (D91), one more for every piece left after the fill; the pads no feed reaches and the feeds the router gets as targets for them (`targets_for_unfed`) |
 | `waffle_eda/route/board_router.py` | **parked**: single-stage grid router, 4 of 6 on the smoke test (D52); its escape-stub finding stands and is now `freerouting.escape_stubs` (off: measured worse, D57) |
 | `waffle_eda/design/` | the six stages on a design directory (D74): `stage1_design` to `stage6_outputs`, `gate` (a stage's criteria, escalations and report), `schematic` (the generator, from the salvage), `board_build`, `placer` (edges, corners, annealing, compaction, silkscreen references) |
 | `waffle_eda/kicad/libs.py`, `sexp.py`, `symbols.py` | KiCad's libraries found on disk (fetched at the release's tag), an S-expression reader and writer, symbols with their pins |
 | `designs/temperature-sensor/` | the class A synthetic design: `design.md`, `bom.csv`, `kicad/` (schematic and board in one project), `netlist.net`, `spec.toml`, `reports/`, `out/` |
 | `scripts/gate.py` | the gates: `a`, `b`, `escape`, `busplan`, `bus` (old names `m4`, `m2`, `m3a`, `m3b` still work); each re-route class runs under its own configuration (`CLASS_A`, `CLASS_B`: planes, feeds, stubs, rounds, window; D86), overridable by `WAFFLE_*` for a measurement, and the row names what it ran under |
 | `scripts/design.py` | `run <name>` (stages in order, stopping at a failing gate), `status <name>` (each gate, what waits on the owner) |
-| `scripts/rung.py` | one class B gate row with the plane handling, the feeds, the stubs, the router's fanout stage and the closure loop's rounds selectable (`rounds=N`, `open=<board>`, `exits=...`), for iterating on a rung under a short budget (D77, D81 to D87) |
-| `tests/` | 277 tests: 131 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
+| `scripts/insertion_stops.py` | where a run's failed insertions stopped (D90): the jar's "insert trace failed" lines read back onto the routed board, the nearest copper by kind and the corridor at each stop |
+| `scripts/rung.py` | one class B gate row with the plane handling, the feeds and their form (`loose`, `after`, `reserved`, `vias`), the stubs, the router's fanout stage and the closure loop's rounds selectable (`rounds=N`, `open=<board>`, `exits=...`), for iterating on a rung under a short budget (D77, D81 to D91) |
+| `tests/` | 280 tests: 134 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)

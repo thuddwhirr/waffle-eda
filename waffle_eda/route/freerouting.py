@@ -44,10 +44,16 @@ through `(pins)` removal (class C). Plane layers typed `power` came in with clas
 Class B's rows (`scripts/gate.py b`) run the wrapper with the GND plane before the export on a layer typed
 `power`, the plane nets fed (`route/planes.py`), no window, and one round (D86); :func:`route_rounds` is the
 closure loop around it, measured on upduino not to converge (D87). What the router's log says leaves that
-board's nets open is its insertion, not its search (D88): the maze finds a path and the shove fails.
+board's nets open is its insertion, not its search (D88): the maze finds a path and the shove fails, where
+the router's own earlier copper sits between fixed items and cannot give way (D90, the stop points read
+back from its "insert trace failed" lines). The form the router meets the feeds in is `feeds_mode` (D91):
+fixed wires pin its copper; handed nothing of the plane nets it routes best; the reserved form (the feed
+sites as keepouts, the feeds laid after the import, the pads no feed reaches routed to a few fixed vias)
+keeps most of both.
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -72,6 +78,12 @@ JAVA_MAJOR = 25  # the minimum Java that runs the jar: 2.4.1 is compiled for cla
 # passes, 6 of 6 and 0 violations, 15 moves). ``slack_all=False`` hands the slack to wire-to-SMD-pad clearances
 # only and everything else exactly, which connected 4 of 6 there and is kept for measurement.
 CLEARANCE_SLACK_MM = 0.0072
+# `WAFFLE_CLEARANCE_SLACK_MM` overrides it for a measurement (D90: the router's failed insertions stop against
+# its own copper, not at a hair of clearance, so a larger slack was measured not to help on upduino).
+
+
+def clearance_slack_mm() -> float:
+    return float(os.environ.get("WAFFLE_CLEARANCE_SLACK_MM", CLEARANCE_SLACK_MM))
 # The router writes via drills in whole micrometres (248.9 became 248), so the drill is rounded up to one.
 DRILL_STEP_MM = 0.001
 # The default via cost of 50 stops the router placing any via of its own on a 15 x 25 mm board (D57: 0 vias,
@@ -207,7 +219,7 @@ def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True) -> DsnRu
     """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for."""
     import math
     exact = round(rules.clearance_mm, 4)
-    slack = round(rules.clearance_mm - CLEARANCE_SLACK_MM, 4)
+    slack = round(rules.clearance_mm - clearance_slack_mm(), 4)
     clearance = slack if slack_all else exact
     drill = math.ceil(rules.min_drill_mm / DRILL_STEP_MM - 1e-9) * DRILL_STEP_MM
     via_ring = (rules.min_via_mm - drill) / 2
@@ -1818,7 +1830,8 @@ class FreeroutingResult:
     renamed: int
     stubs: int = 0
     exits: tuple = ()  # the pads whose exits a fixed stub reserved: the closure loop's stubs (D86)
-    feeds: int = 0  # plane feeds laid before the export (route/planes.py, D85)
+    feeds: int = 0  # plane feeds laid before the export (route/planes.py, D85), or after the import (D90)
+    feeds_mode: str = "fixed"  # how the router met the feeds: "fixed", "routable" (its own wires), "after" (not at all)
     pours: int = 0
     joined: int = 0  # tracks laid between a pad's piece groups the router left apart
     widened: int = 0  # tracks the router necked below the rule, set back to it
@@ -1920,7 +1933,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 pours: list[dict] | None = None, say=lambda _m: None,
                 router_edge_mm: float | None = None, planes: list[dict] | None = None,
                 fanout: bool = FANOUT, feeds: set[str] | None = None,
-                stub_pads: set[str] | None = None, gui: bool = GUI) -> FreeroutingResult:
+                stub_pads: set[str] | None = None, gui: bool = GUI,
+                feeds_mode: str = "fixed") -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -1935,7 +1949,13 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     other nets around them. ``stub_pads`` names pads ("REF-N") whose exit a fixed stub reserves
     (:func:`exit_stubs`): the pads an earlier run left open, in the closure loop of :func:`route_rounds`.
     ``gui`` gives the jar its window under Xvfb, as every class A row runs it; class B's rows run without
-    (`GUI`, D85: the renderer dies drawing a plane and the session comes back empty)."""
+    (`GUI`, D85: the renderer dies drawing a plane and the session comes back empty). ``feeds_mode`` is the
+    form the router meets the feeds in (D91): "fixed", wires and vias it routes around (D85); "routable", its
+    own wires it may shove or rip, which come back in its session; "after", none at all, the plane nets' pins
+    out of its network and the feeds laid after the import around its copper; "reserved", the feed sites as
+    keepouts in the DSN, the pins out of its network, the feeds laid after the import where the keepouts held
+    their room; "vias", the feed vias alone fixed in the DSN, the fed pads out of its network and the pads with
+    no feed left in it, the stubs laid after the import."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -1948,25 +1968,59 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     if stub_pads:
         say(f"exit stubs laid for {len(exits)} of {len(stub_pads)} pads left open: {sorted(x.pad for x in exits)}")
     laid_feeds = []
+    targets: list = []  # reserved: the feeds fixed as vias for the pads no feed reaches (D91)
     if planes:
         hole_rule_areas(board, rules)
         # the fill keeps its clearance from a via's pad, not its hole (D62): the plane's clearance allows for
         # the smallest ring the rules give a via, since the vias come after the plane here
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
-    if feeds:
+    if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias"):
+        raise ValueError(f"feeds_mode {feeds_mode!r}: fixed, routable, after, reserved or vias")
+    if feeds and feeds_mode != "after":
         from waffle_eda.route import planes as feedlib
         # the feeds slide around the copper already on the board, the exit stubs above included: placed
         # against the pads alone, four GND feeds landed on or within 0.13 mm of the closure loop's five stubs
         # on upduino (one shorting a stub), 4 standing violations more for the router (2026-09-25)
         laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True)
-        feedlib.lay_feeds(board, laid_feeds, in_pad=False)  # the vias in pads come after the import
-        say(f"plane feeds laid: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
+        # a plated pin of a plane net whose pour comes after the import (+3V3 on upduino) has nothing of its
+        # net in the DSN to reach; it counts as a pad no feed reaches (J2-9 stray under the reserved form)
+        poured_after = set(feeds) - {p["net"] for p in (planes or [])}
+        if feeds_mode != "reserved":  # the vias in pads come after the import; in the "vias" form the stubs too
+            feedlib.lay_feeds(board, laid_feeds, in_pad=False, stubs=feeds_mode != "vias")
+        else:  # a pad no feed reaches stays the router's, with its nearest feeds of its net fixed as vias to
+            targets = feedlib.targets_for_unfed(board, laid_feeds, set(feeds), pth_nets=poured_after)  # route to
+            feedlib.lay_feeds(board, targets, in_pad=False, stubs=False)  # (their stubs come after the import)
+        say(f"plane feeds {'found' if feeds_mode == 'reserved' else 'laid'}: {len(laid_feeds)}, "
+            f"{sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
-    if laid or laid_feeds:
+    if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
+    if feeds and feeds_mode == "reserved":  # the via sites as keepouts on every copper layer: the router keeps
+        copper_names = [name for _lid, name in kb.copper_layers(board)]  # its clearance from a keepout's edge
+        fixed_vias = {x.via for x in targets}
+        sites = [PadKeepout("feed", x.pad, x.via[0], x.via[1], d.via_diameter_mm / 2, 0.0, tuple(copper_names))
+                 for x in laid_feeds if not x.in_pad and x.via not in fixed_vias]
+        for x in laid_feeds:  # an L-shaped stub's legs, as circles along them on the stub's layer (D91)
+            if x.corner is not None:
+                layer_name = board.GetLayerName(x.layer)
+                for (ax, ay), (bx, by) in x.legs:
+                    n = max(1, int(math.hypot(bx - ax, by - ay) / 0.1))
+                    sites += [PadKeepout("feed", x.pad, ax + (bx - ax) * k / n, ay + (by - ay) * k / n,
+                                         x.width_mm / 2, 0.0, (layer_name,)) for k in range(n + 1)]
+        dsn.write_text(keepouts_dsn(dsn.read_text(), sites))
+        say(f"feed sites reserved as keepouts: {len(sites)}; {len(targets)} feeds fixed as vias for the "
+            f"{len(feedlib.unfed_pads(board, laid_feeds, set(feeds), pth_nets=poured_after))} pads no feed reaches")
     if feeds:
-        if planes:  # the planes connect the fed pads; a pad fed in the pad has nothing the router could add
+        if feeds_mode == "after":  # the plane nets are not the router's at all: the feeds, pours and stitching
+            dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))  # after the import connect them
+        elif feeds_mode == "reserved":  # likewise, except the pads no feed reaches: they stay, to be routed to a
+            fed = {x.pad for x in laid_feeds}  # fixed via of their net
+            keep = feedlib.unfed_pads(board, laid_feeds, set(feeds), pth_nets=poured_after)
+            dsn.write_text(drop_pins(dsn.read_text(), {p for p in fed} | {p for p in feedlib.plane_pads(board, set(feeds)) - keep}))
+        elif feeds_mode == "vias":  # every fed pad leaves the network; the pads with no feed stay in it, for the
+            dsn.write_text(drop_pins(dsn.read_text(), {x.pad for x in laid_feeds}))  # router to reach a fixed via
+        elif planes:  # the planes connect the fed pads; a pad fed in the pad has nothing the router could add
             dsn.write_text(drop_pins(dsn.read_text(), {x.pad for x in laid_feeds if x.in_pad}))
         else:  # no plane in the DSN: the pours laid after the import and the feeds connect the nets
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
@@ -1983,16 +2037,18 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),
                                exits=tuple(sorted(x.pad for x in exits)), feeds=len(laid_feeds), exported_layers=layers,
+                               feeds_mode=feeds_mode,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
                                exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
     if ses.is_file():
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
-        if laid_feeds:  # the session carries no fixed copper (D57): the feeds come back before the pruning
-            from waffle_eda.route import planes as feedlib
-            relaid = feedlib.lay_feeds(board, laid_feeds)
-            say(f"plane feeds re-laid after the import: {len(relaid)} items")
+        if laid_feeds and feeds_mode != "after":  # the session carries no fixed copper (D57): the feeds come
+            from waffle_eda.route import planes as feedlib  # back before the pruning; routable ones come back
+            relaid = feedlib.lay_feeds(board, [x for x in laid_feeds if x.in_pad]  # in the session as the router
+                                       if feeds_mode == "routable" else laid_feeds)  # left them, so only the vias
+            say(f"plane feeds re-laid after the import: {len(relaid)} items")  # in pads are laid then
         if laid:  # likewise the stubs: before the pruning, which took a track ending on a stub for dangling,
             lay_stubs(board, laid)  # and before the repair, which then knows them (D83's crossings)
         result.joined = len(join_piece_groups(board, rules))
@@ -2003,6 +2059,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"saved {work_dir / 'imported.kicad_pcb'}")  # alone can be rerun on it (scripts/repair_only.py)
         result.repair = repair_clearances(board, rules, work_dir / "repair")
         say(f"repair: {result.repair}")
+        if feeds and feeds_mode == "after":  # the feeds around the router's copper, the vias in pads included (D91)
+            from waffle_eda.route import planes as feedlib
+            laid_feeds = feedlib.plane_feeds(board, rules, set(feeds), copper=True)
+            feedlib.lay_feeds(board, laid_feeds)
+            result.feeds = len(laid_feeds)
+            say(f"plane feeds laid after the import: {len(laid_feeds)}, {sum(1 for x in laid_feeds if x.in_pad)} in a pad")
         via_ring, pin_ring = smallest_ring_mm(board)
         rings = [r for r in (via_ring, pin_ring) if r is not None]
         if pours and not planes:

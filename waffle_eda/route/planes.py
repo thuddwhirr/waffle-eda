@@ -11,8 +11,10 @@ within 1.5 mm of most plane pads (median 0.9 to 1.2 mm) and reach the rest throu
 
 A feed is found by sliding a via outward from the pad along the pad's own axes, the direction away from the
 footprint's centre first, until the via and its stub clear every other net's pad copper and hole by the
-board's rules; a pad that can hold the via gets it in the pad (a package's thermal pad). A pad with no room
-within `REACH_MM` gets no feed and stays the router's.
+board's rules; a pad that can hold the via gets it in the pad (a package's thermal pad). A pad with no
+straight site gets an L-shaped one where there is room (D91: six of upduino's ten such pads): the stub leaves
+the pad along one of its axes to a corner and turns straight to the via, the nearest site within `REACH_MM`
+over every direction. A pad with no room at all gets no feed and stays the router's.
 """
 from __future__ import annotations
 
@@ -39,14 +41,24 @@ class Feed:
     width_mm: float
     via_mm: float
     drill_mm: float
+    corner: tuple[float, float] | None = None  # an L-shaped stub turns here (D91); None for a straight one
 
     @property
     def in_pad(self) -> bool:
         return self.via == self.start
 
     @property
+    def legs(self) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+        """The stub's segments, from the pad's centre to the via."""
+        if self.in_pad:
+            return []
+        if self.corner is None:
+            return [(self.start, self.via)]
+        return [(self.start, self.corner), (self.corner, self.via)]
+
+    @property
     def length_mm(self) -> float:
-        return math.hypot(self.via[0] - self.start[0], self.via[1] - self.start[1])
+        return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in self.legs)
 
 
 @dataclass(frozen=True)
@@ -269,10 +281,46 @@ def plane_feeds(board, rules, nets: set[str], width_mm: float | None = None, via
                         d += STEP_MM
                     if feed is not None:
                         break
+            if feed is None:  # no straight site: an L-shaped one, the nearest over every direction (D91)
+                own = _Rect(net, centre, (ux, uy), half_len, half_wid, 0.0, math.hypot(half_len, half_wid), 0.0, name)
+                site = _l_site(search, net, own, rects, stack[0])
+                if site is not None:
+                    corner, p = site
+                    feed = Feed(pad.GetNetname(), stack[0], name, centre, (round(p[0], 4), round(p[1], 4)),
+                                width_mm, via_mm, drill_mm, corner=(round(corner[0], 4), round(corner[1], 4)))
             if feed is not None:
                 feeds.append(feed)
                 search.placed.append((net, feed.via))
     return feeds
+
+
+def _l_site(search: _Search, net: int, own: _Rect, rects: list[_Rect], layer: int):
+    """The nearest via site within the reach that an L-shaped stub reaches from the pad ``own``: out of the pad
+    along one of its axes to the via's projection on that axis (the corner), then straight to the via. Sites
+    are tried nearest first, at every 10 degrees and every `STEP_MM`; the via keeps the router's clearance
+    from its own pad (a via touching a same-net pad is a violation to it, D85). Returns (corner, via) or None."""
+    r = search.via_r
+    ux, uy = own.axis
+    axes = ((ux, uy, own.half_len), (-ux, -uy, own.half_len), (-uy, ux, own.half_wid), (uy, -ux, own.half_wid))
+    start = min(own.half_len, own.half_wid) + r + search.clear
+    d = math.ceil(start / STEP_MM) * STEP_MM
+    while d <= REACH_MM:
+        for k in range(36):
+            a = math.radians(k * 10)
+            p = (own.centre[0] + math.cos(a) * d, own.centre[1] + math.sin(a) * d)
+            if own.distance(p) < r + search.clear or not search.via_clear(net, p, rects):
+                continue
+            for dx, dy, ext in axes:
+                edge = (own.centre[0] + dx * ext, own.centre[1] + dy * ext)
+                along = (p[0] - edge[0]) * dx + (p[1] - edge[1]) * dy
+                if along < r:  # the via must sit beyond the pad's edge on this axis
+                    continue
+                corner = (edge[0] + dx * along, edge[1] + dy * along)
+                if (search.stub_clear(net, edge, corner, rects, layer)
+                        and search.stub_clear(net, corner, p, rects, layer)):
+                    return corner, p
+        d += STEP_MM
+    return None
 
 
 def _via_at(board, feed: Feed):
@@ -283,9 +331,9 @@ def _via_at(board, feed: Feed):
     return None
 
 
-def _stub_at(board, feed: Feed):
-    a = (kb.nm(feed.start[0]), kb.nm(feed.start[1]))
-    b = (kb.nm(feed.via[0]), kb.nm(feed.via[1]))
+def _stub_at(board, feed: Feed, leg: tuple[tuple[float, float], tuple[float, float]]):
+    a = (kb.nm(leg[0][0]), kb.nm(leg[0][1]))
+    b = (kb.nm(leg[1][0]), kb.nm(leg[1][1]))
     for t in kb.track_segments(board):
         s, e = t.GetStart(), t.GetEnd()
         if t.GetLayer() == feed.layer and t.GetNetname() == feed.net and {(s.x, s.y), (e.x, e.y)} == {a, b}:
@@ -293,21 +341,24 @@ def _stub_at(board, feed: Feed):
     return None
 
 
-def lay_feeds(board, feeds: list[Feed], in_pad: bool = True) -> list:
+def lay_feeds(board, feeds: list[Feed], in_pad: bool = True, stubs: bool = True) -> list:
     """Add the feeds to the board (a stub and a via each, the via alone in a pad); a feed already there is
     left alone, so the same list re-lays what a session import dropped. Returns the items added. With
     ``in_pad`` false the vias in pads are skipped: the router must not see them (a via in a same-net pad is a
-    violation to it while via-in-pad is off), and nothing routes through a pad anyway."""
+    violation to it while via-in-pad is off), and nothing routes through a pad anyway. With ``stubs`` false
+    only the vias are laid (the "vias" form of D91: the router sees the vias, the stubs come after)."""
     nets = board.GetNetsByName()
     made = []
     for feed in feeds:
         if feed.in_pad and not in_pad:
             continue
         net = nets[feed.net]
-        if not feed.in_pad and _stub_at(board, feed) is None:
+        for leg in (feed.legs if stubs else []):
+            if _stub_at(board, feed, leg) is not None:
+                continue
             track = pcbnew.PCB_TRACK(board)
-            track.SetStart(pcbnew.VECTOR2I(kb.nm(feed.start[0]), kb.nm(feed.start[1])))
-            track.SetEnd(pcbnew.VECTOR2I(kb.nm(feed.via[0]), kb.nm(feed.via[1])))
+            track.SetStart(pcbnew.VECTOR2I(kb.nm(leg[0][0]), kb.nm(leg[0][1])))
+            track.SetEnd(pcbnew.VECTOR2I(kb.nm(leg[1][0]), kb.nm(leg[1][1])))
             track.SetWidth(kb.nm(feed.width_mm))
             track.SetLayer(feed.layer)
             track.SetNet(net)
@@ -390,3 +441,46 @@ def finish(board, out: Path, rules, nets: set[str]) -> dict:
             kb.save_board(routed, out)
             fill = refill.refill_file(out)
     return {"fill": fill, "stitched": stitched}
+
+
+def plane_pads(board, nets: set[str]) -> set[str]:
+    """Every pad of ``nets`` ("REF-N"), plated or not."""
+    return {f"{fp.GetReference()}-{pad.GetNumber()}" for fp in board.GetFootprints() for pad in fp.Pads()
+            if pad.GetNetname() in nets and pad.GetLayerSet().CuStack()}
+
+
+def unfed_pads(board, feeds: list[Feed], nets: set[str], pth_nets: set[str] = frozenset()) -> set[str]:
+    """The SMD pads of ``nets`` that no feed reaches, and the plated pads of ``pth_nets`` (plane nets whose
+    pour comes after the import, so nothing of theirs is in the DSN for a plated pin to reach)."""
+    fed = {f.pad for f in feeds}
+    out = set()
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            name = f"{fp.GetReference()}-{pad.GetNumber()}"
+            if pad.GetNetname() not in nets or not pad.GetLayerSet().CuStack() or name in fed:
+                continue
+            if pad.GetAttribute() == pcbnew.PAD_ATTRIB_SMD or pad.GetNetname() in pth_nets:
+                out.add(name)
+    return out
+
+
+TARGET_REACH_MM = 3.0  # how far from a pad no feed reaches its net's feeds are fixed as vias for the router
+
+
+def targets_for_unfed(board, feeds: list[Feed], nets: set[str], reach_mm: float = TARGET_REACH_MM,
+                      per_pad: int = 2, pth_nets: set[str] = frozenset()) -> list[Feed]:
+    """For every SMD pad of ``nets`` that no feed reaches (D91: on upduino, nine pads boxed in by other nets'
+    pads touching theirs), the nearest ``per_pad`` feeds of its net within ``reach_mm``: the reserved form
+    hands these to the router as fixed vias, and the pad stays in its network to be routed to one."""
+    centres = {}
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            centres[f"{fp.GetReference()}-{pad.GetNumber()}"] = (pad.GetNetname(), (kb.mm(pad.GetPosition().x), kb.mm(pad.GetPosition().y)))
+    chosen: dict[str, Feed] = {}
+    for name in sorted(unfed_pads(board, feeds, nets, pth_nets)):
+        net, (px, py) = centres[name]
+        near = sorted((math.hypot(f.via[0] - px, f.via[1] - py), f.pad, f) for f in feeds if f.net == net and not f.in_pad)
+        for dist, _pad, f in near[:per_pad]:
+            if dist <= reach_mm:
+                chosen[f.pad] = f
+    return [chosen[k] for k in sorted(chosen)]

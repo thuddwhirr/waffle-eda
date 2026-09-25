@@ -175,8 +175,12 @@ def router_budget() -> dict:
 # `WAFFLE_ROUNDS` and `WAFFLE_ROUTER_GUI` override a class's values for a measurement, and the row says so.
 # `timeout_s` caps one run of the router where the wrapper's own cap (1200 s) is too short for the class's
 # passes: upduino's 30 passes took 1305 s on 2026-09-25's container, and the cap killed the row in pass 26.
-CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True}
-CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 2400.0}
+# `feeds_mode` is the form the router meets the feeds in (D91): "fixed" wires it routes around, "routable"
+# wires of its own, "after" (none: laid after the import around its copper), "reserved" (their sites as
+# keepouts, laid after the import); `WAFFLE_FEEDS_MODE` selects another for a measurement.
+CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True, "feeds_mode": "fixed"}
+CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 2400.0,
+           "feeds_mode": "fixed"}
 
 
 def configuration(defaults: dict) -> dict:
@@ -192,6 +196,8 @@ def configuration(defaults: dict) -> dict:
         out["rounds"] = int(os.environ["WAFFLE_ROUNDS"])
     if os.environ.get("WAFFLE_ROUTER_GUI"):
         out["gui"] = os.environ["WAFFLE_ROUTER_GUI"] != "0"
+    if os.environ.get("WAFFLE_FEEDS_MODE"):
+        out["feeds_mode"] = os.environ["WAFFLE_FEEDS_MODE"]
     return out
 
 
@@ -241,7 +247,8 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if cfg["feeds"] else None
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
-                                                       stubs=cfg["stubs"], gui=cfg["gui"], **budget)
+                                                       stubs=cfg["stubs"], gui=cfg["gui"], feeds_mode=cfg["feeds_mode"],
+                                                       **budget)
             result = results[-1]
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
@@ -255,7 +262,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                        + (f" | cap {cap['timeout_s']:.0f} s" if cap else "")
                        + (f" | configuration overridden: {overridden}" if overridden else "")
                        + (f" | planes {cfg['planes']}" if cfg["planes"] != "none" else "")
-                       + (f" | feeds {result.feeds}, stitched {len(stitched)}" if plane_nets else "")
+                       + (f" | feeds {result.feeds} {result.feeds_mode}, stitched {len(stitched)}" if plane_nets else "")
                        + (f" | stubs {result.stubs}" if cfg["stubs"] else "")
                        + (f" | rounds {len(results)} of {cfg['rounds']}, exits {list(result.exits)}" if cfg["rounds"] > 1 else "")
                        + (" | no window" if not cfg["gui"] else ""))

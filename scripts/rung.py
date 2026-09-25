@@ -2,7 +2,7 @@
 """One class B gate row on one reference, with the plane handling and the escape stubs selectable: the tool
 for iterating on a rung under a short budget (D77), where `gate.py b <key>` is the verdict.
 
-    python3 scripts/rung.py <key> <mode> <passes> <timeout_s> [stubs] [fanout] [feeds] [rounds=N] [open=<board>]
+    python3 scripts/rung.py <key> <mode> <passes> <timeout_s> [stubs] [fanout] [feeds] [loose|after|reserved|vias] [rounds=N] [open=<board>]
 
     mode: none    no planes in the DSN, every recorded pour laid after the import (class A's way; the gate's default)
           signal  the inner-layer pours before the export on signal layers (broken: the router calls the layer a
@@ -13,6 +13,13 @@ for iterating on a rung under a short budget (D77), where `gate.py b <key>` is t
     fanout: the router's own fanout stage first, a via beside every SMD pad (off since D57)
     feeds: the inner pours' nets leave the router: a fixed via and stub beside every SMD pad of theirs before
            the export, their pins out of the DSN's network, their pours and feeds connecting them (D85)
+    loose: the feeds handed to the router as its own wires, not fixed: it may shove or rip them (D91)
+    after: the feeds laid after the import around the router's copper, the plane nets' pins out of the
+           router's network altogether (D91)
+    reserved: the feed sites as keepouts in the DSN, the pins out of the network, the feeds laid after the
+           import where the keepouts held their room (D91)
+    vias: the feed vias alone fixed in the DSN, the fed pads out of the network and the pads with no feed
+           left in it, the stubs laid after the import (D91)
     rounds=N: the closure loop (D86, `route.freerouting.route_rounds`): a round that leaves a fine-pitch pad
            open is followed by one with a fixed exit stub out of that pad, N rounds at most
     open=<routed board>: the first round starts with the exit stubs an earlier run's board asks for (its open
@@ -32,12 +39,14 @@ from waffle_eda.route import freerouting as fr
 
 key, mode, passes, timeout_s = sys.argv[1], sys.argv[2], int(sys.argv[3]), float(sys.argv[4])
 options = {a.split("=", 1)[0]: (a.split("=", 1)[1] if "=" in a else True) for a in sys.argv[5:]}
-unknown = set(options) - {"stubs", "fanout", "feeds", "rounds", "open", "exits"}
+unknown = set(options) - {"stubs", "fanout", "feeds", "loose", "after", "reserved", "vias", "rounds", "open", "exits"}
 if unknown:
     raise SystemExit(f"unknown option {sorted(unknown)}")
 stubs = "stubs" in options  # the fine-pitch exits laid as fixed wires (D51/D52)
 fanout = "fanout" in options  # the router's own fanout stage (D57)
 feeds = "feeds" in options  # plane feeds (D85)
+feeds_mode = ("routable" if "loose" in options else "after" if "after" in options else "reserved" if "reserved" in options
+              else "vias" if "vias" in options else "fixed")
 rounds = int(options.get("rounds", 1))  # the closure loop's rounds (D86)
 ref = refs.REFERENCES[key]
 bare, info = rebuild.strip_all(ref)
@@ -46,15 +55,16 @@ board = kb.load_board(bare)
 outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
 inner = [p for p in info["pours"] if p["layer"] not in outer]
 if mode == "none":
-    planes, after = [], info["pours"]
+    planes, pours_after = [], info["pours"]
 elif mode in ("signal", "power"):
-    planes, after = inner, [p for p in info["pours"] if p["layer"] in outer]
+    planes, pours_after = inner, [p for p in info["pours"] if p["layer"] in outer]
 elif mode == "gnd":
     planes = [p for p in inner if p["net"] == "GND"]
-    after = [p for p in info["pours"] if p not in planes]
+    pours_after = [p for p in info["pours"] if p not in planes]
 else:
     raise SystemExit(mode)
-work = refs.repo_root() / "build" / "fr" / f"{key}-{mode}{'-stubs' if stubs else ''}{'-fanout' if fanout else ''}{'-feeds' if feeds else ''}"
+work = refs.repo_root() / "build" / "fr" / (f"{key}-{mode}{'-stubs' if stubs else ''}{'-fanout' if fanout else ''}"
+                                             f"{'-feeds' if feeds else ''}{'-' + feeds_mode if feeds_mode != 'fixed' else ''}")
 if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's typing
     fr.type_layers_power = lambda text, layers: text
 t0 = time.time()
@@ -79,10 +89,10 @@ def finish(routed, _work):  # the gate's finishing: the child-process fill, then
 
 
 _final, results = fr.route_rounds(bare, rules, work, finish, rounds=rounds, say=print, stub_pads=stub_pads or None,
-                                  passes=passes, timeout_s=timeout_s, pours=after, planes=planes, stubs=stubs,
-                                  fanout=fanout, feeds=plane_nets or None)
+                                  passes=passes, timeout_s=timeout_s, pours=pours_after, planes=planes, stubs=stubs,
+                                  fanout=fanout, feeds=plane_nets or None, feeds_mode=feeds_mode)
 for k, result in enumerate(results, 1):
-    print(f"ROUTER round {k}: exits {list(result.exits)}; {result.summary()}")
+    print(f"ROUTER round {k}: exits {list(result.exits)}, feeds {result.feeds_mode}; {result.summary()}")
 s = rebuild.score(ref, out, work_dir=work / "score")
 print("SCORE:", s.summary())
 open_pieces = kb.open_nets(kb.load_board(out))
