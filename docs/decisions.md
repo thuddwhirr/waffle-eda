@@ -710,6 +710,16 @@ insertions and 135 paths not found over the run; GND and +3V3 whole; In1 28 trac
 jar's 100, six nets for one knob; against the committed default's 80 (feeds on a power plane), three short, on
 clean planes. Next: the knob on the default's own configuration, and 60 passes here (D113). Measurement.
 
+**D113. The ripup start of 400 lifts the committed default too; the clean-plane row plateaus at 77** (2026-09-26).
+The default's configuration (fixed feeds on a `power` plane, the stock jar) at four passes with
+`WAFFLE_RIPUP_COSTS=400`: 71 of 86 with 2 clearances, the router at 52 unrouted and 153 standing violations, 34
+failed insertions, against D91's 67, 51, 127 and 38 at the jar's 100: four nets at four passes on the gate's own
+configuration, so its 30-pass row is next (`WAFFLE_RIPUP_COSTS=400 python3 scripts/gate.py b upduino-v3.01`,
+against the committed 80 with 1 clearance). The clean-plane row (D112) given 60 passes: the router's own rule
+stopped it at pass 36 with 15 unrouted, the same as at 30, 77 of 86 again and 11 clearances for 6 (0.0081 mm,
+the repair's residue), 1404 s. Predicted 79 or more and 10 or fewer unrouted: the row is a plateau, not a slope,
+and passes past 30 only add the router's own hair-width clearances. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

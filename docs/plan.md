@@ -130,9 +130,13 @@ at 24 unrouted (D111): the four-pass count rises with the start ripup cost throu
 800 and 1600 fall back to 60, so the start peaks at 400, and its 30-pass row is **FAIL, 77 of 86** with 6
 clearances, the router at 15 unrouted and still falling at pass 30, GND and +3V3 whole, In1 28 tracks (D112):
 six nets over the same row at the jar's 100, three short of the committed default's 80 on clean planes.
-**The next step**, two measurements: the knob on the committed default's own configuration (`WAFFLE_RIPUP_COSTS=400
-python3 scripts/rung.py upduino-v3.01 gnd 4 900 feeds`, against D91's 67 at four passes; a gain there moves the
-gate row itself), and 60 passes of the clean-plane row, since it was still falling at 30 (D113).
+The knob on the committed default's own configuration gives 71 of 86 at four passes for D91's 67, and the
+clean-plane row given 60 passes stops itself at 36 with the same 77 and 11 clearances: a plateau (D113).
+**The next step** is the gate row itself at the new start cost, `WAFFLE_RIPUP_COSTS=400 python3 scripts/gate.py b
+upduino-v3.01`, against the committed 80 of 86 with 1 clearance; at 81 or better with no more violations the
+start cost becomes a `CLASS_B` field (D114). The clean-plane configuration (D107's jar, the band, the via costs,
+ripup 400) stays the fabbable alternative at 77, with the repair's residue of hair-width clearances (6 to 11 at
+0.008 mm) its own small item in `route/freerouting.py`'s repair, not the router's.
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's
 `WAFFLE_*` exported it fails 3 of 5 (fewer vias, 18 passes), which is the setting, not the code. Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:06 UTC).
 **The three options put to the owner earlier stand, with their measurements:** (a) the fork,
