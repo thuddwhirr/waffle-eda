@@ -681,6 +681,15 @@ inserter's check against the copper the shove cannot move, not the recursion. Th
 (`start_ripup_costs`, the jar's 100; `WAFFLE_RIPUP_COSTS`), which decides how readily the maze plans through
 other nets' traces that are then re-routed, measured at 50 and 200 (D110). Measurement.
 
+**D110. The ripup cost moves the router, unlike the shove's depths; higher is better at four passes** (2026-09-26,
+D107's jar and configuration with the block carrying a plane via at 2 and `WAFFLE_RIPUP_COSTS` 50 and 200; the
+jar ramps the cost by its start value each pass). Predicted: at 50 the failed insertions 20 or fewer, at 200 29 or
+more. Measured, at 50: 51 of 86, the router at 50 unrouted, 74 failed insertions; at 200: 67 of 86 with 4
+clearances, 31 unrouted, 71 failed insertions; D107's row between them (ripup 100, plane via 5): 62, 33, 29. The
+pair shares a second change, the plane via at 2 for D107's 5, so the ripup's own effect is read against a control
+at 100 with the plane via at 2 (D111), and the ramp's direction says to measure 400 as well. The boards differ
+pass for pass, so this knob reaches the maze where the depths (D109) did not. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
