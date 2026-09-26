@@ -832,6 +832,17 @@ count (at most ten clearances, at most ten open nets, every plane whole, no shor
 names every one with its shortfall and place. Under it D123's row is PASS by its numbers; the row is run
 again to say so on the gate. Measurement and the rule's correction.
 
+**D125. pico-ice under the class B default: 74 of 95, a residue of 21 nets and 14 clearances, VBUS open; FAIL**
+(2026-09-26, `python3 scripts/gate.py b pico-ice-rev3`, no bands, cap 6000 s). 30 passes in 4478 s (the cap of
+D122 holds), the router at 26 unrouted; 74 of 95 for D82's 61 under the old configuration, 234 vias (189 in the
+reference), no short, GND, +3V3 and VDC whole, VBUS in 3 pieces, In1 60 and In2 63 tracks. The residue: 21 open
+nets, 15 of them the FPGA's I/O lines (/ICE_*) to the PMOD headers, plus /LED_R, /PWR_EN, /ADC3, /+3V3_STDBY,
+/~{ICE_RST} and VBUS; 14 clearances the repair left, the worst 0.049 mm (two /ICE_23 against /ICE_SCK segments),
+the rest 0.005 to 0.026. Over the bound on both counts and a plane open, so the ladder's second rung fails
+under option 2 as it did under every earlier configuration, thirteen nets better. What a designer finishes here
+is an hour, not minutes. The class's scope (the review's option 3) is the next decision for the owner: the
+ladder has seven more references behind pico-ice, unmeasured under this default. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

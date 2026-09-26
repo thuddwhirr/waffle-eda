@@ -164,9 +164,15 @@ traced on that board (D124): the 0.026 mm clearance is a track the router laid b
 a re-route of seconds for a designer and no different in kind from the seven at 0.006 mm, all "stuck" in every
 repair round; so the distance sub-rule of D120 is dropped and the rule keeps the counts (at most ten open nets
 and ten clearances, every plane whole, no short). Under it the no-band row is PASS by its numbers, and it is
-run again on the gate to say so. pico-ice under the default as committed (no bands, cap 6000 s) is running at
-this commit (D122: its first row was killed at the 4200 s cap); its residue decides whether the class B
-ladder's second rung passes or the review's option 3 (the class's scope) is the next decision for the owner. What stays
+run again on the gate to say so. pico-ice under the default as committed (no bands, cap 6000 s) is **FAIL, 74 of 95** (D125): a residue of
+21 open nets (fifteen of them the FPGA's I/O lines to the PMOD headers), 14 clearances and VBUS open, thirteen
+nets better than the old configuration's 61 and an hour of a designer's work rather than minutes. **The
+class B ladder under option 2 stands at upduino PASS (79 of 86, a residue of 7 nets and 8 clearances, D123
+and D124) and pico-ice FAIL**, seven references behind them unmeasured under this default. **The next decision
+is the owner's, the review's option 3**: whether the class is the boards that route to a residue of minutes
+(upduino's kind) or the dense ones too (pico-ice's kind, which needs the router to do more than every
+measurement so far has got from it), and what the bound of ten is. Until then nothing on class B is run;
+the synthetic class B design of the milestone still needs the owner's board. What stays
 open for the milestone: the other seven class B references, and the synthetic class B design, which needs the
 owner's board. The repair's hair-width clearances are the tool's own item to shrink the residue. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
 written as `false` (`automatic_neckdown`) routed libresolar differently and failed it (3 clearances). Two small items of our own stay open
