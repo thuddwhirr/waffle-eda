@@ -793,6 +793,16 @@ a via at 20 and a plane via at 2, the ripup start at 400, via keepout bands roun
 feed, the stitching after), 77 of 86 at D112 with whole planes, over the committed default's 80 with 96 feeds
 on a `power` plane. The synthetic class B design of the milestone still needs the owner's board. Owner's decision.
 
+**D121. The D120 default banding every fine-pitch package: 69 of 86 on upduino; the band rule is not settled**
+(2026-09-26, `python3 scripts/gate.py b upduino-v3.01` under `CLASS_B` as committed at ff43f7e: bands round U2,
+U3 and U8, D112's configuration otherwise). **FAIL**: 69 of 86, a residue of 17 open nets, 3 clearances and 1
+short, the router stopping itself at pass 20 with 22 unrouted; against D112's 77 with 6 clearances and no short
+under the same configuration banded at U3 alone. The 17 open nets are spread over U2, U3, U8, the headers and
+the FLASH part. The residue page and the rule work as written (the row names its three reasons). So a band
+round the FPGA (U2, 48 pins fanning out to both headers) or the VSSOP (U8) costs more than it gives, and
+"every fine-pitch package" is the wrong rule; the row without bands (`WAFFLE_VIA_BANDS=none`) is queued after
+pico-ice to settle whether the default carries none or a per-board choice. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
