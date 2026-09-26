@@ -604,6 +604,28 @@ router at 48 unrouted and 131 standing violations (48, 131), one clearance the r
 stitching 5 feeds (3), 8 GND islands (10): U3-4, -22, -23, -35, -36, -47, -48 and U8-1, the ring around U3 taken
 by the router's tracks before the pour or the stitching can reach the pins. +3V3 whole. Measurement.
 
+**D103. The via costs inverted do not free the ring round the QFN; they do cut the vias and the failed insertions**
+(2026-09-26, `WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2 python3 scripts/rung.py upduino-v3.01 signal 4 900
+stitch`; the jar's costs are 1 for a signal via and 5 for a plane via, `settings_json` now carries both). Predicted
+before the run: vias in U3's 1.5 mm ring 12 or fewer (D96: 14, the reference 9), top-layer track segments in it
+95 or more (57, reference 128), vias on the board 130 to 170 (198), failed insertions under 30 (42), 70 nets or
+more (64 to 68). Measured: ring 14 and 61, unchanged; vias 132, failed insertions 25, the router at 29 unrouted,
+66 of 86, 0 electrical, GND and +3V3 whole but the plated J1-6 and J2-9; In1 171 tracks (290). The via cost
+decides how many vias the board gets, not where the router escapes the QFN: the ring is the same with vias at 1
+or 20. The reference's pattern (escape on the top layer, via out 1.8 mm and more) is the next single test (D104),
+forced by a via keepout band. Measurement.
+
+**D104. A via keepout band round the QFN empties the ring and halves the failed insertions again; the count stays**
+(2026-09-26, `scripts/rung.py upduino-v3.01 signal 4 900 stitch band=U3:0:1.0` with D103's via costs: four
+via-keepout strips from the pads' ends to 1.0 mm out on every signal layer, `via_band_dsn`). Predicted: no via in
+U3's ring (forced), top-layer track segments in it 95 or more, failed insertions 25 or fewer, 70 nets or more.
+Measured: 0 vias in the ring; 54 segments (61; the router escapes a pin in one segment, where the reference's 128
+are its routing through the ring); failed insertions 17 (25, and 42 before D103); the router at 26 unrouted (29);
+68 of 86 with 2 clearances (a +3V3 track at C9-2, a track at U3-27); 126 vias; GND whole; +3V3 in 3 pieces (J2-9,
+and the QFN pin U3-34, whose plane via now lies beyond the band). Freeing the ring cuts the shove's failures at
+every step (42, 25, 17) without moving the four-pass count (64 to 68 in every plane-mode run); the 30-pass row
+decides whether it moves the verdict (D99: 77 of 86 without either change). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

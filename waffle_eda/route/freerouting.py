@@ -92,6 +92,7 @@ DRILL_STEP_MM = 0.001
 # block in the DSN carried it too, but placed before the structure's rule block it made the loader drop every
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
+PLANE_VIA_COSTS = 5  # the jar's own default for a via into a plane net (D103)
 # `WAFFLE_VIA_COSTS` overrides it for a measurement: with vias this cheap the router spreads a four-layer
 # board's signals over its inner layers (a third of upduino's tracks on the GND plane's layer, D85), where
 # the reference keeps 8 of 1585; the tool's own default is 50.
@@ -343,6 +344,38 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     if i < 0:
         i = dsn_text.index("    (rule\n", start)
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
+def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, float, float]]) -> str:
+    """Add via keepouts to the structure section, four strips round a rectangle: for each band
+    ``(x0, y0, x1, y1, inner_mm, outer_mm)`` (the pads' extent in mm and the strip's offsets from it), the strip
+    between the two offsets on every side, on every signal layer (`(via_keepout "" (rect signal ...))`, which
+    the router reads as a keepout for vias only). D104: the reference escapes a QFN on the top layer and vias
+    out 1.8 mm and more from its pins; the band forces that pattern. Micrometres, y negated, as KiCad writes."""
+    lines = []
+    for x0, y0, x1, y1, inner, outer in bands:
+        strips = [(x0 - outer, y0 - outer, x1 + outer, y0 - inner), (x0 - outer, y1 + inner, x1 + outer, y1 + outer),
+                  (x0 - outer, y0 - outer, x0 - inner, y1 + outer), (x1 + inner, y0 - outer, x1 + outer, y1 + outer)]
+        for ax, ay, bx, by in strips:
+            ya, yb = sorted((-ay * 1000, -by * 1000))
+            lines.append(f'    (via_keepout "" (rect signal {ax * 1000:.2f} {ya:.2f} {bx * 1000:.2f} {yb:.2f}))')
+    if not lines:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    i = dsn_text.find("    (via ", start)
+    if i < 0:
+        i = dsn_text.index("    (rule\n", start)
+    return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
+def pad_extent_mm(board, reference: str) -> tuple[float, float, float, float]:
+    """The bounding box of a footprint's pads, mm."""
+    fp = [f for f in board.GetFootprints() if f.GetReference() == reference]
+    if not fp:
+        raise ValueError(f"no footprint {reference}")
+    boxes = [pad.GetBoundingBox() for pad in fp[0].Pads()]
+    return (min(kb.mm(b.GetLeft()) for b in boxes), min(kb.mm(b.GetTop()) for b in boxes),
+            max(kb.mm(b.GetRight()) for b in boxes), max(kb.mm(b.GetBottom()) for b in boxes))
 
 
 # --- rule areas the export gets wrong -------------------------------------------------------------------------
@@ -1842,7 +1875,10 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
-                      "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))},
+                      "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),
+                                  # a via into a plane net: the jar's default is 5, five times a signal via's
+                                  # cost of 1 (D103); `WAFFLE_PLANE_VIA_COSTS` overrides it for a measurement
+                                  "plane_via_costs": int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS))},
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
@@ -1987,7 +2023,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 fanout: bool = FANOUT, feeds: set[str] | None = None,
                 stub_pads: set[str] | None = None, gui: bool = GUI,
                 feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False,
-                layer_trace_costs: dict[str, float] | None = None) -> FreeroutingResult:
+                layer_trace_costs: dict[str, float] | None = None,
+                via_bands: list[tuple[str, float, float]] | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2017,6 +2054,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     ``feeds_mode`` "after" with ``via_in_pad`` reserves the in-pad sites found on the bare board as keepouts on
     the other layers before the router and lays them after it (D100); the pads that hold no via keep the search
     after the import.
+    ``via_bands`` forbids the router's vias in a strip round the named footprints' pads (reference, inner and
+    outer offset in mm; :func:`via_band_dsn`, D104), so a fine-pitch package is escaped on its own layer.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
     `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
@@ -2063,6 +2102,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
+    if via_bands:
+        bands = [(*pad_extent_mm(board, ref), inner, outer) for ref, inner, outer in via_bands]
+        dsn.write_text(via_band_dsn(dsn.read_text(), bands))
+        say(f"via keepout bands: {[(ref, inner, outer) for ref, inner, outer in via_bands]}")
     if layer_trace_costs:
         dsn.write_text(autoroute_settings_dsn(dsn.read_text(), [n for _l, n in kb.copper_layers(board)], layer_trace_costs,
                                               int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))))

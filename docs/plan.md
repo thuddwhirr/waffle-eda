@@ -97,6 +97,16 @@ in 15 pieces; the 17 pads left are the QFN pins that hold no via, the back-side 
 which no feed form reaches after the router has filled the ring. **Nine feed forms have now been measured
 without a pass, and the same pins stand in every one; the feed forms are exhausted** (D101), and the rule on
 a tool failing three times on one problem applies: the missing constraint is inside the jar, not in the feeds.
+**The owner asked for a theory of the QFN pins and its test (D103, D104).** The theory: the ring round U3 is
+spent on the router's own vias, which take the sites a plane via, a feed or the pour needs, and which its shove
+then fails against. The test, each run predicted before it ran: the via costs inverted (a signal via 20, a plane
+via 2) cut the board's vias from 198 to 132 and the failed insertions from 42 to 25 but left the ring as it was
+(D103); a via keepout band from U3's pads to 1.0 mm out emptied the ring and cut the failed insertions to 17, the
+lowest measured, with the router at 26 unrouted (D104). Neither moved the four-pass count (66 and 68 of 86 for 64
+to 68), so the ring is real but is not alone what breaks U3's nets; the 30-pass row of that configuration
+(`WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2 WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py upduino-v3.01 signal
+30 2400 stitch band=U3:0:1.0`, queued at this commit, not yet measured; D99's row without the two changes: 77 of
+86) decides whether the verdict moves. Both are options (`WAFFLE_PLANE_VIA_COSTS`, `band=`), not the default. Class A ran on this code: PASS 5 of 5 (2026-09-26 00:34 UTC).
 **The next step is the owner's decision between three options, each with its measurement:** (a) the fork,
 the smallest change with a measurement behind it: `applyBoardSpecificOptimizations` keeps the trace costs the
 DSN sets (D97), so the plane mode (the only configuration in which the router connected every plane pad but

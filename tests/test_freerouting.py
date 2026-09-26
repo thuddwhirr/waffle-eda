@@ -978,3 +978,13 @@ def test_the_autoroute_settings_block_follows_the_boundary_in_the_jars_own_form(
     assert "(layer_rule In1.Cu\n        (active on)\n        (preferred_direction horizontal)\n        (preferred_direction_trace_costs 30.0)\n        (against_preferred_direction_trace_costs 30.0)" in out
     assert "(layer_rule F.Cu\n        (active on)\n        (preferred_direction vertical)\n        (preferred_direction_trace_costs 1.0)\n        (against_preferred_direction_trace_costs 2.5)" in out
     assert "(via_costs 1)" in out and "(plane_via_costs 5)" in out
+
+
+def test_a_via_band_is_four_via_keepout_strips_round_the_pads_on_every_signal_layer():
+    """D104: the router's vias kept out of a strip round a package's pads, tracks still allowed there."""
+    dsn = '(pcb "x"\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (boundary\n      (path pcb 0  0 0  1000 0)\n    )\n    (via "V")\n    (rule\n      (width 150)\n    )\n  )\n)'
+    out = fr.via_band_dsn(dsn, [(10.0, 20.0, 18.0, 28.0, 0.0, 1.0)])  # pads from x 10 to 18, y 20 to 28 mm
+    strips = [line for line in out.splitlines() if "(via_keepout" in line]
+    assert len(strips) == 4 and all("(rect signal " in s for s in strips) and out.index("(via_keepout") < out.index('(via "V")')
+    assert '(via_keepout "" (rect signal 9000.00 -20000.00 19000.00 -19000.00))' in out  # the top strip, y negated
+    assert '(via_keepout "" (rect signal 18000.00 -29000.00 19000.00 -19000.00))' in out  # the right strip
