@@ -626,6 +626,17 @@ and the QFN pin U3-34, whose plane via now lies beyond the band). Freeing the ri
 every step (42, 25, 17) without moving the four-pass count (64 to 68 in every plane-mode run); the 30-pass row
 decides whether it moves the verdict (D99: 77 of 86 without either change). Measurement.
 
+**D105. The plane mode with the via costs inverted and the band, at 30 passes: 76 of 86; the shove's limit stands**
+(2026-09-26, `WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2 WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py upduino-v3.01
+signal 30 2400 stitch band=U3:0:1.0`). Predicted: the router at 10 or fewer unrouted, 78 nets or more, 5 clearances
+or fewer. Measured: **FAIL, 76 of 86**, 1 clearance (0.0042 mm), the router at 15 unrouted and 25 standing violations
+from pass 29 on, 964 s, 143 vias (D99's row: 77, 10 clearances, 12 unrouted, 228 vias); GND whole with U2-49
+stitched inside its pad (D99's search), +3V3 whole but the plated J2-9; no via in U3's ring, In1 227 tracks (335);
+126 failed insertions and 195 paths not found over the 30 passes. Open: /FLASH_MISO, /IOB_25B_G3, /LED_G,
+/IOB_3B_G6, /FLASH_MOSI, /EE_CLK, /EE_CS, SJ16, R3 and J2-9. With the ring free and the vias at the reference's
+count, the row does not beat the committed default's 80: what remains is the router's shove at U3, D3 and the
+FLASH pins, and the decision is the owner's (plan). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
