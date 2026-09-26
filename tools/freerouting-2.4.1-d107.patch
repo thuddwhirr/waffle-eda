@@ -1,0 +1,22 @@
+--- a/src/main/java/app/freerouting/settings/RouterSettings.java
++++ b/src/main/java/app/freerouting/settings/RouterSettings.java
+@@ -304,7 +304,8 @@
+ 
+     // initialize the layer specific settings.
+     if (layers == null || layers.length != layerCount) {
+-      boardSpecificTraceCostsApplied = false;
++      // waffle-eda patch (D107): rebuilding the layer settings does not discard trace costs set explicitly
++      // (the DSN's autoroute_settings); only a missing or resized cost array does, below.
+       LayerSettings[] oldLayers = layers;
+       layers = new LayerSettings[layerCount];
+       for (int i = 0; i < layerCount; i++) {
+@@ -911,6 +912,9 @@
+     }
+ 
+     int changedCount = ReflectionUtil.copyFields(settings, this);
++    if (Boolean.TRUE.equals(settings.boardSpecificTraceCostsApplied)) {
++      this.boardSpecificTraceCostsApplied = true; // waffle-eda patch (D107): the costs come with their flag
++    }
+ 
+     // Fire property change events for key properties to update GUI
+     // Note: We fire events even if values didn't change to ensure GUI is in sync

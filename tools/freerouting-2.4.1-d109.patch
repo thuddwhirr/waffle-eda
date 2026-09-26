@@ -1,0 +1,17 @@
+--- a/src/main/java/app/freerouting/autoroute/maze/AutorouteControl.java
++++ b/src/main/java/app/freerouting/autoroute/maze/AutorouteControl.java
+@@ -168,9 +168,11 @@
+     withNeckdown = settings.getAutomaticNeckdown();
+     tidyRegionWidth = Integer.MAX_VALUE;
+     pullTightAccuracy = 500;
+-    maxShoveTraceRecursionDepth = 20;
+-    maxShoveViaRecursionDepth = 5;
+-    maxSpringOverRecursionDepth = 5;
++    // waffle-eda patch (D109): the shove's depths doubled, a measurement of whether they bound the failed
++    // insertions ("the new connection could not be inserted", D88 to D90)
++    maxShoveTraceRecursionDepth = 40;
++    maxShoveViaRecursionDepth = 10;
++    maxSpringOverRecursionDepth = 10;
+     for (int i = 0; i < layerCount; i++) {
+       for (int j = 0; j < layerCount; j++) {
+         addViaCosts[i].toLayer[j] = 0;

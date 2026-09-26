@@ -637,6 +637,39 @@ stitched inside its pad (D99's search), +3V3 whole but the plated J2-9; no via i
 count, the row does not beat the committed default's 80: what remains is the router's shove at U3, D3 and the
 FLASH pins, and the decision is the owner's (plan). Measurement.
 
+**D107. One class of the jar patched: the DSN's per-layer trace costs survive, and the planes come out clean**
+(2026-09-26, `tools/freerouting-2.4.1-d107.patch`, `scripts/patch_freerouting.py` from the upstream `v2.4.1` tag,
+`WAFFLE_FREEROUTING_JAR=build/tools/freerouting-2.4.1-d107.jar`). `applyBoardSpecificOptimizations` reset its
+flag whenever it rebuilt the layer settings, which the headless job always does, and re-initialized every cost;
+the patch keeps the flag there and carries it through `applyNewValuesFrom`. Gradle cannot build the fork here
+(Maven Central answers 429 through the proxy, twice), so the one class is compiled against the jar. Plane mode
+with D103's via costs, D104's band and In1 and In2 at 30 through the DSN block, four passes: the log keeps
+30 / 30 on both (the stock jar: 1.0 / 1.4 and 1.0 / 3.8), In1 carries 1 track (4 mm) and In2 none (D104's run:
+185 and 97), GND and +3V3 whole, J2-9 included, 97 vias, 62 of 86 with one clearance, the router at 33 unrouted,
+29 failed insertions: the first configuration whose planes could be fabbed. Its 30-pass row is next. Measurement.
+
+**D106. The hard nets routed first do not lift the count: fixing them moves the failures to other nets**
+(2026-09-26, `scripts/rung.py upduino-v3.01 signal 4 900 stitch band=U3:0:1.0 first=<12 nets>` and `answer=<12
+nets>`, D104's configuration; `route_board(only_nets, fix_existing)`, `copy_tracks`). The twelve nets open in every
+row, routed alone on the empty board (12 of 12 in 9 s, 369 mm and 22 vias) and fixed for a second stage: 65 of 86
+(68 unstaged), the router at 46 unrouted, 126 failed insertions; the reference's own copper for the same nets
+fixed instead (265 items, the answer key): 67 of 86, 36 unrouted, 59 standing violations, 109 failed insertions.
+Eleven or twelve of the hard nets close either way and as many other nets open. Found on the way, and measured:
+KiCad's session import drops the board's own copper (166 items to 19) and the session carries no fixed wire, so
+fixed copper must be re-laid from a snapshot after the import (`problem.kicad_pcb`); the first two staged runs,
+before that, were not measurements (55 and 51). Both options stay in rung; neither is the path. Measurement.
+
+**D108. The clean-plane configuration at 30 passes: 71 of 86 with one short; the router stops itself at 21**
+(2026-09-26, D107's jar and configuration, `rung.py upduino-v3.01 signal 30 2400 stitch band=U3:0:1.0
+costs=In1.Cu:30,In2.Cu:30`). Predicted: the router at 15 or fewer unrouted, 76 nets or more, the planes whole, 3
+clearances or fewer. Measured: **FAIL, 71 of 86**, one short the repair could not settle (two tracks of /IOT_38B and
+/IOT_39A on F.Cu, 0.15 mm), the router at 23 unrouted and 25 standing violations when its own rule stopped it at
+pass 21 ("best score has not improved"), 672 s, 119 vias, 211 failed insertions and 62 paths not found; In1 1
+track, In2 none; GND whole, +3V3 in 2 pieces (C3-1). Against D105 (76 of 86 with 335 tracks through the GND
+plane) the clean planes cost five nets on two routing layers; the failed insertions, 17 at four passes with the
+ring free (D104) and 211 over 21 passes here, are the shove's, and the shove's depths (20, 5 and 5 in
+`AutorouteControl`) are the next one-class change (D109). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

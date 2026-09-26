@@ -988,3 +988,30 @@ def test_a_via_band_is_four_via_keepout_strips_round_the_pads_on_every_signal_la
     assert len(strips) == 4 and all("(rect signal " in s for s in strips) and out.index("(via_keepout") < out.index('(via "V")')
     assert '(via_keepout "" (rect signal 9000.00 -20000.00 19000.00 -19000.00))' in out  # the top strip, y negated
     assert '(via_keepout "" (rect signal 18000.00 -29000.00 19000.00 -19000.00))' in out  # the right strip
+
+
+def test_copy_tracks_carries_one_nets_tracks_and_vias_to_another_board_by_name():
+    """D106: a second stage starts from the first's routes, copied onto the bare board by net name."""
+    src, dst = pcbnew.BOARD(), pcbnew.BOARD()
+    for b in (src, dst):
+        b.GetDesignSettings().SetCopperLayerCount(4)
+        for name in ("A", "B"):
+            b.Add(pcbnew.NETINFO_ITEM(b, name))
+    for name, y in (("A", 1.0), ("B", 2.0)):
+        t = pcbnew.PCB_TRACK(src)
+        t.SetStart(pcbnew.VECTOR2I(0, kb.nm(y))); t.SetEnd(pcbnew.VECTOR2I(kb.nm(3.0), kb.nm(y)))
+        t.SetWidth(kb.nm(0.2)); t.SetLayer(pcbnew.B_Cu); t.SetNet(src.FindNet(name)); src.Add(t)
+    v = pcbnew.PCB_VIA(src)
+    v.SetPosition(pcbnew.VECTOR2I(kb.nm(3.0), kb.nm(1.0))); v.SetWidth(kb.nm(0.6)); v.SetDrill(kb.nm(0.3))
+    v.SetNet(src.FindNet("A")); src.Add(v)
+    assert fr.copy_tracks(src, dst, {"A"}) == 2
+    got = [(x.GetClass(), x.GetNetname(), dst.GetLayerName(x.GetLayer())) for x in dst.GetTracks()]
+    assert sorted(got) == [("PCB_TRACK", "A", "B.Cu"), ("PCB_VIA", "A", "F.Cu")]
+    assert [x for x in dst.GetTracks() if x.GetClass() == "PCB_VIA"][0].GetDrillValue() == kb.nm(0.3)
+
+
+def test_only_nets_leaves_the_named_nets_in_the_network_and_drops_the_rest():
+    dsn = '(pcb "x"\n  (network\n    (net "A"\n      (pins U1-1 U1-2)\n    )\n    (net "B"\n      (pins U1-3 U1-4)\n    )\n  )\n)'
+    every = {"A", "B"}
+    out = fr.drop_net_pins(dsn, every - {"A"})
+    assert "(net \"A\"\n      (pins U1-1 U1-2)" in out and "(net \"B\"\n      (pins )" in out

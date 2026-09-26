@@ -368,6 +368,28 @@ def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, fl
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+def copy_tracks(src, dst, nets: set[str]) -> int:
+    """Copy the tracks and vias of ``nets`` from one board to another (the nets by name), for a second routing
+    stage that starts from the first's routes (D106). Returns how many items were copied; arcs are not."""
+    count = 0
+    for t in kb.track_segments(src):
+        if t.GetNetname() not in nets:
+            continue
+        nt = pcbnew.PCB_TRACK(dst)
+        nt.SetStart(t.GetStart()); nt.SetEnd(t.GetEnd()); nt.SetWidth(t.GetWidth()); nt.SetLayer(t.GetLayer())
+        nt.SetNet(dst.FindNet(t.GetNetname()))
+        dst.Add(nt); count += 1
+    for v in kb.vias(src):
+        if v.GetNetname() not in nets:
+            continue
+        nv = pcbnew.PCB_VIA(dst)
+        nv.SetPosition(v.GetPosition()); nv.SetWidth(v.GetWidth()); nv.SetDrill(v.GetDrillValue())
+        nv.SetViaType(v.GetViaType()); nv.SetLayerPair(v.TopLayer(), v.BottomLayer())
+        nv.SetNet(dst.FindNet(v.GetNetname()))
+        dst.Add(nv); count += 1
+    return count
+
+
 def pad_extent_mm(board, reference: str) -> tuple[float, float, float, float]:
     """The bounding box of a footprint's pads, mm."""
     fp = [f for f in board.GetFootprints() if f.GetReference() == reference]
@@ -2024,7 +2046,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 stub_pads: set[str] | None = None, gui: bool = GUI,
                 feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False,
                 layer_trace_costs: dict[str, float] | None = None,
-                via_bands: list[tuple[str, float, float]] | None = None) -> FreeroutingResult:
+                via_bands: list[tuple[str, float, float]] | None = None, only_nets: set[str] | None = None,
+                fix_existing: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2054,6 +2077,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     ``feeds_mode`` "after" with ``via_in_pad`` reserves the in-pad sites found on the bare board as keepouts on
     the other layers before the router and lays them after it (D100); the pads that hold no via keep the search
     after the import.
+    ``only_nets`` puts those nets alone in the router's network, every other net's pins dropped and its pads
+    obstacles as they are: the first stage of routing the hard nets first (D106); ``fix_existing`` types the
+    copper the problem board already carries as fixed, the second stage's view of the first's routes.
     ``via_bands`` forbids the router's vias in a strip round the named footprints' pads (reference, inner and
     outer offset in mm; :func:`via_band_dsn`, D104), so a fine-pitch package is escaped on its own layer.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
@@ -2102,6 +2128,16 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
+    if only_nets is not None:
+        every = {pad.GetNetname() for fp in board.GetFootprints() for pad in fp.Pads() if pad.GetNetname()}
+        dsn.write_text(drop_net_pins(dsn.read_text(), every - set(only_nets)))
+        say(f"nets in the router's network: {len(every & set(only_nets))} of {len(every)}")
+    fixed_nets: set[str] = set()
+    if fix_existing:  # the session carries no fixed copper and KiCad's import drops the board's own (D57, D106:
+        fixed_nets = {t.GetNetname() for t in kb.track_segments(board)} | {v.GetNetname() for v in kb.vias(board)}
+        kb.save_board(board, work_dir / "problem.kicad_pcb")  # 166 items to 19), so it comes back from this
+        dsn.write_text(fix_wires(dsn.read_text()))  # snapshot after the import
+        say(f"the problem board's own copper typed fixed: {len(fixed_nets)} nets")
     if via_bands:
         bands = [(*pad_extent_mm(board, ref), inner, outer) for ref, inner, outer in via_bands]
         dsn.write_text(via_band_dsn(dsn.read_text(), bands))
@@ -2188,6 +2224,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):
             raise RuntimeError(f"pcbnew.ImportSpecctraSES returned False for {ses}")
+        if fixed_nets:  # the problem board's own copper, fixed for the router, back from the snapshot (D106)
+            kept = copy_tracks(kb.load_board(work_dir / "problem.kicad_pcb"), board, fixed_nets)
+            say(f"fixed copper re-laid after the import: {kept} tracks and vias of {len(fixed_nets)} nets")
         if laid_feeds and feeds_mode not in ("after", "none"):  # the session carries no fixed copper (D57): the feeds come
             from waffle_eda.route import planes as feedlib  # back before the pruning; routable ones come back
             relaid = feedlib.lay_feeds(board, [x for x in laid_feeds if x.in_pad]  # in the session as the router

@@ -109,7 +109,23 @@ to 68), so the ring is real but is not alone what breaks U3's nets; the 30-pass 
 whole and +3V3 whole but the plated J2-9 (D105; D99's row without the two changes: 77 of 86, 10 clearances). The
 verdict does not move: with the ring free and the vias at the reference's count, the router's shove at U3, D3 and
 the FLASH pins is what remains, inside the jar. Both are options (`WAFFLE_PLANE_VIA_COSTS`, `band=`), not the default. Class A ran on this code: PASS 5 of 5 (2026-09-26 00:34 UTC).
-**The next step is the owner's decision between three options, each with its measurement:** (a) the fork,
+**The fourth class B session (D106, D107) opened the jar.** Routing the twelve hard nets first, or fixing the
+reference's own copper for them, closes those nets and opens as many others (65 and 67 of 86, D106): the count is
+the router's capacity in the configuration, not those nets. Gradle cannot build the fork here (Maven Central
+answers 429 through the proxy), but one class compiles against the jar: `scripts/patch_freerouting.py` builds
+`build/tools/freerouting-2.4.1-d107.jar` from the upstream `v2.4.1` tag plus `tools/freerouting-2.4.1-d107.patch`,
+and with it the DSN's per-layer trace costs survive (D107). Plane mode with that jar, D103's via costs, D104's
+band and In1 and In2 priced at 30: **1 track on In1, none on In2, GND and +3V3 whole, J2-9 included, 97 vias,
+62 of 86 at four passes** (D107), the first board of the effort whose planes could be fabbed. Its 30-pass row
+(`WAFFLE_FREEROUTING_JAR=build/tools/freerouting-2.4.1-d107.jar WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2
+WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py upduino-v3.01 signal 30 2400 stitch band=U3:0:1.0
+costs=In1.Cu:30,In2.Cu:30`) is **FAIL, 71 of 86** with one short, the router stopping itself at pass 21 with
+23 unrouted (D108): the clean planes cost five nets against D105's 76 on two routing layers. **The next step**
+is inside the jar, one class at a time by the same script: the shove's depth constants in `AutorouteControl`
+(20, 5 and 5; D88 to D90) doubled (`tools/freerouting-2.4.1-d109.patch`), measured at four passes on the D107
+configuration against its 33 unrouted and 29 failed insertions; then the 30-pass row of whatever wins. The class A gate must run with a clean environment: run with class B's
+`WAFFLE_*` exported it fails 3 of 5 (fewer vias, 18 passes), which is the setting, not the code. Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:06 UTC).
+**The three options put to the owner earlier stand, with their measurements:** (a) the fork,
 the smallest change with a measurement behind it: `applyBoardSpecificOptimizations` keeps the trace costs the
 DSN sets (D97), so the plane mode (the only configuration in which the router connected every plane pad but
 two, D96 and D99) runs with tracks priced off the planes; the build through the proxy is untried, and the
