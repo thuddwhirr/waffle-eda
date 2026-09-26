@@ -551,6 +551,108 @@ def score(ref: refs.Reference, candidate_path: Path, work_dir: Path | None = Non
         seconds=round(time.time() - t0, 1), passed=passed, score=round(composite, 3), per_net=per_net)
 
 
+RESIDUE_GAP_MM = 0.02  # a clearance the repair left counts as residue only when short by less than this (D120)
+GAP_IN_DESCRIPTION = re.compile(r"clearance ([0-9.]+) mm; actual ([0-9.]+) mm")
+
+
+def residue(ref: refs.Reference, board_path: Path, score_: RebuildScore, plane_nets: set[str],
+            plane_layers: set[str], work_dir: Path) -> dict:
+    """What a designer finishes by hand on the router's board (D120, option 2 of `docs/review-class-b.md`): the
+    open nets with their pieces and pad positions, the clearances the repair left with their shortfall, any
+    short, and the tracks on the plane layers. The DRC is the score's own (the measured rules, the same forgiven
+    shorts), so its counts agree with the row's."""
+    from waffle_eda.route import planes as feedlib
+    board = kb.load_board(board_path)
+    pads_of: dict[str, dict[str, tuple[float, float]]] = {}
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname():
+                pads_of.setdefault(pad.GetNetname(), {})[f"{fp.GetReference()}-{pad.GetNumber()}"] = (
+                    round(kb.mm(pad.GetPosition().x), 3), round(kb.mm(pad.GetPosition().y), 3))
+    open_nets = []
+    for name, info in sorted(score_.per_net.items()):
+        if info["connected"]:
+            continue
+        pieces = [sorted(g) for g in feedlib.pieces(board, name)]
+        open_nets.append({"net": name, "pieces": pieces, "pads": pads_of.get(name, {})})
+    rules = measure_rules(ref)
+    report = _drc_report(board_path, rules.rules_text(), work_dir, "residue")
+    clearances, shorts, other = [], [], []
+    for v in report.get("violations", []):
+        if v.get("type") not in harness.ELECTRICAL_TYPES or _forgiven(v, rules.forgiven):
+            continue
+        if not any(_is_routed(i) for i in v.get("items", [])):
+            continue
+        items = [i.get("description", "") for i in v.get("items", [])]
+        pos = next((i.get("pos") for i in v.get("items", []) if i.get("pos")), None)
+        at = (round(pos["x"], 3), round(pos["y"], 3)) if pos else None
+        if v["type"] == "clearance":
+            m = GAP_IN_DESCRIPTION.search(v.get("description", ""))
+            short_by = round(float(m.group(1)) - float(m.group(2)), 4) if m else None
+            clearances.append({"items": items, "at": at, "short_by_mm": short_by})
+        elif v["type"] in ("shorting_items", "tracks_crossing"):
+            shorts.append({"type": v["type"], "items": items, "at": at})
+        else:
+            other.append({"type": v["type"], "items": items, "at": at})
+    plane_tracks = {layer: 0 for layer in sorted(plane_layers)}
+    for t in kb.track_segments(board):
+        name = board.GetLayerName(t.GetLayer())
+        if name in plane_tracks:
+            plane_tracks[name] += 1
+    return {"reference": ref.key, "board": str(board_path), "nets": score_.nets, "connected": score_.connected,
+            "open_nets": open_nets, "planes_open": sorted(n for n in plane_nets if any(o["net"] == n for o in open_nets)),
+            "clearances": clearances, "shorts": shorts, "other_violations": other, "plane_tracks": plane_tracks}
+
+
+def residue_verdict(r: dict, residue_max: int, gap_mm: float = RESIDUE_GAP_MM) -> tuple[bool, str]:
+    """Class B's pass rule under option 2 (D120): every plane net whole, no short and no other violation, at
+    most ``residue_max`` open nets, at most ``residue_max`` clearances each short by less than ``gap_mm``."""
+    wide = [c for c in r["clearances"] if c["short_by_mm"] is None or c["short_by_mm"] >= gap_mm]
+    reasons = []
+    if r["planes_open"]:
+        reasons.append(f"plane nets open {r['planes_open']}")
+    if r["shorts"]:
+        reasons.append(f"shorts {len(r['shorts'])}")
+    if r["other_violations"]:
+        reasons.append(f"other violations {len(r['other_violations'])}")
+    if len(r["open_nets"]) > residue_max:
+        reasons.append(f"open nets {len(r['open_nets'])} over {residue_max}")
+    if len(r["clearances"]) > residue_max:
+        reasons.append(f"clearances {len(r['clearances'])} over {residue_max}")
+    if wide:
+        reasons.append(f"clearances short by {gap_mm} mm or more: {len(wide)}")
+    summary = (f"residue {len(r['open_nets'])} nets, {len(r['clearances'])} clearances, {len(r['shorts'])} shorts; "
+               f"planes {'whole' if not r['planes_open'] else 'open ' + str(r['planes_open'])}")
+    return (not reasons, summary + ("" if not reasons else " | " + "; ".join(reasons)))
+
+
+def residue_markdown(r: dict) -> str:
+    """The residue as a page for the designer who finishes the board."""
+    lines = [f"# Residue of `{r['reference']}`", "",
+             f"The router's board: `{r['board']}`. {r['connected']} of {r['nets']} nets routed; "
+             f"{len(r['open_nets'])} open, {len(r['clearances'])} clearances left, {len(r['shorts'])} shorts.", ""]
+    if r["open_nets"]:
+        lines += ["## Open nets", ""]
+        for o in r["open_nets"]:
+            lines.append(f"- `{o['net']}`: {len(o['pieces'])} pieces")
+            for g in o["pieces"]:
+                lines.append("  - " + ", ".join(f"{pad} at {o['pads'].get(pad, '?')}" for pad in g))
+        lines.append("")
+    if r["clearances"]:
+        lines += ["## Clearances the repair left", ""]
+        for c in r["clearances"]:
+            lines.append(f"- short by {c['short_by_mm']} mm at {c['at']}: " + " ; ".join(c["items"]))
+        lines.append("")
+    if r["shorts"] or r["other_violations"]:
+        lines += ["## Violations", ""]
+        for v in r["shorts"] + r["other_violations"]:
+            lines.append(f"- {v['type']} at {v['at']}: " + " ; ".join(v["items"]))
+        lines.append("")
+    lines += ["## Planes", "", "Plane nets open: " + (", ".join(r["planes_open"]) if r["planes_open"] else "none") + ".",
+              "Tracks on the plane layers: " + ", ".join(f"{k} {v}" for k, v in r["plane_tracks"].items()) + ".", ""]
+    return "\n".join(lines)
+
+
 def write_score(s: RebuildScore, out_path: Path | None = None) -> Path:
     out_path = out_path or harness.bench_dir() / f"{s.reference}-rebuild-score.json"
     out_path.write_text(json.dumps(asdict(s), indent=1))

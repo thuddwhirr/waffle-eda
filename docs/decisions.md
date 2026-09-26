@@ -782,6 +782,17 @@ a pass for every one they close, and the count never settles. The inserter line 
 measured out in one session as the owner set it: forced ripup under the segment (D116), the neckdown (D117),
 ripup by shape (D118, D119). The clean-plane configuration's best row stays D112's 77 of 86. Owner's decision next.
 
+**D120. The owner's decision: option 2, the router's output plus hand-finishing of the residue** (2026-09-26,
+`docs/review-class-b.md`). Class B's definition of done changes: a reference passes its gate when the router's
+board has every plane net whole, no short, and a residue the tool documents (`<board>-residue.md`: the open nets
+with their pieces and pad positions, the clearances the repair left with their gaps, the tracks on plane layers)
+of at most RESIDUE_MAX nets and clearances together, a designer's minutes of work; the bound is taken as 10 from
+the measured residue of 6 to 9 nets (the review's numbers) until the owner names another. The configuration
+adopted is the clean-plane one (D107's jar, planes on `signal` layers, In1 and In2 priced through the DSN block,
+a via at 20 and a plane via at 2, the ripup start at 400, via keepout bands round every fine-pitch package, no
+feed, the stitching after), 77 of 86 at D112 with whole planes, over the committed default's 80 with 96 feeds
+on a `power` plane. The synthetic class B design of the milestone still needs the owner's board. Owner's decision.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

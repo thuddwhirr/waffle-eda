@@ -1015,3 +1015,18 @@ def test_only_nets_leaves_the_named_nets_in_the_network_and_drops_the_rest():
     every = {"A", "B"}
     out = fr.drop_net_pins(dsn, every - {"A"})
     assert "(net \"A\"\n      (pins U1-1 U1-2)" in out and "(net \"B\"\n      (pins )" in out
+
+
+def test_fine_pitch_bands_name_the_half_millimetre_packages_and_no_other():
+    """D120: every package at 0.5 mm pitch or finer gets a via keepout band, a 1.27 mm one does not."""
+    b = pcbnew.BOARD()
+    b.GetDesignSettings().SetCopperLayerCount(2)
+    net = pcbnew.NETINFO_ITEM(b, "N"); b.Add(net)
+    for ref, pitch in (("U1", 0.5), ("U2", 1.27), ("J1", 0.4)):
+        fp = pcbnew.FOOTPRINT(b); fp.SetReference(ref); b.Add(fp)
+        for k in range(4):
+            pad = pcbnew.PAD(fp); pad.SetNumber(str(k + 1)); pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+            pad.SetShape(pcbnew.PAD_SHAPE_RECT); pad.SetSize(pcbnew.VECTOR2I(kb.nm(0.2), kb.nm(0.6)))
+            pad.SetPosition(pcbnew.VECTOR2I(kb.nm(k * pitch), 0)); pad.SetLayerSet(pcbnew.PAD.SMDMask()); pad.SetNet(net)
+            fp.Add(pad)
+    assert sorted(r for r, _i, _o in fr.fine_pitch_bands(b)) == ["J1", "U1"]

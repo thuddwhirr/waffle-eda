@@ -91,8 +91,7 @@ work = refs.repo_root() / "build" / "fr" / (f"{key}-{mode}{'-stubs' if stubs els
                                              f"{'-pv' + os.environ['WAFFLE_PLANE_VIA_COSTS'] if os.environ.get('WAFFLE_PLANE_VIA_COSTS') else ''}"
                                              f"{'-ripup' + os.environ['WAFFLE_RIPUP_COSTS'] if os.environ.get('WAFFLE_RIPUP_COSTS') else ''}"
                                              f"{'-neck' if os.environ.get('WAFFLE_NECKDOWN') == '1' else ''}")
-if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's typing
-    fr.type_layers_power = lambda text, layers: text
+plane_type = "signal" if mode == "signal" else "power"  # signal: the router connects the plane nets (D96, D120)
 t0 = time.time()
 plane_nets = {p["net"] for p in inner} if feeds else set()
 stub_pads: set[str] = set()
@@ -116,7 +115,7 @@ def finish(routed, _work):  # the gate's finishing: the child-process fill, then
 
 common = dict(passes=passes, timeout_s=timeout_s, pours=pours_after, planes=planes, stubs=stubs, fanout=fanout,
               feeds=plane_nets or None, feeds_mode=feeds_mode, via_in_pad=via_in_pad, pour_pins_rule=pour_pins_rule,
-              layer_trace_costs=layer_costs, via_bands=via_bands)
+              layer_trace_costs=layer_costs, via_bands=via_bands, plane_type=plane_type)
 problem, staged = bare, {}
 if first_nets:  # the hard nets first (D106): stage 1 routes them alone, stage 2 everything else round them
     work1 = work.with_name(work.name + "-stage1")

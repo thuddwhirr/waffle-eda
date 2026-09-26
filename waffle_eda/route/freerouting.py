@@ -115,8 +115,15 @@ def tools_dir() -> Path:
     return repo_root() / "build" / "tools"
 
 
-def jar_path() -> Path:
-    return Path(os.environ.get("WAFFLE_FREEROUTING_JAR", tools_dir() / f"freerouting-{VERSION}.jar"))
+def jar_path(name: str | None = None) -> Path:
+    """The jar to run: `WAFFLE_FREEROUTING_JAR` if set, else the patched jar ``name`` (D107, D120: built by
+    `scripts/patch_freerouting.py`, `freerouting-<version>-<name>.jar`), else the fetched stock jar."""
+    env = os.environ.get("WAFFLE_FREEROUTING_JAR")
+    if env:
+        return Path(env)
+    if name:
+        return tools_dir() / f"freerouting-{VERSION}-{name}.jar"
+    return tools_dir() / f"freerouting-{VERSION}.jar"
 
 
 def java_path() -> Path | None:
@@ -389,6 +396,15 @@ def copy_tracks(src, dst, nets: set[str]) -> int:
         nv.SetNet(dst.FindNet(v.GetNetname()))
         dst.Add(nv); count += 1
     return count
+
+
+def fine_pitch_bands(board, pitch_mm: float | None = None, inner_mm: float = 0.0,
+                     outer_mm: float = 1.0) -> list[tuple[str, float, float]]:
+    """A via keepout band for every package with four pads or more at ``pitch_mm`` (`STUB_PITCH_MM` unless
+    given) or finer (D104, D120)."""
+    pitch = STUB_PITCH_MM if pitch_mm is None else pitch_mm
+    return [(fp.GetReference(), inner_mm, outer_mm) for fp in board.GetFootprints()
+            if fp.GetPadCount() >= 4 and _pitch_mm(fp) <= pitch + 1e-6]
 
 
 def pad_extent_mm(board, reference: str) -> tuple[float, float, float, float]:
@@ -1885,8 +1901,14 @@ def fix_wires(dsn_text: str) -> str:
 # 14-minute job timeout to the 20-minute process cap, 2026-09-24). A run that must finish gets a pass budget.
 
 
+def cost(env: str, given: int | None, default: int) -> int:
+    """A router cost: the environment's override, else the configuration's, else the module's default."""
+    return int(os.environ.get(env, given if given is not None else default))
+
+
 def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANOUT,
-                  edge_clearance_mm: float | None = None, gui: bool = GUI) -> Path:
+                  edge_clearance_mm: float | None = None, gui: bool = GUI, via_costs: int | None = None,
+                  plane_via_costs: int | None = None, ripup_costs: int | None = None) -> Path:
     """Freerouting's settings file for this run, in the work directory: telemetry off, the log there, the fanout
     stage as configured. The file must carry a version and a profile id or the jar stops with an exception."""
     import json
@@ -1901,13 +1923,13 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
                       **({"automatic_neckdown": True} if os.environ.get("WAFFLE_NECKDOWN") == "1" else {}),
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
-                      "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),
+                      "scoring": {"via_costs": cost("WAFFLE_VIA_COSTS", via_costs, VIA_COSTS),
                                   # a via into a plane net: the jar's default is 5, five times a signal via's
                                   # cost of 1 (D103); `WAFFLE_PLANE_VIA_COSTS` overrides it for a measurement
-                                  "plane_via_costs": int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS)),
+                                  "plane_via_costs": cost("WAFFLE_PLANE_VIA_COSTS", plane_via_costs, PLANE_VIA_COSTS),
                                   # the maze's cost of planning through another net's trace, which is then
                                   # re-routed (the jar's 100); `WAFFLE_RIPUP_COSTS` overrides it (D110)
-                                  "start_ripup_costs": int(os.environ.get("WAFFLE_RIPUP_COSTS", RIPUP_COSTS))},
+                                  "start_ripup_costs": cost("WAFFLE_RIPUP_COSTS", ripup_costs, RIPUP_COSTS)},
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
@@ -2020,12 +2042,15 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
 
 
 def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_s: float,
-            edge_clearance_mm: float | None = None, fanout: bool = FANOUT, gui: bool = GUI) -> tuple[int | None, bool]:
+            edge_clearance_mm: float | None = None, fanout: bool = FANOUT, gui: bool = GUI, jar: Path | None = None,
+            via_costs: int | None = None, plane_via_costs: int | None = None,
+            ripup_costs: int | None = None) -> tuple[int | None, bool]:
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm, gui=gui)
-    cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar_path()), f"--user_data_path={dsn.parent}",
+    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm, gui=gui,
+                  via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs)
+    cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar or jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():
         ses.unlink()
@@ -2053,8 +2078,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 stub_pads: set[str] | None = None, gui: bool = GUI,
                 feeds_mode: str = "fixed", via_in_pad: bool = False, pour_pins_rule: bool = False,
                 layer_trace_costs: dict[str, float] | None = None,
-                via_bands: list[tuple[str, float, float]] | None = None, only_nets: set[str] | None = None,
-                fix_existing: bool = False) -> FreeroutingResult:
+                via_bands=None, only_nets: set[str] | None = None,
+                fix_existing: bool = False, plane_type: str = "power", jar_name: str | None = None,
+                via_costs: int | None = None, plane_via_costs: int | None = None,
+                ripup_costs: int | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2088,7 +2115,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     obstacles as they are: the first stage of routing the hard nets first (D106); ``fix_existing`` types the
     copper the problem board already carries as fixed, the second stage's view of the first's routes.
     ``via_bands`` forbids the router's vias in a strip round the named footprints' pads (reference, inner and
-    outer offset in mm; :func:`via_band_dsn`, D104), so a fine-pitch package is escaped on its own layer.
+    outer offset in mm; :func:`via_band_dsn`, D104), so a fine-pitch package is escaped on its own layer;
+    ``"fine-pitch"`` bands every package at `STUB_PITCH_MM` or finer from its pads' ends to 1.0 mm out (D120).
+    ``plane_type`` "power" types a plane's layer `power` (unreachable for the router, fed by us, D85);
+    "signal" leaves it `signal` and the router connects the plane nets itself (D96, D107). ``jar_name`` runs a
+    patched jar (`scripts/patch_freerouting.py`; "d107" keeps the DSN's layer costs). ``via_costs``,
+    ``plane_via_costs`` and ``ripup_costs`` are the router's, the environment's `WAFFLE_*` on top.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
     `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
@@ -2145,6 +2177,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         kb.save_board(board, work_dir / "problem.kicad_pcb")  # 166 items to 19), so it comes back from this
         dsn.write_text(fix_wires(dsn.read_text()))  # snapshot after the import
         say(f"the problem board's own copper typed fixed: {len(fixed_nets)} nets")
+    if via_bands == "fine-pitch":
+        via_bands = fine_pitch_bands(board)
     if via_bands:
         bands = [(*pad_extent_mm(board, ref), inner, outer) for ref, inner, outer in via_bands]
         dsn.write_text(via_band_dsn(dsn.read_text(), bands))
@@ -2153,9 +2187,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         # the block's via, plane-via and ripup costs override the settings file's (D110: a block with the jar's
         # 5 and 100 pinned them through D107 to D109 whatever the environment said), so it carries the same
         dsn.write_text(autoroute_settings_dsn(dsn.read_text(), [n for _l, n in kb.copper_layers(board)], layer_trace_costs,
-                                              int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),
-                                              plane_via_costs=int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS)),
-                                              ripup_costs=int(os.environ.get("WAFFLE_RIPUP_COSTS", RIPUP_COSTS))))
+                                              cost("WAFFLE_VIA_COSTS", via_costs, VIA_COSTS),
+                                              plane_via_costs=cost("WAFFLE_PLANE_VIA_COSTS", plane_via_costs, PLANE_VIA_COSTS),
+                                              ripup_costs=cost("WAFFLE_RIPUP_COSTS", ripup_costs, RIPUP_COSTS)))
         say(f"trace costs raised in the DSN: {layer_trace_costs}")
     in_pad = [x for x in laid_feeds if x.in_pad] if feeds_mode not in ("after", "none") else []
     if feeds and feeds_mode == "after" and via_in_pad:  # D100: a pad's own copper is the one site the router
@@ -2215,15 +2249,21 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             dsn.write_text(drop_pins(dsn.read_text(), {x.pad for x in laid_feeds if x.in_pad}))
         else:  # no plane in the DSN: the pours laid after the import and the feeds connect the nets
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
-    if planes:
+    if planes and plane_type == "power":
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
+    elif planes and plane_type != "signal":
+        raise ValueError(f"plane_type {plane_type!r}: power or signal")
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
     import hashlib
     dsn_md5 = hashlib.md5(dsn.read_bytes()).hexdigest()[:10]
     if router_edge_mm is None:  # the router's own margin closed rp2040's last corridor at the rule (D68)
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
-    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm,
+    jar = jar_path(jar_name) if jar_name else None
+    if jar is not None and not jar.is_file():
+        raise RuntimeError(f"patched jar {jar} not found: python3 scripts/patch_freerouting.py {jar_name}")
+    code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm, jar=jar,
+                              via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs,
                               fanout=fanout, gui=gui)
     facts = parse_log(log.read_text())
     result = FreeroutingResult(dsn=dsn, ses=ses, log=log, rules=d, renamed=len(renamed), stubs=len(laid),

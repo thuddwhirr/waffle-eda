@@ -183,3 +183,27 @@ def test_a_no_net_item_the_reference_shorts_to_one_net_is_adopted_or_paired():
     assert rebuild._forgiven(short, forgiven) and not rebuild._forgiven(report["violations"][0], forgiven)
     facts = rebuild.board_facts({"violations": [short, report["violations"][0]]}, forgiven)
     assert facts["electrical"] == 1  # the pad's short is counted, the paired polygon's is not
+
+
+def test_the_residue_verdict_passes_a_small_documented_residue_and_fails_a_short_or_an_open_plane():
+    from waffle_eda.bench import rebuild
+    base = {"open_nets": [{"net": "/A", "pieces": [["U1-1"], ["R1-2"]], "pads": {}}] * 3, "planes_open": [],
+            "clearances": [{"items": [], "at": None, "short_by_mm": 0.005}] * 2, "shorts": [], "other_violations": []}
+    ok, note = rebuild.residue_verdict(base, 10)
+    assert ok and note.startswith("residue 3 nets, 2 clearances, 0 shorts; planes whole")
+    assert not rebuild.residue_verdict({**base, "shorts": [{"type": "shorting_items", "items": [], "at": None}]}, 10)[0]
+    assert not rebuild.residue_verdict({**base, "planes_open": ["GND"]}, 10)[0]
+    assert not rebuild.residue_verdict({**base, "open_nets": base["open_nets"] * 4}, 10)[0]  # 12 over 10
+    assert not rebuild.residue_verdict({**base, "clearances": [{"items": [], "at": None, "short_by_mm": 0.05}]}, 10)[0]
+
+
+def test_the_residue_page_names_every_open_net_piece_and_clearance():
+    from waffle_eda.bench import rebuild
+    r = {"reference": "x", "board": "x.kicad_pcb", "nets": 10, "connected": 9,
+         "open_nets": [{"net": "/A", "pieces": [["U1-1"], ["R1-2"]], "pads": {"U1-1": (1.0, 2.0), "R1-2": (3.0, 4.0)}}],
+         "planes_open": [], "clearances": [{"items": ["Track [/B] on F.Cu", "Pad 1 [/C] of R2"], "at": (5.0, 6.0), "short_by_mm": 0.004}],
+         "shorts": [], "other_violations": [], "plane_tracks": {"In1.Cu": 1, "In2.Cu": 0}}
+    page = rebuild.residue_markdown(r)
+    assert "- `/A`: 2 pieces" in page and "U1-1 at (1.0, 2.0)" in page and "R1-2 at (3.0, 4.0)" in page
+    assert "short by 0.004 mm at (5.0, 6.0): Track [/B] on F.Cu ; Pad 1 [/C] of R2" in page
+    assert "Tracks on the plane layers: In1.Cu 1, In2.Cu 0." in page

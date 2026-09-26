@@ -147,11 +147,20 @@ shape (D118) the failed insertions fall to 17 for 29 and 26 for 39 while the cou
 long and blocked by other nets' pads, which are fixed, as much as by tracks. The 30-pass row of D107's
 configuration with the refined jar is **FAIL, 69 of 86** with 5 clearances, the router at 24 unrouted on its
 best board and 33 at pass 30 (D119): the ripups re-open two to three nets a pass for every one they close.
-**Option 1 of the review is spent** in the one session the owner set for it (D115 to D119), and the decision
-returns to the owner: option 2 (the router's output plus hand-finishing of the residue), 3 (re-scope the class)
-or 4 (another router), with the review's numbers unchanged except that the jar is now patchable one class at
-a time and the clean-plane configuration stands at 77 of 86 (D112). Until the owner decides, nothing on class B
-is run. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
+**Option 1 of the review is spent** in the one session the owner set for it (D115 to D119). **The owner chose
+option 2 (D120): the router's output plus hand-finishing of the residue.** Class B's definition of done is now:
+a reference passes its gate when the router's board has every plane net whole, no short, and a documented
+residue of at most ten open nets and ten hair-width clearances (`<board>-residue.md` beside the routed board:
+the open nets with their pieces and pad positions, the clearances with their shortfall, the tracks on the
+plane layers); the bound of ten is taken from the measured residue until the owner names another. The class B
+default is the clean-plane configuration (`scripts/gate.py`, `CLASS_B`: planes on `signal` layers the router
+connects itself, D107's jar, In1 and In2 priced through the DSN block, a via at 20 and a plane via at 2, the
+ripup start at 400, via keepout bands round every fine-pitch package, no feed, the stitching after, a 4200 s
+cap). The row on upduino under it is running at this commit (D112 measured 77 of 86 with 6 clearances under
+the same configuration banded at U3 alone; every fine-pitch package is banded now, U2 included), then
+pico-ice (61 of 95 under the old configuration, D82; its residue is unmeasured under this one). What stays
+open for the milestone: the other seven class B references, and the synthetic class B design, which needs the
+owner's board. The repair's hair-width clearances are the tool's own item to shrink the residue. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
 written as `false` (`automatic_neckdown`) routed libresolar differently and failed it (3 clearances). Two small items of our own stay open
 whatever the choice: the repair's residue of hair-width clearances (6 to 11 at 0.008 mm on the clean-plane
 rows, 1 on the default's), and pico-ice, not re-measured since D82.

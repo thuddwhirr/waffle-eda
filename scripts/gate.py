@@ -184,8 +184,15 @@ def router_budget() -> dict:
 # reference's way at a QFN's GND pins); `WAFFLE_POUR_PINS=1` selects it for a measurement.
 CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True, "feeds_mode": "fixed",
            "via_in_pad": False, "pour_pins": False}
-CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 2400.0,
-           "feeds_mode": "fixed", "via_in_pad": False, "pour_pins": False}
+CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 4200.0,
+           "feeds_mode": "none", "via_in_pad": False, "pour_pins": False,
+           # D120 (option 2 of docs/review-class-b.md): the clean-plane configuration, the planes on `signal`
+           # layers the router connects itself with D107's jar keeping their layers priced through the DSN block,
+           # a via at 20 and a plane via at 2 (D103), the ripup start at 400 (D111), via keepout bands round every
+           # fine-pitch package (D104); the row passes with a documented residue of at most `residue_max` open
+           # nets and as many hair-width clearances, every plane net whole and no short
+           "plane_type": "signal", "jar": "d107", "layer_costs": 30.0, "via_costs": 20, "plane_via_costs": 2,
+           "ripup_costs": 400, "via_bands": "fine-pitch", "residue_max": 10}
 
 
 def configuration(defaults: dict) -> dict:
@@ -207,6 +214,10 @@ def configuration(defaults: dict) -> dict:
         out["via_in_pad"] = os.environ["WAFFLE_VIA_IN_PAD"] == "1"
     if os.environ.get("WAFFLE_POUR_PINS"):
         out["pour_pins"] = os.environ["WAFFLE_POUR_PINS"] == "1"
+    if os.environ.get("WAFFLE_RESIDUE_MAX") and "residue_max" in out:
+        out["residue_max"] = int(os.environ["WAFFLE_RESIDUE_MAX"])
+    if os.environ.get("WAFFLE_VIA_BANDS") and "via_bands" in out:  # "none" or "fine-pitch" (D120, D121)
+        out["via_bands"] = None if os.environ["WAFFLE_VIA_BANDS"] == "none" else os.environ["WAFFLE_VIA_BANDS"]
     return out
 
 
@@ -254,10 +265,17 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             planes, pours = plane_split(board, info["pours"], cfg["planes"])
             outer = {kb.copper_layers(board)[0][1], kb.copper_layers(board)[-1][1]}
             plane_nets = {p["net"] for p in info["pours"] if p["layer"] not in outer} if cfg["feeds"] else None
+            extra: dict = {}
+            if "plane_type" in cfg:  # the class B configuration of D120
+                extra = {"plane_type": cfg["plane_type"], "jar_name": cfg["jar"], "via_costs": cfg["via_costs"],
+                         "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
+                         "via_bands": cfg["via_bands"],
+                         "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
                                                        stubs=cfg["stubs"], gui=cfg["gui"], feeds_mode=cfg["feeds_mode"],
-                                                       via_in_pad=cfg["via_in_pad"], pour_pins_rule=cfg["pour_pins"], **budget)
+                                                       via_in_pad=cfg["via_in_pad"], pour_pins_rule=cfg["pour_pins"],
+                                                       **extra, **budget)
             result = results[-1]
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
@@ -276,7 +294,15 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                        + (f" | stubs {result.stubs}" if cfg["stubs"] else "")
                        + (f" | rounds {len(results)} of {cfg['rounds']}, exits {list(result.exits)}" if cfg["rounds"] > 1 else "")
                        + (" | no window" if not cfg["gui"] else ""))
-        rows.append((ref.key, s.passed, s.summary() + " | " + result.summary() + fill_note + config_note))
+        verdict, residue_note = s.passed, ""
+        if "residue_max" in cfg:  # option 2 (D120): the row passes with a documented residue
+            r = rebuild.residue(ref, out, s, plane_nets or set(), {p["layer"] for p in planes},
+                                refs.repo_root() / "build" / "fr" / ref.key / "residue")
+            page = out.with_name(f"{ref.key}-residue.md")
+            page.write_text(rebuild.residue_markdown(r))
+            verdict, residue_note = rebuild.residue_verdict(r, cfg["residue_max"])
+            residue_note = f" | {residue_note} ({page.name})"
+        rows.append((ref.key, verdict, s.summary() + residue_note + " | " + result.summary() + fill_note + config_note))
     return rows
 
 
