@@ -690,6 +690,15 @@ pair shares a second change, the plane via at 2 for D107's 5, so the ripup's own
 at 100 with the plane via at 2 (D111), and the ramp's direction says to measure 400 as well. The boards differ
 pass for pass, so this knob reaches the maze where the depths (D109) did not. Measurement.
 
+**D111. The ripup ramp is the lever: a start of 400 gives 69 of 86 with no violation at four passes** (2026-09-26,
+D107's jar and configuration, the plane via at 2, `WAFFLE_RIPUP_COSTS`). The control at 100: 62 of 86, the router
+at 32 unrouted, 51 failed insertions, the same count as D107's 62 with the plane via at 5, so the plane-via cost
+moves the failed insertions (29 to 51) and not the count. At 400: **69 of 86, 0 electrical**, the router at 24
+unrouted (41, 30, 26, 24 over the passes at 400, 800, 1200 and 1600), 39 failed insertions, 13 paths not found,
+127 vias, In1 1 track, planes whole. With 50 at 51 and 200 at 67 (D110) the four-pass count rises with the start
+ripup cost through the whole range measured; the jar's own 100 is not where this board routes best. Predicted
+next: 800 and 1600 (D112), the count rising or saturating, then the 30-pass row of the best. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

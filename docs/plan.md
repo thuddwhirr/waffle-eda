@@ -125,10 +125,10 @@ constants doubled (`tools/freerouting-2.4.1-d109.patch`) change nothing: the sam
 so the failed insertions are the inserter's check against copper the shove cannot move, not the recursion.
 The ripup cost (`WAFFLE_RIPUP_COSTS`, the jar's 100, ramped by its start value each pass) does reach the
 maze: with the plane via at 2, 50 gives 51 of 86 and 200 gives 67 with 4 clearances, against D107's 62 at 100
-with the plane via at 5 (D110). **The next step** is the control and the trend: ripup 100 and 400 with the plane
-via at 2, four passes each (D111), then the 30-pass row of the best; if 400 does not beat 200, the ripup ramp is
-measured out and the review is due: the insertion failures are then the inserter's own rule, deeper than one
-constant.
+with the plane via at 5 (D110). The control at 100 gives D107's 62 again and 400 gives **69 of 86 with no violation** at four passes, the router
+at 24 unrouted (D111): the four-pass count rises with the start ripup cost through the whole range measured.
+**The next step** is 800 and 1600 at four passes (D112), then the 30-pass row of the best start cost; the
+committed default's 80 of 86 is the bar, on clean planes this time.
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's
 `WAFFLE_*` exported it fails 3 of 5 (fewer vias, 18 passes), which is the setting, not the code. Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:06 UTC).
 **The three options put to the owner earlier stand, with their measurements:** (a) the fork,
