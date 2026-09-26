@@ -93,6 +93,7 @@ DRILL_STEP_MM = 0.001
 # pin of `olimex-rp2040-pico-pc`, and after it the cost was not read.
 VIA_COSTS = 1
 PLANE_VIA_COSTS = 5  # the jar's own default for a via into a plane net (D103)
+RIPUP_COSTS = 100  # the jar's own default start ripup cost (D110)
 # `WAFFLE_VIA_COSTS` overrides it for a measurement: with vias this cheap the router spreads a four-layer
 # board's signals over its inner layers (a third of upduino's tracks on the GND plane's layer, D85), where
 # the reference keeps 8 of 1585; the tool's own default is 50.
@@ -1900,7 +1901,10 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
                       "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),
                                   # a via into a plane net: the jar's default is 5, five times a signal via's
                                   # cost of 1 (D103); `WAFFLE_PLANE_VIA_COSTS` overrides it for a measurement
-                                  "plane_via_costs": int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS))},
+                                  "plane_via_costs": int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS)),
+                                  # the maze's cost of planning through another net's trace, which is then
+                                  # re-routed (the jar's 100); `WAFFLE_RIPUP_COSTS` overrides it (D110)
+                                  "start_ripup_costs": int(os.environ.get("WAFFLE_RIPUP_COSTS", RIPUP_COSTS))},
                       # the router's own default is 0.5 mm; open-book's rule is 0.5948 and its diagonal from a
                       # button pad cut the corner of a step in the edge at 0.25 mm (D66)
                       **({"copper_to_edge_clearance_um": round(edge_clearance_mm * 1000, 1)} if edge_clearance_mm else {})},
@@ -2143,8 +2147,12 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         dsn.write_text(via_band_dsn(dsn.read_text(), bands))
         say(f"via keepout bands: {[(ref, inner, outer) for ref, inner, outer in via_bands]}")
     if layer_trace_costs:
+        # the block's via, plane-via and ripup costs override the settings file's (D110: a block with the jar's
+        # 5 and 100 pinned them through D107 to D109 whatever the environment said), so it carries the same
         dsn.write_text(autoroute_settings_dsn(dsn.read_text(), [n for _l, n in kb.copper_layers(board)], layer_trace_costs,
-                                              int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS))))
+                                              int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),
+                                              plane_via_costs=int(os.environ.get("WAFFLE_PLANE_VIA_COSTS", PLANE_VIA_COSTS)),
+                                              ripup_costs=int(os.environ.get("WAFFLE_RIPUP_COSTS", RIPUP_COSTS))))
         say(f"trace costs raised in the DSN: {layer_trace_costs}")
     in_pad = [x for x in laid_feeds if x.in_pad] if feeds_mode not in ("after", "none") else []
     if feeds and feeds_mode == "after" and via_in_pad:  # D100: a pad's own copper is the one site the router
