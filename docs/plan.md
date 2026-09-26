@@ -136,8 +136,13 @@ The gate row itself at the new start cost is **FAIL, 77 of 86** with 7 clearance
 26 (D114): the four-pass gains do not carry to the row, and the class B default stays as committed at 80. The
 clean-plane configuration (D107's jar, the band, the via costs, ripup 400) is the fabbable alternative at 77.
 **The review the ladder rules call for is written: `docs/review-class-b.md`**, FAIL against the criteria, every
-failing case with its blocker, the numbers per stage and four options for the owner. **The next step is the
-owner's choice among them**; until then, nothing on class B is run. Two small items of our own stay open
+failing case with its blocker, the numbers per stage and four options for the owner. **The owner chose option 1 (D115)**: the inserter in the jar, one session. The change is written
+(`tools/freerouting-2.4.1-d116.patch`: on a failed insertion the inserter rips up the unfixed traces and vias of
+other nets that block the segment, the maze's own ripup applied where the shove fails, and tries the segment
+again from the point reached, at most three times per trace item while the pass allows ripups), built as
+`build/tools/freerouting-2.4.1-d107-d116.jar`, and its four-pass measurement on the D107 and D111
+configurations is running at this commit (against 62 / 33 unrouted / 29 failed insertions and 69 / 24 / 39);
+the 30-pass row follows if the failed insertions fall. Two small items of our own stay open
 whatever the choice: the repair's residue of hair-width clearances (6 to 11 at 0.008 mm on the clean-plane
 rows, 1 on the default's), and pico-ice, not re-measured since D82.
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's

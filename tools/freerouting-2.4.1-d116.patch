@@ -1,0 +1,113 @@
+--- a/src/main/java/app/freerouting/autoroute/path/FoundConnectionInserter.java
++++ b/src/main/java/app/freerouting/autoroute/path/FoundConnectionInserter.java
+@@ -7,6 +7,8 @@
+ import app.freerouting.board.model.items.Item;
+ import app.freerouting.board.model.items.Pin;
+ import app.freerouting.board.model.items.Trace;
++import app.freerouting.board.model.items.Via;
++import app.freerouting.board.model.structure.FixedState;
+ import app.freerouting.board.trace.PolylineTrace;
+ import app.freerouting.core.library.Padstack;
+ import app.freerouting.geometry.planar.FloatPoint;
+@@ -168,8 +170,14 @@
+ 
+     int fromCornerNo = 0;
+     boolean result = true;
++    int forcedRipups = 0; // waffle-eda patch (D116)
++    Point retryFrom = null;
+     for (int i = 1; i < trace.corners.length; i++) {
+       Point[] currentCornerArr = Arrays.copyOfRange(trace.corners, fromCornerNo, i + 1);
++      if (retryFrom != null) { // waffle-eda patch (D116): the segment again, from the point the shove reached
++        currentCornerArr[0] = retryFrom;
++        retryFrom = null;
++      }
+       Polyline insertPolyline = new Polyline(currentCornerArr);
+       int maxItemIdBeforeSeg = board.communication.idGenerator.maxGeneratedId();
+       Point okPoint =
+@@ -318,6 +326,20 @@
+               new Point[0]);
+         }
+       } else {
++        // waffle-eda patch (D116): before the found path is given up, what blocks the segment is ripped up
++        // when it is another net's unfixed trace or via (the maze's own ripup, applied where the shove
++        // fails; the ripped net is routed again in a later pass) and the segment is tried again from the
++        // point reached, at most MAX_FORCED_RIPUPS times per trace item, while the pass allows ripups.
++        Point reached = okPoint == null ? insertPolyline.firstCorner() : okPoint;
++        if (ctrl.ripupAllowed
++            && forcedRipups < MAX_FORCED_RIPUPS
++            && ripUpBlockers(reached, insertPolyline.lastCorner(), trace.layer, netNumbers)) {
++          forcedRipups++;
++          retryFrom =
++              currentCornerArr.length == 2 && reached != insertPolyline.firstCorner() ? reached : null;
++          --i;
++          continue;
++        }
+         FRLogger.debug(
+             "FoundConnectionInserter: insert trace failed for net #"
+                 + ctrl.netNumber
+@@ -452,6 +474,65 @@
+     return result;
+   }
+ 
++  private static final int MAX_FORCED_RIPUPS = 3; // waffle-eda patch (D116)
++
++  /**
++   * waffle-eda patch (D116): rips up the unfixed traces and vias of other nets that block the segment from
++   * {@code from} to {@code to} on {@code layer}: the obstacle the last shove failed on, and whatever lies on
++   * the segment. Their whole connections go, as the maze's ripup removes them, and their nets are routed
++   * again in a later pass. Returns false when nothing could be ripped up.
++   */
++  private boolean ripUpBlockers(Point from, Point to, int layer, int[] netNumbers) {
++    Set<Item> candidates = new LinkedHashSet<>();
++    Item failing = board.getShoveFailingObstacle();
++    if (failing != null) {
++      candidates.add(failing);
++    }
++    ItemSelectionFilter filter =
++        new ItemSelectionFilter(
++            new ItemSelectionFilter.SelectableChoices[] {
++              ItemSelectionFilter.SelectableChoices.TRACES, ItemSelectionFilter.SelectableChoices.VIAS
++            });
++    FloatPoint a = from.toFloat();
++    FloatPoint b = to.toFloat();
++    for (int k = 0; k <= 8; k++) {
++      double t = k / 8.0;
++      IntPoint p = new FloatPoint(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t).round();
++      candidates.addAll(board.pickItems(p, layer, filter));
++    }
++    Set<Item> ripped = new java.util.TreeSet<>();
++    Set<Integer> nets = new java.util.TreeSet<>();
++    for (Item item : candidates) {
++      if (!(item instanceof Trace || item instanceof Via)) {
++        continue;
++      }
++      if (item.containsNet(netNumbers[0]) || item.getFixedState() != FixedState.UNFIXED) {
++        continue;
++      }
++      ripped.addAll(item.getConnectionItems(Item.StopConnectionOption.NONE));
++      for (int n = 0; n < item.netCount(); n++) {
++        nets.add(item.getNetNumber(n));
++      }
++    }
++    if (ripped.isEmpty()) {
++      return false;
++    }
++    board.removeItems(ripped);
++    for (int n : nets) {
++      board.removeTraceTails(n, Item.StopConnectionOption.NONE);
++    }
++    FRLogger.debug(
++        "FoundConnectionInserter: ripped up "
++            + ripped.size()
++            + " items of nets "
++            + nets
++            + " blocking net #"
++            + netNumbers[0]
++            + " on layer "
++            + layer);
++    return true;
++  }
++
+   private boolean insertFanoutMicroNeckdown(
+       Point okPoint, Point targetPoint, int layer, int[] netNumbers, Pin startPin, Pin endPin) {
+     Point fromPoint = okPoint != null ? okPoint : targetPoint;

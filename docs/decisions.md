@@ -730,6 +730,15 @@ leaves the 30-pass count between 76 and 80. The class B default stays as committ
 jar measured out (D103 to D114) and the one inside that was cheap (D109) measured, the review the ladder rules
 call for is written (`docs/review-class-b.md`). Measurement.
 
+**D115. The owner's decision on the class B review: option 1, the inserter in the jar, one session** (2026-09-26,
+`docs/review-class-b.md`). The work: read `FoundConnectionInserter` at the 2.4.1 tag, name what rejects a found
+path ("insert trace failed at corner N/N", D88, D90), make the smallest change by which a failed insertion rips
+up the blocking items of other nets and re-queues them instead of discarding the path, build it by
+`scripts/patch_freerouting.py`, and measure at four passes on D107's configuration against its 29 failed
+insertions (and D111's 39 at ripup 400), then the 30-pass row against the committed 80 of 86. If the session
+ends without the row above 80, option 2 (the router's output plus hand-finishing of the residue) is the next
+decision for the owner, not a further iteration. Owner's decision.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
