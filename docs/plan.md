@@ -158,11 +158,13 @@ connects itself, D107's jar, In1 and In2 priced through the DSN block, a via at 
 ripup start at 400, via keepout bands round every fine-pitch package, no feed, the stitching after, a 4200 s
 cap). The row on upduino under it, with every fine-pitch package banded (U2, U3, U8), is **FAIL, 69 of 86**, a
 residue of 17 nets, 3 clearances and 1 short (D121), against D112's 77 banded at U3 alone: the band rule is
-not settled. Running at this commit: pico-ice under the default (61 of 95 under the old configuration, D82;
-its residue unmeasured under this one), then upduino without bands (`WAFFLE_VIA_BANDS=none`); the default
-carries whichever of no bands or a per-board band measures best, and a band chosen by the tool from the
-first round's open nets (the package with the most of them) is the closure loop to measure if neither
-reaches D112's 77. What stays
+not settled. Without bands the row is **79 of 86, FAIL by one clearance** (D123): a residue of 7 nets and 8 clearances,
+one of them short by 0.026 mm, over the 0.02 mm the rule allows; the default carries no band. **The next
+step** is the repair's residue, the tool's own item: 10 clearances left of 382 moves on that row, the worst
+0.026 mm (`route/freerouting.py`'s repair; a failing case first from the no-band board kept at
+`build/bench/upduino-v3.01-routed.kicad_pcb`), which is what stands between the row and PASS. pico-ice under
+the default as committed (no bands, cap 6000 s) is running at this commit (D122: its first row was killed at
+the 4200 s cap). What stays
 open for the milestone: the other seven class B references, and the synthetic class B design, which needs the
 owner's board. The repair's hair-width clearances are the tool's own item to shrink the residue. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
 written as `false` (`automatic_neckdown`) routed libresolar differently and failed it (3 clearances). Two small items of our own stay open

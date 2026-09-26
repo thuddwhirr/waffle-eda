@@ -811,6 +811,16 @@ configuration. The class's cap must fit its slowest reference (D82: 145 to 200 s
 `CLASS_B` carries 6000 s and the row is run again. pico-ice is banded at four fine-pitch packages under the
 committed rule, which D121 found wrong on upduino; its row is read with that in mind. Measurement.
 
+**D123. The D120 default without bands: 79 of 86 on upduino, the best clean-plane row; the default carries none**
+(2026-09-26, `WAFFLE_VIA_BANDS=none python3 scripts/gate.py b upduino-v3.01`). **FAIL by one clearance**: 79 of 86,
+a residue of 7 open nets (+5VD, /FT_SSn, /IOB_25B_G3, /LED_G, /LED_R, R3, TP11) and 8 clearances, no short,
+GND and +3V3 whole, the router at 11 unrouted after 30 passes, 965 s, 163 vias; the one reason on the row is a
+clearance short by 0.026 mm, over the 0.02 mm a hair-width clearance may be short by (D120). Against 77 banded at
+U3 (D112) and 69 banded at U2, U3 and U8 (D121): no band is best, and the default carries none. What keeps the
+row from PASS is the repair's residue (10 clearances left of 382 moves, the worst 0.026 mm), the tool's own
+item; the 7 open nets are within the bound. pico-ice's row, started banded, is stopped and run again under the
+default as committed. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

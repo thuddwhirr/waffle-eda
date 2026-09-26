@@ -188,13 +188,14 @@ CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui":
            "feeds_mode": "none", "via_in_pad": False, "pour_pins": False,
            # D120 (option 2 of docs/review-class-b.md): the clean-plane configuration, the planes on `signal`
            # layers the router connects itself with D107's jar keeping their layers priced through the DSN block,
-           # a via at 20 and a plane via at 2 (D103), the ripup start at 400 (D111), via keepout bands round every
-           # fine-pitch package (D104); the row passes with a documented residue of at most `residue_max` open
+           # a via at 20 and a plane via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D104 helped at U3
+           # alone, D121 hurt at every fine-pitch package, D123 measured none as best); the row passes with a
+           # documented residue of at most `residue_max` open
            # nets and as many hair-width clearances, every plane net whole and no short. The cap fits the
            # class's slowest reference: pico-ice takes about 150 s a pass and was killed at pass 28 of 30 under
            # 4200 s with no session written (D122)
            "plane_type": "signal", "jar": "d107", "layer_costs": 30.0, "via_costs": 20, "plane_via_costs": 2,
-           "ripup_costs": 400, "via_bands": "fine-pitch", "residue_max": 10}
+           "ripup_costs": 400, "via_bands": None, "residue_max": 10}  # no band: 79 of 86 for 77 banded at U3 (D123)
 
 
 def configuration(defaults: dict) -> dict:
