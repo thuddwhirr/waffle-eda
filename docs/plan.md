@@ -144,10 +144,15 @@ again from the point reached, at most three times per trace item while the pass 
 failures end at an SMD pad or header pin with nothing rippable under them), and with the blockers found by
 shape (D118) the failed insertions fall to 17 for 29 and 26 for 39 while the count moves either way (66 for 62,
 64 for 69). The router's neckdown is a no-op on traces narrower than the pad (D117); the failed last legs are
-long and blocked by other nets' pads, which are fixed, as much as by tracks. **The next step** is the 30-pass row
-of D107's configuration with the refined jar (D119, against D108's 71 of 86 with one short and 23 unrouted);
-above 80 it is the class B configuration to adopt, below it the session's option 1 is spent and option 2 is
-the owner's next decision. Two small items of our own stay open
+long and blocked by other nets' pads, which are fixed, as much as by tracks. The 30-pass row of D107's
+configuration with the refined jar is **FAIL, 69 of 86** with 5 clearances, the router at 24 unrouted on its
+best board and 33 at pass 30 (D119): the ripups re-open two to three nets a pass for every one they close.
+**Option 1 of the review is spent** in the one session the owner set for it (D115 to D119), and the decision
+returns to the owner: option 2 (the router's output plus hand-finishing of the residue), 3 (re-scope the class)
+or 4 (another router), with the review's numbers unchanged except that the jar is now patchable one class at
+a time and the clean-plane configuration stands at 77 of 86 (D112). Until the owner decides, nothing on class B
+is run. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
+written as `false` (`automatic_neckdown`) routed libresolar differently and failed it (3 clearances). Two small items of our own stay open
 whatever the choice: the repair's residue of hair-width clearances (6 to 11 at 0.008 mm on the clean-plane
 rows, 1 on the default's), and pico-ice, not re-measured since D82.
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's

@@ -27,6 +27,13 @@ none moves the 30-pass count out of 76 to 80. Inside the jar the shove's depths 
 left is the inserter's own rule, `FoundConnectionInserter`, a change deeper than one constant, and the jar is
 now patchable one class at a time (`scripts/patch_freerouting.py`, D107).
 
+## Option 1, taken and measured (D115 to D119, 2026-09-26)
+
+The inserter's forced ripup of what blocks a failed segment: under the segment, no gain (D116); the router's
+neckdown, a no-op on traces narrower than the pad (D117); the blockers found by shape, the failed insertions cut
+by a third to a half at four passes (D118), and at 30 passes 69 of 86 with 5 clearances, the ripups re-opening
+nets faster than they close them (D119). The line is spent. The remaining options are 2, 3 and 4 below.
+
 ## Options for the owner
 
 1. **Work the inserter in the jar**, one session, by the patch script: on a failed insertion, rip up the

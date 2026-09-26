@@ -771,6 +771,17 @@ nets churn at the higher ripup start. The mechanism works on the track-blocked l
 pad-blocked ones (D117), so it lowers the failures without a steady gain at four passes; the 30-pass row on D107's
 configuration (D108: 71 of 86, 23 unrouted, one short) is the measurement that decides it (D119). Measurement.
 
+**D119. The refined inserter at 30 passes: 69 of 86 with 5 clearances; the ripups churn and option 1 is spent**
+(2026-09-26, `freerouting-2.4.1-d107-d116.jar`, D107's configuration, `rung.py upduino-v3.01 signal 30 2400 stitch
+band=U3:0:1.0 costs=In1.Cu:30,In2.Cu:30`). Predicted: the router at 15 or fewer unrouted, 74 nets or more, 6
+clearances or fewer. Measured: **FAIL, 69 of 86**, 5 clearances the repair could not settle (0.0072 mm), the
+router at 24 unrouted on its best board and 33 at pass 30 (39 at pass 29), 131 ripups fired, 154 failed
+insertions and 119 paths not found over the run, 1057 s, 117 vias, GND and +3V3 whole, In1 2 tracks. Against
+D108's 71 with one short on the same configuration and the stock inserter, the ripups re-open two to three nets
+a pass for every one they close, and the count never settles. The inserter line of the review (option 1) is
+measured out in one session as the owner set it: forced ripup under the segment (D116), the neckdown (D117),
+ripup by shape (D118, D119). The clean-plane configuration's best row stays D112's 77 of 86. Owner's decision next.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
