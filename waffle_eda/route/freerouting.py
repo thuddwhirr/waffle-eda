@@ -1896,6 +1896,9 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
            "gui": {"enabled": gui, "input_directory": "", "dialog_confirmation_timeout": 5,
                    "show_routing_summary": False},
            "router": {"max_passes": passes, "max_threads": threads, "fanout": {"enabled": fanout},
+                      # the inserter's neckdown of a trace's last segment into a pin (D117: no effect on a trace
+                      # narrower than the pad); `WAFFLE_NECKDOWN=1` writes the key, else the file is as before
+                      **({"automatic_neckdown": True} if os.environ.get("WAFFLE_NECKDOWN") == "1" else {}),
                       "optimizer": {"max_threads": threads, "max_passes": OPTIMIZER_PASSES,
                                     "enabled": OPTIMIZER_PASSES > 0},
                       "scoring": {"via_costs": int(os.environ.get("WAFFLE_VIA_COSTS", VIA_COSTS)),

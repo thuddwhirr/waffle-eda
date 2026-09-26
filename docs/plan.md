@@ -140,9 +140,14 @@ failing case with its blocker, the numbers per stage and four options for the ow
 (`tools/freerouting-2.4.1-d116.patch`: on a failed insertion the inserter rips up the unfixed traces and vias of
 other nets that block the segment, the maze's own ripup applied where the shove fails, and tries the segment
 again from the point reached, at most three times per trace item while the pass allows ripups), built as
-`build/tools/freerouting-2.4.1-d107-d116.jar`, and its four-pass measurement on the D107 and D111
-configurations is running at this commit (against 62 / 33 unrouted / 29 failed insertions and 69 / 24 / 39);
-the 30-pass row follows if the failed insertions fall. Two small items of our own stay open
+`build/tools/freerouting-2.4.1-d107-d116.jar`, measured at four passes: no gain as first written (D116: the retried segment fails again, since 27 of 34
+failures end at an SMD pad or header pin with nothing rippable under them), and with the blockers found by
+shape (D118) the failed insertions fall to 17 for 29 and 26 for 39 while the count moves either way (66 for 62,
+64 for 69). The router's neckdown is a no-op on traces narrower than the pad (D117); the failed last legs are
+long and blocked by other nets' pads, which are fixed, as much as by tracks. **The next step** is the 30-pass row
+of D107's configuration with the refined jar (D119, against D108's 71 of 86 with one short and 23 unrouted);
+above 80 it is the class B configuration to adopt, below it the session's option 1 is spent and option 2 is
+the owner's next decision. Two small items of our own stay open
 whatever the choice: the repair's residue of hair-width clearances (6 to 11 at 0.008 mm on the clean-plane
 rows, 1 on the default's), and pico-ice, not re-measured since D82.
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's

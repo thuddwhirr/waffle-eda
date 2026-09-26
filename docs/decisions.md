@@ -739,6 +739,38 @@ insertions (and D111's 39 at ripup 400), then the 30-pass row against the commit
 ends without the row above 80, option 2 (the router's output plus hand-finishing of the residue) is the next
 decision for the owner, not a further iteration. Owner's decision.
 
+**D116. The inserter ripping up what blocks a failed segment does not lift the count; the failures end at pads**
+(2026-09-26, `tools/freerouting-2.4.1-d116.patch`, `build/tools/freerouting-2.4.1-d107-d116.jar`: on a failed
+segment the inserter rips up the unfixed traces and vias of other nets on it and tries again from the point
+reached, three times at most while the pass allows ripups). Predicted on D107's configuration: failed insertions
+under 15, the router under 25 unrouted, more than 66 nets; on D111's: under 20, under 18, more than 72. Measured:
+63 of 86, 35 unrouted, 36 failed insertions with 16 ripups fired (62, 33, 29 without); and 63, 38, with 9 ripups
+(69, 24, 39): the retried segment fails again, since 27 of the 34 failures are at the trace's last corner, the
+entry into an SMD pad (U2, C1, U8, R11, R14) or a header pin (J3), where nothing rippable blocks. The router's
+own remedy for that entry is the neckdown of the last segment (`automatic_neckdown`), off in the jar unless set
+and never set by us; it is the next measurement (D117). The patch stays as a tool. Measurement.
+
+**D117. The router's neckdown changes nothing here, and the failed last legs are long, blocked by pads and tracks**
+(2026-09-26, `automatic_neckdown` on through the settings file, `WAFFLE_NECKDOWN=1`, D107's and D111's
+configurations at four passes). The boards come out identical to the runs without it (the same digests) and no
+neckdown fires: the jar necks a trace down only below the pad's own width (`Pin.getTraceNeckdownHalfwidth`), and
+our 0.15 mm trace is already narrower than a 0.25 mm QFN pad. The 28 failed segments of D107's run, laid over
+its routed board with the trace's width and clearance: the "last corner" legs run 0.7 to 6.4 mm to the target,
+and 13 of the 17 are blocked by another net's pads (U8-4 beside U8-3, U2-37 beside U2-38, C3-2 and R17-1 on the
+way to C1-1), 14 of the 28 by other nets' tracks or vias, 4 by nothing left on the final board. The maze plans
+a leg past pads the inserter's exact check then rejects; the pads are fixed, so no ripup mends those, and the
+D116 ripup missed the tracks within the clearance, which its refinement finds by shape (D118). Measurement.
+
+**D118. The inserter's ripup by shape cuts the failed insertions by a third to a half; the count moves either way**
+(2026-09-26, `tools/freerouting-2.4.1-d116.patch` refined: the blockers of a failed segment found by
+`overlappingItemsWithClearance` on the segment's shape, not under nine points; `freerouting-2.4.1-d107-d116.jar`).
+Predicted on D107's configuration: failed insertions about 20 for 29, two to four nets more. Measured: 17 failed
+insertions with 14 ripups, 66 of 86 for 62, the router at 34 unrouted, but 5 clearances the repair could not
+settle for 1. On D111's: 26 for 39 with 23 ripups, 64 of 86 for 69, 30 unrouted for 24, 1 clearance: the ripped
+nets churn at the higher ripup start. The mechanism works on the track-blocked legs and cannot touch the
+pad-blocked ones (D117), so it lowers the failures without a steady gain at four passes; the 30-pass row on D107's
+configuration (D108: 71 of 86, 23 unrouted, one short) is the measurement that decides it (D119). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

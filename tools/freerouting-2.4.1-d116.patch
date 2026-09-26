@@ -45,7 +45,7 @@
          FRLogger.debug(
              "FoundConnectionInserter: insert trace failed for net #"
                  + ctrl.netNumber
-@@ -452,6 +474,65 @@
+@@ -452,6 +474,75 @@
      return result;
    }
  
@@ -68,6 +68,16 @@
 +            new ItemSelectionFilter.SelectableChoices[] {
 +              ItemSelectionFilter.SelectableChoices.TRACES, ItemSelectionFilter.SelectableChoices.VIAS
 +            });
++    // every item within the trace's clearance of the segment, not only those under it (a trace running
++    // alongside at less than the clearance blocks the shove as surely as one crossing)
++    if (!from.equals(to)) {
++      candidates.addAll(
++          board.overlappingItemsWithClearance(
++              new Polyline(from, to).offsetShape(ctrl.traceHalfWidth[layer], 0),
++              layer,
++              netNumbers,
++              ctrl.traceClearanceClassIndex));
++    }
 +    FloatPoint a = from.toFloat();
 +    FloatPoint b = to.toFloat();
 +    for (int k = 0; k <= 8; k++) {

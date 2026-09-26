@@ -89,7 +89,8 @@ work = refs.repo_root() / "build" / "fr" / (f"{key}-{mode}{'-stubs' if stubs els
                                              f"{'-costs' if layer_costs else ''}{'-band' if via_bands else ''}{'-first' if first_nets else ''}{'-answer' if answer_nets else ''}"
                                              f"{'-via' + os.environ['WAFFLE_VIA_COSTS'] if os.environ.get('WAFFLE_VIA_COSTS') else ''}"
                                              f"{'-pv' + os.environ['WAFFLE_PLANE_VIA_COSTS'] if os.environ.get('WAFFLE_PLANE_VIA_COSTS') else ''}"
-                                             f"{'-ripup' + os.environ['WAFFLE_RIPUP_COSTS'] if os.environ.get('WAFFLE_RIPUP_COSTS') else ''}")
+                                             f"{'-ripup' + os.environ['WAFFLE_RIPUP_COSTS'] if os.environ.get('WAFFLE_RIPUP_COSTS') else ''}"
+                                             f"{'-neck' if os.environ.get('WAFFLE_NECKDOWN') == '1' else ''}")
 if mode == "signal":  # the broken mode, kept for the record: undo the wrapper's typing
     fr.type_layers_power = lambda text, layers: text
 t0 = time.time()
