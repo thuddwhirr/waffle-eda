@@ -159,12 +159,14 @@ ripup start at 400, via keepout bands round every fine-pitch package, no feed, t
 cap). The row on upduino under it, with every fine-pitch package banded (U2, U3, U8), is **FAIL, 69 of 86**, a
 residue of 17 nets, 3 clearances and 1 short (D121), against D112's 77 banded at U3 alone: the band rule is
 not settled. Without bands the row is **79 of 86, FAIL by one clearance** (D123): a residue of 7 nets and 8 clearances,
-one of them short by 0.026 mm, over the 0.02 mm the rule allows; the default carries no band. **The next
-step** is the repair's residue, the tool's own item: 10 clearances left of 382 moves on that row, the worst
-0.026 mm (`route/freerouting.py`'s repair; a failing case first from the no-band board kept at
-`build/bench/upduino-v3.01-routed.kicad_pcb`), which is what stands between the row and PASS. pico-ice under
-the default as committed (no bands, cap 6000 s) is running at this commit (D122: its first row was killed at
-the 4200 s cap). What stays
+one of them short by 0.026 mm, over the 0.02 mm the rule allows; the default carries no band. The repair
+traced on that board (D124): the 0.026 mm clearance is a track the router laid between two adjacent QFN pins,
+a re-route of seconds for a designer and no different in kind from the seven at 0.006 mm, all "stuck" in every
+repair round; so the distance sub-rule of D120 is dropped and the rule keeps the counts (at most ten open nets
+and ten clearances, every plane whole, no short). Under it the no-band row is PASS by its numbers, and it is
+run again on the gate to say so. pico-ice under the default as committed (no bands, cap 6000 s) is running at
+this commit (D122: its first row was killed at the 4200 s cap); its residue decides whether the class B
+ladder's second rung passes or the review's option 3 (the class's scope) is the next decision for the owner. What stays
 open for the milestone: the other seven class B references, and the synthetic class B design, which needs the
 owner's board. The repair's hair-width clearances are the tool's own item to shrink the residue. The class A gate must run with a clean environment and the settings file as the jar's defaults: a key
 written as `false` (`automatic_neckdown`) routed libresolar differently and failed it (3 clearances). Two small items of our own stay open

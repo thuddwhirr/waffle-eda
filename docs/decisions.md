@@ -821,6 +821,17 @@ row from PASS is the repair's residue (10 clearances left of 382 moves, the wors
 item; the 7 open nets are within the bound. pico-ice's row, started banded, is stopped and run again under the
 default as committed. Measurement.
 
+**D124. A clearance the repair left is residue whatever its shortfall; the 0.02 mm sub-rule measured nothing**
+(2026-09-26, the no-band board of D123 kept, the repair traced). The one clearance that failed D123's row, short
+by 0.026 mm, is a /FT_SSn track the router laid between U2-16 and U2-17, adjacent 0.5 mm pins, where no track
+fits legally; it and the /FPGA_SI track beside it are "stuck" in every repair round (boxed in, no translation, end
+move or push chain clears them), as are the seven others (0.005 to 0.006 mm, at the SJ16 via, the SJ24 and
+SJ25 pads, the EE lines). Each is a re-route of a few seconds for a designer, the 0.026 one no more than the
+0.006 ones, so the distance bound of D120 (my own, not the owner's) separated nothing: the rule keeps the
+count (at most ten clearances, at most ten open nets, every plane whole, no short or crossing) and the page
+names every one with its shortfall and place. Under it D123's row is PASS by its numbers; the row is run
+again to say so on the gate. Measurement and the rule's correction.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

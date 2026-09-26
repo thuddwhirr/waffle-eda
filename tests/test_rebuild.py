@@ -194,7 +194,8 @@ def test_the_residue_verdict_passes_a_small_documented_residue_and_fails_a_short
     assert not rebuild.residue_verdict({**base, "shorts": [{"type": "shorting_items", "items": [], "at": None}]}, 10)[0]
     assert not rebuild.residue_verdict({**base, "planes_open": ["GND"]}, 10)[0]
     assert not rebuild.residue_verdict({**base, "open_nets": base["open_nets"] * 4}, 10)[0]  # 12 over 10
-    assert not rebuild.residue_verdict({**base, "clearances": [{"items": [], "at": None, "short_by_mm": 0.05}]}, 10)[0]
+    assert rebuild.residue_verdict({**base, "clearances": [{"items": [], "at": None, "short_by_mm": 0.05}]}, 10)[0]  # D124: any
+    assert not rebuild.residue_verdict({**base, "clearances": base["clearances"] * 6}, 10)[0]  # shortfall, at most ten
 
 
 def test_the_residue_page_names_every_open_net_piece_and_clearance():

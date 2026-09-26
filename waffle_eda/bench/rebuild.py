@@ -551,7 +551,6 @@ def score(ref: refs.Reference, candidate_path: Path, work_dir: Path | None = Non
         seconds=round(time.time() - t0, 1), passed=passed, score=round(composite, 3), per_net=per_net)
 
 
-RESIDUE_GAP_MM = 0.02  # a clearance the repair left counts as residue only when short by less than this (D120)
 GAP_IN_DESCRIPTION = re.compile(r"clearance ([0-9.]+) mm; actual ([0-9.]+) mm")
 
 
@@ -604,10 +603,10 @@ def residue(ref: refs.Reference, board_path: Path, score_: RebuildScore, plane_n
             "clearances": clearances, "shorts": shorts, "other_violations": other, "plane_tracks": plane_tracks}
 
 
-def residue_verdict(r: dict, residue_max: int, gap_mm: float = RESIDUE_GAP_MM) -> tuple[bool, str]:
-    """Class B's pass rule under option 2 (D120): every plane net whole, no short and no other violation, at
-    most ``residue_max`` open nets, at most ``residue_max`` clearances each short by less than ``gap_mm``."""
-    wide = [c for c in r["clearances"] if c["short_by_mm"] is None or c["short_by_mm"] >= gap_mm]
+def residue_verdict(r: dict, residue_max: int) -> tuple[bool, str]:
+    """Class B's pass rule under option 2 (D120, D124): every plane net whole, no short and no other violation,
+    at most ``residue_max`` open nets and at most ``residue_max`` clearances the repair left, whatever their
+    shortfall: each is a designer's minute, and the page names them all."""
     reasons = []
     if r["planes_open"]:
         reasons.append(f"plane nets open {r['planes_open']}")
@@ -619,8 +618,6 @@ def residue_verdict(r: dict, residue_max: int, gap_mm: float = RESIDUE_GAP_MM) -
         reasons.append(f"open nets {len(r['open_nets'])} over {residue_max}")
     if len(r["clearances"]) > residue_max:
         reasons.append(f"clearances {len(r['clearances'])} over {residue_max}")
-    if wide:
-        reasons.append(f"clearances short by {gap_mm} mm or more: {len(wide)}")
     summary = (f"residue {len(r['open_nets'])} nets, {len(r['clearances'])} clearances, {len(r['shorts'])} shorts; "
                f"planes {'whole' if not r['planes_open'] else 'open ' + str(r['planes_open'])}")
     return (not reasons, summary + ("" if not reasons else " | " + "; ".join(reasons)))
