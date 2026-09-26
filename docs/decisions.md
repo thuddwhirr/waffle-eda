@@ -803,6 +803,14 @@ round the FPGA (U2, 48 pins fanning out to both headers) or the VSSOP (U8) costs
 "every fine-pitch package" is the wrong rule; the row without bands (`WAFFLE_VIA_BANDS=none`) is queued after
 pico-ice to settle whether the default carries none or a per-board choice. Measurement.
 
+**D122. pico-ice under the D120 default is killed at the cap before the session is written; the cap is 6000 s**
+(2026-09-26, `python3 scripts/gate.py b pico-ice-rev3`, cap 4200 s). The router ran 28 of its 30 passes at about
+150 s a pass and was killed at the cap with no session file, so the row scored the bare board: 0 of 95, every
+plane net open, the stitching laying 102 feeds on nothing. A row that times out is not a measurement of the
+configuration. The class's cap must fit its slowest reference (D82: 145 to 200 s a pass on this board), so
+`CLASS_B` carries 6000 s and the row is run again. pico-ice is banded at four fine-pitch packages under the
+committed rule, which D121 found wrong on upduino; its row is read with that in mind. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
