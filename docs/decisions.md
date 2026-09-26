@@ -699,6 +699,17 @@ unrouted (41, 30, 26, 24 over the passes at 400, 800, 1200 and 1600), 39 failed 
 ripup cost through the whole range measured; the jar's own 100 is not where this board routes best. Predicted
 next: 800 and 1600 (D112), the count rising or saturating, then the 30-pass row of the best. Measurement.
 
+**D112. The ripup start peaks at 400; the clean-plane row at 30 passes reaches 77 of 86 with whole planes**
+(2026-09-26, D107's jar and configuration, the plane via at 2). At four passes, 800: 60 of 86, the router at 36
+unrouted, 71 failed insertions, passes of 52 to 74 s; 1600: 60 with one crossing, 35, 71. So 51, 62, 67, 69, 60
+and 60 for 50 to 1600, the peak at 400, where the maze still rips up in the first passes and stops by the last.
+The 30-pass row at 400: **FAIL, 77 of 86**, 6 clearances the repair could not settle (0.0076 mm), the router at 15
+unrouted after 30 passes and still falling (18 at pass 29, no early stop), 1231 s, 164 vias, 261 failed
+insertions and 135 paths not found over the run; GND and +3V3 whole; In1 28 tracks, In2 2. Open: /LED_G,
+/FT_SCK, /FT_SSn, /IOB_25B_G3, /IOB_3B_G6, /EE_CS, SJ16, R3 and SJ35. Against D108's 71 with a short at the
+jar's 100, six nets for one knob; against the committed default's 80 (feeds on a power plane), three short, on
+clean planes. Next: the knob on the default's own configuration, and 60 passes here (D113). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

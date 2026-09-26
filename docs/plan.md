@@ -127,8 +127,12 @@ The ripup cost (`WAFFLE_RIPUP_COSTS`, the jar's 100, ramped by its start value e
 maze: with the plane via at 2, 50 gives 51 of 86 and 200 gives 67 with 4 clearances, against D107's 62 at 100
 with the plane via at 5 (D110). The control at 100 gives D107's 62 again and 400 gives **69 of 86 with no violation** at four passes, the router
 at 24 unrouted (D111): the four-pass count rises with the start ripup cost through the whole range measured.
-**The next step** is 800 and 1600 at four passes (D112), then the 30-pass row of the best start cost; the
-committed default's 80 of 86 is the bar, on clean planes this time.
+800 and 1600 fall back to 60, so the start peaks at 400, and its 30-pass row is **FAIL, 77 of 86** with 6
+clearances, the router at 15 unrouted and still falling at pass 30, GND and +3V3 whole, In1 28 tracks (D112):
+six nets over the same row at the jar's 100, three short of the committed default's 80 on clean planes.
+**The next step**, two measurements: the knob on the committed default's own configuration (`WAFFLE_RIPUP_COSTS=400
+python3 scripts/rung.py upduino-v3.01 gnd 4 900 feeds`, against D91's 67 at four passes; a gain there moves the
+gate row itself), and 60 passes of the clean-plane row, since it was still falling at 30 (D113).
 Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:28 UTC). The class A gate must run with a clean environment: run with class B's
 `WAFFLE_*` exported it fails 3 of 5 (fewer vias, 18 passes), which is the setting, not the code. Class A ran clean on this code: PASS 5 of 5 (2026-09-26 02:06 UTC).
 **The three options put to the owner earlier stand, with their measurements:** (a) the fork,
