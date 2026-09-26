@@ -75,7 +75,7 @@ python3 scripts/design.py run temperature-sensor      # re-runs all six stages, 
                                                       # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
-                                        # board, so `-m "not parked and not bench"` is the quick run, 137 tests in a minute
+                                        # board, so `-m "not parked and not bench"` is the quick run, 144 tests in a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
