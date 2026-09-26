@@ -720,6 +720,16 @@ stopped it at pass 36 with 15 unrouted, the same as at 30, 77 of 86 again and 11
 the repair's residue), 1404 s. Predicted 79 or more and 10 or fewer unrouted: the row is a plateau, not a slope,
 and passes past 30 only add the router's own hair-width clearances. Measurement.
 
+**D114. The ripup start of 400 does not lift the gate row: 77 of 86 with 7 clearances; the default keeps 100**
+(2026-09-26, `WAFFLE_RIPUP_COSTS=400 python3 scripts/gate.py b upduino-v3.01`). Predicted 81 or better with no
+more violations than the committed row's one. Measured: **FAIL, 77 of 86**, 7 clearances the repair could not
+settle (0.0055 mm), the router stopping itself at pass 26 with 43 unrouted and 153 standing violations, 1405 s,
+294 vias; the committed row: 80, 1, 36 unrouted at 30 passes. The four-pass gain (D113: 71 for 67) does not
+carry to the row, as D103's and D104's did not: on this board every knob measured moves the four-pass count and
+leaves the 30-pass count between 76 and 80. The class B default stays as committed. With the knobs outside the
+jar measured out (D103 to D114) and the one inside that was cheap (D109) measured, the review the ladder rules
+call for is written (`docs/review-class-b.md`). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
