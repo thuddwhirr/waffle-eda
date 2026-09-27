@@ -116,6 +116,31 @@ def test_a_run_can_hand_the_router_the_rule_itself(monkeypatch):
     assert fr.dsn_rules(_rules(), None, slack_mm=0.0).clearance_mm == round(0.1972 - 0.01, 4)
 
 
+def test_a_slotted_pad_has_the_ring_of_its_axes():
+    # D130: a USB shield's pad 1.9 x 1.2 mm round a 1.3 x 0.6 mm slot has a 0.3 mm ring on both axes; the pad's
+    # short side less the slot's long side counted it as none, and the whole hole-to-copper rule then fenced
+    # every plated pin of upduino and pico-ice at 0.2526 mm from its pad's edge
+    import pcbnew
+    board = pcbnew.BOARD()
+    net = pcbnew.NETINFO_ITEM(board, "SHIELD")
+    board.Add(net)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("J1")
+    pad = pcbnew.PAD(fp)
+    pad.SetNumber("S1")
+    pad.SetAttribute(pcbnew.PAD_ATTRIB_PTH)
+    pad.SetShape(pcbnew.PAD_SHAPE_OVAL)
+    pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.9), kb.nm(1.2)))
+    pad.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_OBLONG)
+    pad.SetDrillSize(pcbnew.VECTOR2I(kb.nm(1.3), kb.nm(0.6)))
+    pad.SetLayerSet(pcbnew.PAD.PTHMask())
+    pad.SetNet(net)
+    fp.Add(pad)
+    board.Add(fp)
+    assert fr.smallest_ring_mm(board)[1] == pytest.approx(0.3)
+    assert fr.dsn_rules(_rules(hole_to_copper_mm=0.2526, clearance_mm=0.1479), 0.3).pin_clearance_mm is None
+
+
 def test_a_hole_rule_the_ordinary_clearance_already_meets_needs_no_typed_rule():
     d = fr.dsn_rules(_rules(hole_to_copper_mm=0.3), pin_ring_mm=0.3)
     assert d.via_clearance_mm is None and d.pin_clearance_mm is None

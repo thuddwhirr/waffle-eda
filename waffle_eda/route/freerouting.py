@@ -203,7 +203,9 @@ def smallest_ring_mm(board) -> tuple[float | None, float | None]:
     """The smallest copper ring around a hole, for vias and for plated pads: (via ring, pin ring), in mm.
 
     A via's ring comes from the rules, so the via ring here is only what the board already carries (None on a
-    stripped board). A pad whose copper is smaller than its hole (a castellation, a slot) has a ring of zero.
+    stripped board). A pad whose copper is smaller than its hole (a castellation) has a ring of zero. A slot's
+    ring is taken along each of its axes: the pad's short side less the slot's long side counted a USB shield's
+    0.3 mm ring as none and fenced every plated pin at the whole hole rule (D130).
     """
     via_rings = [(kb.via_diameter_mm(v) - kb.via_drill_mm(v)) / 2 for v in kb.vias(board)]
     pin_rings = []
@@ -215,7 +217,7 @@ def smallest_ring_mm(board) -> tuple[float | None, float | None]:
             best = None
             for layer in pad.GetLayerSet().CuStack():
                 size = pad.GetSize(layer)
-                ring = (min(size.x, size.y) - max(drill.x, drill.y)) / 2
+                ring = min(size.x - drill.x, size.y - drill.y) / 2
                 best = ring if best is None else min(best, ring)
             pin_rings.append(max(0.0, kb.mm(best if best is not None else 0)))
     return (min(via_rings) if via_rings else None, min(pin_rings) if pin_rings else None)
