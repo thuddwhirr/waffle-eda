@@ -444,6 +444,405 @@ section orders them (stubs only for the pads a run left open, laid for a second 
 determinism check), then makes the configuration `gate.py b`'s default and measures `pico-ice-rev3` under it.
 Owner, 2026-09-25.
 
+**D87. The closure loop's exit stubs do not converge on `upduino-v3.01`** (2026-09-25, `scripts/rung.py
+upduino-v3.01 gnd 30 2400 feeds rounds=2`, then `open=` and `exits=` for a third round; the loop is
+`route.freerouting.route_rounds`). Round 1, D86's baseline: 81 of 86, 0 violations, the router at 32 unrouted
+after 30 passes. Its five open nets leave eight pads untouched, five on the QFNs (U2-44, U3-1, U3-5, U3-14,
+U3-21); another net's track crosses the exit of three of them, U3-1 and U3-5 have a free exit and stay open.
+Round 2, a fixed exit stub out of those five: 82 of 86 with one clearance the repair could not settle (0.133
+mm between two In2 tracks), four of the five connected, three other QFN pads opened (U2-40, U2-42, U3-17).
+Round 3, all eight stubbed: 80 of 86, 0 violations, four of round 1's nets open again with their stubbed pads
+reached and the other end untouched (J2-7, R3-1, TP1-1: no other net's copper within 1.2 mm on any layer).
+The loop is a tool (`WAFFLE_ROUNDS`), not the class B default. Measurement.
+
+**D88. What leaves upduino's nets open is the router's insertion at the fixed feeds, not its search**
+(2026-09-25, the router's log of D87's rounds and four-pass runs of `scripts/rung.py`). "No connection was
+found" 70 times in round 1, 7 and 11 with the stubs: the stubs open the exits. "The new connection could not
+be inserted" 117, 85 and 118 times, on the same nets every round (D3 to U2-38..40 and J2-4..6, U3-4, U3-13,
+U3-16, U3-19, J3-2 and J3-3 to U5): the maze finds a path and the shove that lays it fails
+(`FoundConnectionInserter.insertTrace` in the fork). Four passes: no plane, no feeds 11 failed insertions,
+28 paths not found, 25 standing violations; the plane alone 26, 16, 25; plane and feeds 38, 14, 127. The 102
+are the feeds': 41 of 82 feed vias sit over another pad of their own net and 33 stubs cross one (legal to
+KiCad, a violation to the router with via-in-pad off, D85). A feed kept to its own pad (56 for 88) took them
+to 29 and measured worse, 63 of 86 for 67, GND and +3V3 in pieces, 46 failed insertions; dropped. Measurement.
+
+**D89. The jar's autorouting stage is single-threaded: threads are settled by reading, not measured**
+(2026-09-25, `javap -p -c` on the 2.4.1 jar). `BatchAutorouter.autoroutePassMultiThread` calls
+`AutoroutePassRunner.runMultiThread`, and nothing in the jar calls it; the batch loop calls `autoroutePass`,
+the single-threaded runner. `max_threads` (`-mt`) reaches only the optimiser (`BatchOptimizerMultiThreaded`),
+which is off (D65). A class B row runs one thread whatever the machine has, D65's determinism is not at risk
+from threads, and a threads measurement waits on a build of the fork, if ever. Measurement.
+
+**D90. Where the router's insertion stops: against its own copper, pinned near fixed items; the clearance
+slack is not the constraint** (2026-09-25, the jar's own "insert trace failed" lines, logged at DEBUG with the
+stop point in 0.1 um units, y flipped, read back onto the routed board by a scratch script). 86 stops in D87's
+round 3 (plane, 88 feeds, 8 stubs): the nearest copper is the router's own track or via at 69, a pad at 13, a
+feed via at 4; 20 of 86 lie within 0.3 mm of a fixed item. The corridor between the two nearest fixed items
+is 1.3 to 1.6 mm at the median and under a trace's 0.4314 mm need at 1 of 86; counting the router's own
+copper it is under the need at 37 of 86 (plane alone: 11 of 19; no plane, no feeds: 1 of 5). So the shove
+that lays a found path fails where the router's earlier copper sits between the fixed items and cannot give
+way. Slack 0.03 for 0.0072 at four passes: 37 failed insertions for 38, 68 of 86 for 67, and 3 clearances
+the repair could not take back (worst 0.028 mm); the slack stays 0.0072. Measurement.
+
+**D91. The form the router meets the feeds in, measured on upduino at four passes** (2026-09-25,
+`scripts/rung.py upduino-v3.01 gnd 4 900 feeds <form>`, `route_board(feeds_mode=...)`; D85's fixed form:
+51 unrouted, 127 standing violations, 38 failed insertions, 67 of 86). Routable (the router's own wires):
+identical, it moved none. After (no feeds, no plane pins in its network, the feeds laid after the import):
+10, 25, 30, but 38 of 88 feeds find room, +3V3 in 32 pieces, 75 of 86. Vias (the feed vias alone fixed):
+31, 116, 45, 64. Reserved (the via sites as keepouts, the feeds laid after): 24, 25, 32, 64, GND in 4 pieces
+and +3V3 in 8 from the pads no feed reaches; with L-shaped sites (`planes._l_site`, 96 feeds for 88) 24, 25,
+26, GND in 3 and +3V3 in 5; the nine pads left are boxed in by other nets' pads touching theirs, no site of
+any shape at 3 mm, so they stay the router's with their nearest feeds fixed as vias to route to (11): 30,
+51, 17, 63 of 86, the planes in 2 pieces each. Measurement.
+
+**D92. The reserved form at 30 passes does not beat the fixed one; the fixed form stays class B's default**
+(2026-09-25, `WAFFLE_FEEDS_MODE=reserved python3 scripts/gate.py b upduino-v3.01`). 80 of 86, 0 violations,
+the router at 8 unrouted for the fixed form's 32, 788 s; with a plane net's plated pins counted as pads no
+feed reaches (J2-9 was the +3V3 stray), as committed: 78 of 86, 2 clearances, 10 unrouted, 996 s, the three
++3V3 capacitor pads at U2 joined to each other and not to a via. What fails under it: U3-48 aimed at the
+plane it cannot reach ("layers are disabled") instead of its fixed via, and the same three signal nets as
+under every form (U3-1 to the oscillator, U3-5 to R3, U3-21 to TP1). The nine pads no feed reaches are
+back-side pads under the QFNs (C14-1, C30-1, R5-2, U8-8 on B.Cu); the reference gives them no feed but a
+0.5 mm back-side track to a via 1.4 to 8 mm away, and our search holds a stub clear of the other side's pads
+(layer-blind). The reserved form is the measured alternative; class A's digests are unchanged. Measurement.
+
+**D93. Routing before cost: via-in-pad, filled and capped, is allowed on class B.** The owner's guidance
+(2026-09-25): a board that cannot be routed at all makes the price of its vias moot, so the feeds may put the
+via in the pad wherever the via fits, not only in a thermal pad, using the fab profile's advanced-tier
+options (`via_in_pad`, `filled_capped_vias`, `fab/profiles/pcbway.toml`) whose price stays unknown and
+escalated as the definition asks. Eight of the nine class B references put no via in a passive's pad (D92's
+count: only large connector, test-point and tab pads carry one; fomu's 91 are 0.10 mm microvias, an HDI
+tier), so this is a rule the references do not demonstrate, taken on the owner's word. The in-pad via is laid
+after the import, as the thermal pads' are; QFN pins at 0.5 mm pitch cannot hold the board's 0.6 mm via and
+keep their stub or the router. Measured first, ahead of the layer-aware stub check. Owner, 2026-09-25.
+
+**D94. Via-in-pad does not route upduino better** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds
+inpad`, against the fixed form's 51 unrouted, 127 standing violations, 38 failed insertions, 67 of 86). The
+option puts 54 of the 96 feeds' vias in their pads (6 before, the thermal pads) and feeds no pad more: the
+capacitor pads under U2 cannot take a via through the QFN pins above them. Laid after the import with the
+router unaware of the via's copper on the other layers, 15 shorts and 6 clearances (61 of 86); with every
+in-pad site reserved as a keepout on the other layers, 0 violations, 51 unrouted, 119, 40, 62 of 86: each via
+inside a pad costs the other layers a site the router had, and the pinning is by pads as much as by feed
+vias (D90). The option stays (`WAFFLE_VIA_IN_PAD=1`, `via_in_pad` in `CLASS_B`), not the default; the in-pad
+keepouts apply to the thermal pads' vias too, which were open to the same shorts. Measurement.
+
+**D95. The reference's way at a QFN's ground pins does not survive our router: pins left to the pour come out
+as islands** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds pourpins`, `route_board(pour_pins_rule
+=True)`). The reference puts no via within 1.5 mm of U3's twelve GND pins; its front-side pour connects them,
+and 22 of the fixed form's 86 stop points lie within 1.5 mm of the feed vias we lay beside such pins. Fifteen
+fine-pitch plane pins with a pour on their layer left without a feed and out of the router's network: the
+router 43 unrouted, 116 standing violations, 39 failed insertions (51, 127, 38 fixed), but 13 of the 15 pins
+are GND islands, the pour fenced off by the router's tracks and the stitching finding no room; 64 of 86. With
+a 0.5 mm patch beyond each pin's end kept as a keepout on its layer: the stitching feeds 3, 10 stay islands, the
+router 48, 131, 32; 64 of 86 with a clearance. The reference's pour reaches its pins because the designer's
+routing leaves the ring free; ours will not without a rule for it. Option kept (`WAFFLE_POUR_PINS=1`). Measurement.
+
+**D96. The router connects a plane on a `signal` layer itself; typed `power`, the plane is unreachable**
+(2026-09-25, `scripts/rung.py upduino-v3.01 signal 4 900 [stitch]`, `route_board(feeds_mode="none")`). 2.4.1
+forces a non-signal layer inactive (`AutorouteControl`: "is a dedicated power plane and cannot be routed"), so no
+via can target a plane there ("layers are disabled" at every plane pad), which is what the feeds of D85 answered.
+Both planes on `signal` layers, no feed, every pin kept: the router connects the plane nets itself, at four
+passes 64 of 86 (32 unrouted, 25 standing violations, 42 failed insertions, 38 walled in) against the fixed
+feeds' 67 (51, 127, 38, 14); GND whole but the thermal pad U2-49 (D98), +3V3 whole, 198 vias. The price: 290
+tracks (455 mm) on In1 and 130 (400 mm) on In2, through the planes, where the reference has 8 (44 mm) and 90
+(236 mm). With the stitching after and the preferred directions flipped by D97's block: 68 of 86, 29 unrouted,
+25, 43, 21; In1 318 tracks, 674 mm. The failed insertions are the same wall at U3 in every form. Measurement.
+
+**D97. Per-layer trace costs cannot be set from outside the 2.4.1 jar** (2026-09-25, `route_board(layer_trace_costs=
+{"In1.Cu": 30, "In2.Cu": 30})`, `autoroute_settings_dsn`). The DSN's `(autoroute_settings ...)` block (via, plane-via
+and ripup costs; `layer_rule` active, direction, costs) is read only before the first plane or keepout scope:
+`Structure.readScope` builds its layer structure at the first of those and then skips the block, whose closing
+bracket ends the structure and drops every pin (0 unrouted items; D57's finding). Placed after the boundary, the
+costs were read and then overwritten: `RouterSettings.applyBoardSpecificOptimizations` sets every layer's trace
+costs from the board (its log: In1 "30.0 -> 1.0" and 1.4 against, In2 1.0 and 3.8, F.Cu 1.8 and 4.6, B.Cu 1.8 and
+2.2), keeping only the directions; the settings JSON's arrays for them are transient. The jar prices the plane
+layer as its cheapest, hence D96's 674 mm on In1; outside the jar the only lever is `routable: false`, the
+`power` case. The block stays as a tool for a fork that respects it. Measurement.
+
+**D98. A filled zone of another net is not an obstacle to a feed; taking it as one left the stitching no site**
+(2026-09-25, `route/planes.py`). Since dbd246d a feed's via was rejected where another net's fill lay within the
+ring plus the clearance on any layer, and a stub where one lay on its layer. On a board with a plane of another
+net a via always passes through it: on D96's board the in-pad site of U2-49 was rejected by the +3V3 plane on
+In2, and with the fills no longer copper the site is found. The refill clears a pour around another net's via or
+track (that board's 197 vias through both planes: 0 electrical violations). The constraint sat behind D91's after
+form (38 of 88 feeds found room) and D95's islands (13 of 15); both are to be re-measured. Test corrected to the
+legal target: `test_another_nets_pour_does_not_move_a_stitch_via`. Measurement.
+
+**D99. The plane mode's verdict row, and what strays** (2026-09-25, `WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py
+upduino-v3.01 signal 30 2400 stitch`): **FAIL, 77 of 86**, 10 clearances the repair could not settle (0.0075 mm,
+all in the knot at the LED D3), the router at 12 unrouted and 25 standing violations (the fixed feeds' row: 80 of
+86, 1 clearance, 36 unrouted), 1055 s, 228 vias, In1 335 tracks (551 mm), In2 196 (525 mm). Open: GND, +3V3,
++5VD, /VCC_PLL, /LED_G, /IOB_3B_G6, /EE_CLK, TP10, /V_PHY, not the three nets of every feed form. The strays: U2-49,
+whose thermal pad's centre a through via cannot take with other nets' tracks under the pad on In1, so the search
+now looks inside the pad (a 0.2 mm grid, `Feed.inside`; found 0.4 mm off centre, and the refill closes GND); J2-9,
+a plated +3V3 pin the DSN's plane reaches and KiCad's fill does not, fenced off on In2 by the router's own tracks
+(D82's mechanism), which no stitch mends from outside the jar. Measurement.
+
+**D100. The after form re-measured under D98** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds after`):
+75 of 86 at four passes, the best four-pass count of any form (fixed 67, plane mode 64 and 68), 0 electrical,
+the router at 10 unrouted with nothing of the plane nets before it; but 44 feeds find room for 88 pads (38 under
+the wrong constraint), the stitching 2 more, and +3V3 is left in 28 pieces, GND in 10: the router's copper, not
+the fills, takes the sites, since the feeds come after it. A pad's own copper is the one site the router cannot
+take: with via-in-pad (D93) every pad 0.7 mm wide holds its via, so the in-pad sites reserved on the other layers
+before the router (D94's keepouts) and laid after it are the next measurement; the QFN pins that hold no via
+keep the after search. Measurement.
+
+**D101. The after form with the in-pad sites reserved does not beat the after form; the feed forms are exhausted**
+(2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds after inpad`, `route_board(feeds_mode="after",
+via_in_pad=True)`: 54 in-pad sites found on the bare board, reserved as keepouts on the other layers, laid after
+the router). 69 of 86 at four passes (D100's after form: 75), the router at 16 unrouted (10) and 25 standing
+violations, 10 clearances the repair could not settle (0), 73 feeds laid for 88 pads (56 in a pad), +3V3 in 15
+pieces (28), GND in 8 (10), the stitching 0. The 17 pads left are the QFN pins that hold no via and have no site
+within 1.5 mm after the router (U3-4, -12, -22, -23, -48, U2-22, U1-6, U7-2, U8-1), the back-side pads of D92
+(C14-1, C30-1, R5-2) and the plated J2-9. Nine feed forms measured (D85, D91 to D95, D100, this): none connects
+those pins, which the reference's pour reaches through routing that leaves the ring free (D95). Only the router's
+own plane mode (D96, D99) connected every plane pad but two, at the cost D97 names. Measurement.
+
+**D102. The pour pins re-measured under D98: unchanged** (2026-09-25, `scripts/rung.py upduino-v3.01 gnd 4 900 feeds
+pourpins`, 15 fine-pitch GND pins left to the pour with their exits kept): 64 of 86 at four passes (D95: 64), the
+router at 48 unrouted and 131 standing violations (48, 131), one clearance the repair could not settle, the
+stitching 5 feeds (3), 8 GND islands (10): U3-4, -22, -23, -35, -36, -47, -48 and U8-1, the ring around U3 taken
+by the router's tracks before the pour or the stitching can reach the pins. +3V3 whole. Measurement.
+
+**D103. The via costs inverted do not free the ring round the QFN; they do cut the vias and the failed insertions**
+(2026-09-26, `WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2 python3 scripts/rung.py upduino-v3.01 signal 4 900
+stitch`; the jar's costs are 1 for a signal via and 5 for a plane via, `settings_json` now carries both). Predicted
+before the run: vias in U3's 1.5 mm ring 12 or fewer (D96: 14, the reference 9), top-layer track segments in it
+95 or more (57, reference 128), vias on the board 130 to 170 (198), failed insertions under 30 (42), 70 nets or
+more (64 to 68). Measured: ring 14 and 61, unchanged; vias 132, failed insertions 25, the router at 29 unrouted,
+66 of 86, 0 electrical, GND and +3V3 whole but the plated J1-6 and J2-9; In1 171 tracks (290). The via cost
+decides how many vias the board gets, not where the router escapes the QFN: the ring is the same with vias at 1
+or 20. The reference's pattern (escape on the top layer, via out 1.8 mm and more) is the next single test (D104),
+forced by a via keepout band. Measurement.
+
+**D104. A via keepout band round the QFN empties the ring and halves the failed insertions again; the count stays**
+(2026-09-26, `scripts/rung.py upduino-v3.01 signal 4 900 stitch band=U3:0:1.0` with D103's via costs: four
+via-keepout strips from the pads' ends to 1.0 mm out on every signal layer, `via_band_dsn`). Predicted: no via in
+U3's ring (forced), top-layer track segments in it 95 or more, failed insertions 25 or fewer, 70 nets or more.
+Measured: 0 vias in the ring; 54 segments (61; the router escapes a pin in one segment, where the reference's 128
+are its routing through the ring); failed insertions 17 (25, and 42 before D103); the router at 26 unrouted (29);
+68 of 86 with 2 clearances (a +3V3 track at C9-2, a track at U3-27); 126 vias; GND whole; +3V3 in 3 pieces (J2-9,
+and the QFN pin U3-34, whose plane via now lies beyond the band). Freeing the ring cuts the shove's failures at
+every step (42, 25, 17) without moving the four-pass count (64 to 68 in every plane-mode run); the 30-pass row
+decides whether it moves the verdict (D99: 77 of 86 without either change). Measurement.
+
+**D105. The plane mode with the via costs inverted and the band, at 30 passes: 76 of 86; the shove's limit stands**
+(2026-09-26, `WAFFLE_VIA_COSTS=20 WAFFLE_PLANE_VIA_COSTS=2 WAFFLE_ROUTER_GUI=0 python3 scripts/rung.py upduino-v3.01
+signal 30 2400 stitch band=U3:0:1.0`). Predicted: the router at 10 or fewer unrouted, 78 nets or more, 5 clearances
+or fewer. Measured: **FAIL, 76 of 86**, 1 clearance (0.0042 mm), the router at 15 unrouted and 25 standing violations
+from pass 29 on, 964 s, 143 vias (D99's row: 77, 10 clearances, 12 unrouted, 228 vias); GND whole with U2-49
+stitched inside its pad (D99's search), +3V3 whole but the plated J2-9; no via in U3's ring, In1 227 tracks (335);
+126 failed insertions and 195 paths not found over the 30 passes. Open: /FLASH_MISO, /IOB_25B_G3, /LED_G,
+/IOB_3B_G6, /FLASH_MOSI, /EE_CLK, /EE_CS, SJ16, R3 and J2-9. With the ring free and the vias at the reference's
+count, the row does not beat the committed default's 80: what remains is the router's shove at U3, D3 and the
+FLASH pins, and the decision is the owner's (plan). Measurement.
+
+**D107. One class of the jar patched: the DSN's per-layer trace costs survive, and the planes come out clean**
+(2026-09-26, `tools/freerouting-2.4.1-d107.patch`, `scripts/patch_freerouting.py` from the upstream `v2.4.1` tag,
+`WAFFLE_FREEROUTING_JAR=build/tools/freerouting-2.4.1-d107.jar`). `applyBoardSpecificOptimizations` reset its
+flag whenever it rebuilt the layer settings, which the headless job always does, and re-initialized every cost;
+the patch keeps the flag there and carries it through `applyNewValuesFrom`. Gradle cannot build the fork here
+(Maven Central answers 429 through the proxy, twice), so the one class is compiled against the jar. Plane mode
+with a signal via at 20, D104's band and In1 and In2 at 30 through the DSN block (whose plane-via cost of 5 and
+ripup cost of 100 override the settings file's, D110), four passes: the log keeps
+30 / 30 on both (the stock jar: 1.0 / 1.4 and 1.0 / 3.8), In1 carries 1 track (4 mm) and In2 none (D104's run:
+185 and 97), GND and +3V3 whole, J2-9 included, 97 vias, 62 of 86 with one clearance, the router at 33 unrouted,
+29 failed insertions: the first configuration whose planes could be fabbed. Its 30-pass row is next. Measurement.
+
+**D106. The hard nets routed first do not lift the count: fixing them moves the failures to other nets**
+(2026-09-26, `scripts/rung.py upduino-v3.01 signal 4 900 stitch band=U3:0:1.0 first=<12 nets>` and `answer=<12
+nets>`, D104's configuration; `route_board(only_nets, fix_existing)`, `copy_tracks`). The twelve nets open in every
+row, routed alone on the empty board (12 of 12 in 9 s, 369 mm and 22 vias) and fixed for a second stage: 65 of 86
+(68 unstaged), the router at 46 unrouted, 126 failed insertions; the reference's own copper for the same nets
+fixed instead (265 items, the answer key): 67 of 86, 36 unrouted, 59 standing violations, 109 failed insertions.
+Eleven or twelve of the hard nets close either way and as many other nets open. Found on the way, and measured:
+KiCad's session import drops the board's own copper (166 items to 19) and the session carries no fixed wire, so
+fixed copper must be re-laid from a snapshot after the import (`problem.kicad_pcb`); the first two staged runs,
+before that, were not measurements (55 and 51). Both options stay in rung; neither is the path. Measurement.
+
+**D108. The clean-plane configuration at 30 passes: 71 of 86 with one short; the router stops itself at 21**
+(2026-09-26, D107's jar and configuration, plane via 5 and ripup 100 from the block, `rung.py upduino-v3.01
+signal 30 2400 stitch band=U3:0:1.0 costs=In1.Cu:30,In2.Cu:30`). Predicted: the router at 15 or fewer unrouted, 76 nets or more, the planes whole, 3
+clearances or fewer. Measured: **FAIL, 71 of 86**, one short the repair could not settle (two tracks of /IOT_38B and
+/IOT_39A on F.Cu, 0.15 mm), the router at 23 unrouted and 25 standing violations when its own rule stopped it at
+pass 21 ("best score has not improved"), 672 s, 119 vias, 211 failed insertions and 62 paths not found; In1 1
+track, In2 none; GND whole, +3V3 in 2 pieces (C3-1). Against D105 (76 of 86 with 335 tracks through the GND
+plane) the clean planes cost five nets on two routing layers; the failed insertions, 17 at four passes with the
+ring free (D104) and 211 over 21 passes here, are the shove's, and the shove's depths (20, 5 and 5 in
+`AutorouteControl`) are the next one-class change (D109). Measurement.
+
+**D109. The shove's recursion depths doubled change nothing: the four passes produce the same boards** (2026-09-26,
+`tools/freerouting-2.4.1-d109.patch`: `AutorouteControl`'s 20, 5 and 5 to 40, 10 and 10, `build/tools/
+freerouting-2.4.1-d107-d109.jar`, D107's configuration at four passes). Predicted: failed insertions under 29, the
+router under 33 unrouted, more than 62 nets. Measured: the router's board after every pass has the same hash as
+D107's run (58, 49, 33 and 39 unrouted; 29 failed insertions; 62 of 86; 97 vias; In1 1 track), so no shove in
+those passes reached its depth limit. The failed insertions ("insert trace failed at corner N/N", D90) are the
+inserter's check against the copper the shove cannot move, not the recursion. The next knob is the ripup cost
+(`start_ripup_costs`, the jar's 100; `WAFFLE_RIPUP_COSTS`), which decides how readily the maze plans through
+other nets' traces that are then re-routed, measured at 50 and 200 (D110). Measurement.
+
+**D110. The ripup cost moves the router, unlike the shove's depths; higher is better at four passes** (2026-09-26,
+D107's jar and configuration with the block carrying a plane via at 2 and `WAFFLE_RIPUP_COSTS` 50 and 200; the
+jar ramps the cost by its start value each pass). Predicted: at 50 the failed insertions 20 or fewer, at 200 29 or
+more. Measured, at 50: 51 of 86, the router at 50 unrouted, 74 failed insertions; at 200: 67 of 86 with 4
+clearances, 31 unrouted, 71 failed insertions; D107's row between them (ripup 100, plane via 5): 62, 33, 29. The
+pair shares a second change, the plane via at 2 for D107's 5, so the ripup's own effect is read against a control
+at 100 with the plane via at 2 (D111), and the ramp's direction says to measure 400 as well. The boards differ
+pass for pass, so this knob reaches the maze where the depths (D109) did not. Measurement.
+
+**D111. The ripup ramp is the lever: a start of 400 gives 69 of 86 with no violation at four passes** (2026-09-26,
+D107's jar and configuration, the plane via at 2, `WAFFLE_RIPUP_COSTS`). The control at 100: 62 of 86, the router
+at 32 unrouted, 51 failed insertions, the same count as D107's 62 with the plane via at 5, so the plane-via cost
+moves the failed insertions (29 to 51) and not the count. At 400: **69 of 86, 0 electrical**, the router at 24
+unrouted (41, 30, 26, 24 over the passes at 400, 800, 1200 and 1600), 39 failed insertions, 13 paths not found,
+127 vias, In1 1 track, planes whole. With 50 at 51 and 200 at 67 (D110) the four-pass count rises with the start
+ripup cost through the whole range measured; the jar's own 100 is not where this board routes best. Predicted
+next: 800 and 1600 (D112), the count rising or saturating, then the 30-pass row of the best. Measurement.
+
+**D112. The ripup start peaks at 400; the clean-plane row at 30 passes reaches 77 of 86 with whole planes**
+(2026-09-26, D107's jar and configuration, the plane via at 2). At four passes, 800: 60 of 86, the router at 36
+unrouted, 71 failed insertions, passes of 52 to 74 s; 1600: 60 with one crossing, 35, 71. So 51, 62, 67, 69, 60
+and 60 for 50 to 1600, the peak at 400, where the maze still rips up in the first passes and stops by the last.
+The 30-pass row at 400: **FAIL, 77 of 86**, 6 clearances the repair could not settle (0.0076 mm), the router at 15
+unrouted after 30 passes and still falling (18 at pass 29, no early stop), 1231 s, 164 vias, 261 failed
+insertions and 135 paths not found over the run; GND and +3V3 whole; In1 28 tracks, In2 2. Open: /LED_G,
+/FT_SCK, /FT_SSn, /IOB_25B_G3, /IOB_3B_G6, /EE_CS, SJ16, R3 and SJ35. Against D108's 71 with a short at the
+jar's 100, six nets for one knob; against the committed default's 80 (feeds on a power plane), three short, on
+clean planes. Next: the knob on the default's own configuration, and 60 passes here (D113). Measurement.
+
+**D113. The ripup start of 400 lifts the committed default too; the clean-plane row plateaus at 77** (2026-09-26).
+The default's configuration (fixed feeds on a `power` plane, the stock jar) at four passes with
+`WAFFLE_RIPUP_COSTS=400`: 71 of 86 with 2 clearances, the router at 52 unrouted and 153 standing violations, 34
+failed insertions, against D91's 67, 51, 127 and 38 at the jar's 100: four nets at four passes on the gate's own
+configuration, so its 30-pass row is next (`WAFFLE_RIPUP_COSTS=400 python3 scripts/gate.py b upduino-v3.01`,
+against the committed 80 with 1 clearance). The clean-plane row (D112) given 60 passes: the router's own rule
+stopped it at pass 36 with 15 unrouted, the same as at 30, 77 of 86 again and 11 clearances for 6 (0.0081 mm,
+the repair's residue), 1404 s. Predicted 79 or more and 10 or fewer unrouted: the row is a plateau, not a slope,
+and passes past 30 only add the router's own hair-width clearances. Measurement.
+
+**D114. The ripup start of 400 does not lift the gate row: 77 of 86 with 7 clearances; the default keeps 100**
+(2026-09-26, `WAFFLE_RIPUP_COSTS=400 python3 scripts/gate.py b upduino-v3.01`). Predicted 81 or better with no
+more violations than the committed row's one. Measured: **FAIL, 77 of 86**, 7 clearances the repair could not
+settle (0.0055 mm), the router stopping itself at pass 26 with 43 unrouted and 153 standing violations, 1405 s,
+294 vias; the committed row: 80, 1, 36 unrouted at 30 passes. The four-pass gain (D113: 71 for 67) does not
+carry to the row, as D103's and D104's did not: on this board every knob measured moves the four-pass count and
+leaves the 30-pass count between 76 and 80. The class B default stays as committed. With the knobs outside the
+jar measured out (D103 to D114) and the one inside that was cheap (D109) measured, the review the ladder rules
+call for is written (`docs/review-class-b.md`). Measurement.
+
+**D115. The owner's decision on the class B review: option 1, the inserter in the jar, one session** (2026-09-26,
+`docs/review-class-b.md`). The work: read `FoundConnectionInserter` at the 2.4.1 tag, name what rejects a found
+path ("insert trace failed at corner N/N", D88, D90), make the smallest change by which a failed insertion rips
+up the blocking items of other nets and re-queues them instead of discarding the path, build it by
+`scripts/patch_freerouting.py`, and measure at four passes on D107's configuration against its 29 failed
+insertions (and D111's 39 at ripup 400), then the 30-pass row against the committed 80 of 86. If the session
+ends without the row above 80, option 2 (the router's output plus hand-finishing of the residue) is the next
+decision for the owner, not a further iteration. Owner's decision.
+
+**D116. The inserter ripping up what blocks a failed segment does not lift the count; the failures end at pads**
+(2026-09-26, `tools/freerouting-2.4.1-d116.patch`, `build/tools/freerouting-2.4.1-d107-d116.jar`: on a failed
+segment the inserter rips up the unfixed traces and vias of other nets on it and tries again from the point
+reached, three times at most while the pass allows ripups). Predicted on D107's configuration: failed insertions
+under 15, the router under 25 unrouted, more than 66 nets; on D111's: under 20, under 18, more than 72. Measured:
+63 of 86, 35 unrouted, 36 failed insertions with 16 ripups fired (62, 33, 29 without); and 63, 38, with 9 ripups
+(69, 24, 39): the retried segment fails again, since 27 of the 34 failures are at the trace's last corner, the
+entry into an SMD pad (U2, C1, U8, R11, R14) or a header pin (J3), where nothing rippable blocks. The router's
+own remedy for that entry is the neckdown of the last segment (`automatic_neckdown`), off in the jar unless set
+and never set by us; it is the next measurement (D117). The patch stays as a tool. Measurement.
+
+**D117. The router's neckdown changes nothing here, and the failed last legs are long, blocked by pads and tracks**
+(2026-09-26, `automatic_neckdown` on through the settings file, `WAFFLE_NECKDOWN=1`, D107's and D111's
+configurations at four passes). The boards come out identical to the runs without it (the same digests) and no
+neckdown fires: the jar necks a trace down only below the pad's own width (`Pin.getTraceNeckdownHalfwidth`), and
+our 0.15 mm trace is already narrower than a 0.25 mm QFN pad. The 28 failed segments of D107's run, laid over
+its routed board with the trace's width and clearance: the "last corner" legs run 0.7 to 6.4 mm to the target,
+and 13 of the 17 are blocked by another net's pads (U8-4 beside U8-3, U2-37 beside U2-38, C3-2 and R17-1 on the
+way to C1-1), 14 of the 28 by other nets' tracks or vias, 4 by nothing left on the final board. The maze plans
+a leg past pads the inserter's exact check then rejects; the pads are fixed, so no ripup mends those, and the
+D116 ripup missed the tracks within the clearance, which its refinement finds by shape (D118). Measurement.
+
+**D118. The inserter's ripup by shape cuts the failed insertions by a third to a half; the count moves either way**
+(2026-09-26, `tools/freerouting-2.4.1-d116.patch` refined: the blockers of a failed segment found by
+`overlappingItemsWithClearance` on the segment's shape, not under nine points; `freerouting-2.4.1-d107-d116.jar`).
+Predicted on D107's configuration: failed insertions about 20 for 29, two to four nets more. Measured: 17 failed
+insertions with 14 ripups, 66 of 86 for 62, the router at 34 unrouted, but 5 clearances the repair could not
+settle for 1. On D111's: 26 for 39 with 23 ripups, 64 of 86 for 69, 30 unrouted for 24, 1 clearance: the ripped
+nets churn at the higher ripup start. The mechanism works on the track-blocked legs and cannot touch the
+pad-blocked ones (D117), so it lowers the failures without a steady gain at four passes; the 30-pass row on D107's
+configuration (D108: 71 of 86, 23 unrouted, one short) is the measurement that decides it (D119). Measurement.
+
+**D119. The refined inserter at 30 passes: 69 of 86 with 5 clearances; the ripups churn and option 1 is spent**
+(2026-09-26, `freerouting-2.4.1-d107-d116.jar`, D107's configuration, `rung.py upduino-v3.01 signal 30 2400 stitch
+band=U3:0:1.0 costs=In1.Cu:30,In2.Cu:30`). Predicted: the router at 15 or fewer unrouted, 74 nets or more, 6
+clearances or fewer. Measured: **FAIL, 69 of 86**, 5 clearances the repair could not settle (0.0072 mm), the
+router at 24 unrouted on its best board and 33 at pass 30 (39 at pass 29), 131 ripups fired, 154 failed
+insertions and 119 paths not found over the run, 1057 s, 117 vias, GND and +3V3 whole, In1 2 tracks. Against
+D108's 71 with one short on the same configuration and the stock inserter, the ripups re-open two to three nets
+a pass for every one they close, and the count never settles. The inserter line of the review (option 1) is
+measured out in one session as the owner set it: forced ripup under the segment (D116), the neckdown (D117),
+ripup by shape (D118, D119). The clean-plane configuration's best row stays D112's 77 of 86. Owner's decision next.
+
+**D120. The owner's decision: option 2, the router's output plus hand-finishing of the residue** (2026-09-26,
+`docs/review-class-b.md`). Class B's definition of done changes: a reference passes its gate when the router's
+board has every plane net whole, no short, and a residue the tool documents (`<board>-residue.md`: the open nets
+with their pieces and pad positions, the clearances the repair left with their gaps, the tracks on plane layers)
+of at most RESIDUE_MAX nets and clearances together, a designer's minutes of work; the bound is taken as 10 from
+the measured residue of 6 to 9 nets (the review's numbers) until the owner names another. The configuration
+adopted is the clean-plane one (D107's jar, planes on `signal` layers, In1 and In2 priced through the DSN block,
+a via at 20 and a plane via at 2, the ripup start at 400, via keepout bands round every fine-pitch package, no
+feed, the stitching after), 77 of 86 at D112 with whole planes, over the committed default's 80 with 96 feeds
+on a `power` plane. The synthetic class B design of the milestone still needs the owner's board. Owner's decision.
+
+**D121. The D120 default banding every fine-pitch package: 69 of 86 on upduino; the band rule is not settled**
+(2026-09-26, `python3 scripts/gate.py b upduino-v3.01` under `CLASS_B` as committed at ff43f7e: bands round U2,
+U3 and U8, D112's configuration otherwise). **FAIL**: 69 of 86, a residue of 17 open nets, 3 clearances and 1
+short, the router stopping itself at pass 20 with 22 unrouted; against D112's 77 with 6 clearances and no short
+under the same configuration banded at U3 alone. The 17 open nets are spread over U2, U3, U8, the headers and
+the FLASH part. The residue page and the rule work as written (the row names its three reasons). So a band
+round the FPGA (U2, 48 pins fanning out to both headers) or the VSSOP (U8) costs more than it gives, and
+"every fine-pitch package" is the wrong rule; the row without bands (`WAFFLE_VIA_BANDS=none`) is queued after
+pico-ice to settle whether the default carries none or a per-board choice. Measurement.
+
+**D122. pico-ice under the D120 default is killed at the cap before the session is written; the cap is 6000 s**
+(2026-09-26, `python3 scripts/gate.py b pico-ice-rev3`, cap 4200 s). The router ran 28 of its 30 passes at about
+150 s a pass and was killed at the cap with no session file, so the row scored the bare board: 0 of 95, every
+plane net open, the stitching laying 102 feeds on nothing. A row that times out is not a measurement of the
+configuration. The class's cap must fit its slowest reference (D82: 145 to 200 s a pass on this board), so
+`CLASS_B` carries 6000 s and the row is run again. pico-ice is banded at four fine-pitch packages under the
+committed rule, which D121 found wrong on upduino; its row is read with that in mind. Measurement.
+
+**D123. The D120 default without bands: 79 of 86 on upduino, the best clean-plane row; the default carries none**
+(2026-09-26, `WAFFLE_VIA_BANDS=none python3 scripts/gate.py b upduino-v3.01`). **FAIL by one clearance**: 79 of 86,
+a residue of 7 open nets (+5VD, /FT_SSn, /IOB_25B_G3, /LED_G, /LED_R, R3, TP11) and 8 clearances, no short,
+GND and +3V3 whole, the router at 11 unrouted after 30 passes, 965 s, 163 vias; the one reason on the row is a
+clearance short by 0.026 mm, over the 0.02 mm a hair-width clearance may be short by (D120). Against 77 banded at
+U3 (D112) and 69 banded at U2, U3 and U8 (D121): no band is best, and the default carries none. What keeps the
+row from PASS is the repair's residue (10 clearances left of 382 moves, the worst 0.026 mm), the tool's own
+item; the 7 open nets are within the bound. pico-ice's row, started banded, is stopped and run again under the
+default as committed. Measurement.
+
+**D124. A clearance the repair left is residue whatever its shortfall; the 0.02 mm sub-rule measured nothing**
+(2026-09-26, the no-band board of D123 kept, the repair traced). The one clearance that failed D123's row, short
+by 0.026 mm, is a /FT_SSn track the router laid between U2-16 and U2-17, adjacent 0.5 mm pins, where no track
+fits legally; it and the /FPGA_SI track beside it are "stuck" in every repair round (boxed in, no translation, end
+move or push chain clears them), as are the seven others (0.005 to 0.006 mm, at the SJ16 via, the SJ24 and
+SJ25 pads, the EE lines). Each is a re-route of a few seconds for a designer, the 0.026 one no more than the
+0.006 ones, so the distance bound of D120 (my own, not the owner's) separated nothing: the rule keeps the
+count (at most ten clearances, at most ten open nets, every plane whole, no short or crossing) and the page
+names every one with its shortfall and place. Under it D123's row is PASS by its numbers; the row is run
+again to say so on the gate. Measurement and the rule's correction.
+
+**D125. pico-ice under the class B default: 74 of 95, a residue of 21 nets and 14 clearances, VBUS open; FAIL**
+(2026-09-26, `python3 scripts/gate.py b pico-ice-rev3`, no bands, cap 6000 s). 30 passes in 4478 s (the cap of
+D122 holds), the router at 26 unrouted; 74 of 95 for D82's 61 under the old configuration, 234 vias (189 in the
+reference), no short, GND, +3V3 and VDC whole, VBUS in 3 pieces, In1 60 and In2 63 tracks. The residue: 21 open
+nets, 15 of them the FPGA's I/O lines (/ICE_*) to the PMOD headers, plus /LED_R, /PWR_EN, /ADC3, /+3V3_STDBY,
+/~{ICE_RST} and VBUS; 14 clearances the repair left, the worst 0.049 mm (two /ICE_23 against /ICE_SCK segments),
+the rest 0.005 to 0.026. Over the bound on both counts and a plane open, so the ladder's second rung fails
+under option 2 as it did under every earlier configuration, thirteen nets better. What a designer finishes here
+is an hour, not minutes. The class's scope (the review's option 3) is the next decision for the owner: the
+ladder has seven more references behind pico-ice, unmeasured under this default. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

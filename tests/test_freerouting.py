@@ -880,3 +880,153 @@ def test_fine_pitch_stubs_leave_every_pad_straight_and_stop_at_pads_and_the_edge
     by_net2 = {s.net: s for s in stubs2}
     assert set(by_net2) == {"N0", "N1", "N3", "N4"}  # pad 3 (N2): the resistor pad 0.15 mm ahead leaves under the minimum
     assert all(abs(s.length_mm() - (0.45 + 0.5)) < 1e-6 for s in stubs2)  # half the pad plus the exit
+
+
+def test_exit_stubs_are_laid_for_the_named_pads_only_and_name_them():
+    """D86: the closure loop reserves the exits of the pads a run left open, not every pad of the package."""
+    b = _qfn_board(edge_y=-8.0)
+    from tests.test_planes import RULES
+    stubs = fr.exit_stubs(b, RULES, {"U1-1", "U1-4", "U1-3", "R1-2"})
+    assert sorted(s.pad for s in stubs) == ["U1-1", "U1-4"]  # pad 3's exit is blocked; R1 is not fine pitch
+    assert {s.net for s in stubs} == {"N0", "N3"}
+    assert all(len(s.points) == 2 for s in stubs)
+
+
+def test_untouched_pads_are_the_pads_no_copper_reaches():
+    b = _qfn_board(edge_y=-8.0)
+    nets = b.GetNetsByName()
+    track = pcbnew.PCB_TRACK(b)  # N0 from the QFN pad to the resistor pad: both reached
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(-1.0), kb.nm(-2.5)))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(10.0), kb.nm(5.0)))
+    track.SetWidth(kb.nm(0.15))
+    track.SetLayer(pcbnew.F_Cu)
+    track.SetNet(nets["N0"])
+    b.Add(track)
+    assert fr.untouched_pads(b, {"N0", "N1"}) == {"U1-2", "R1-2"}
+
+
+def test_the_rounds_loop_stubs_the_open_pads_and_stops_when_no_stub_is_left_to_add(monkeypatch, tmp_path):
+    """D86: round one leaves every net open; round two runs with an exit stub out of each open fine-pitch pad
+    whose exit is free; the nets no stub can help stay open and end the loop with a round to spare."""
+    from tests.test_planes import RULES
+    problem = tmp_path / "problem.kicad_pcb"
+    kb.save_board(_qfn_board(edge_y=-8.0), problem)
+    seen = []
+
+    def stand_in(board, rules, work_dir, say=lambda _m: None, stub_pads=None, **kw):
+        """Connects every net whose QFN pad got a stub, by a track to its resistor pad; the rest stay open."""
+        seen.append(set(stub_pads or ()))
+        (work_dir / "board.ses").write_text("stand-in")
+        nets = board.GetNetsByName()
+        for fp in board.GetFootprints():
+            if fp.GetReference() != "U1":
+                continue
+            for pad in fp.Pads():
+                if f"U1-{pad.GetNumber()}" in (stub_pads or ()):
+                    k = int(pad.GetNumber()) - 1
+                    track = pcbnew.PCB_TRACK(board)
+                    track.SetStart(pad.GetPosition())
+                    track.SetEnd(pcbnew.VECTOR2I(kb.nm(10 + k), kb.nm(5)))
+                    track.SetWidth(kb.nm(0.15))
+                    track.SetLayer(pcbnew.F_Cu)
+                    track.SetNet(nets[f"N{k}"])
+                    board.Add(track)
+        return fr.FreeroutingResult(dsn=work_dir / "board.dsn", ses=work_dir / "board.ses", log=work_dir / "run.log",
+                                    rules=None, renamed=0, exits=tuple(sorted(stub_pads or ())))
+
+    monkeypatch.setattr(fr, "route_board", stand_in)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    def finish(board, work_dir):
+        out = work_dir / "routed.kicad_pcb"
+        kb.save_board(board, out)
+        return out
+
+    out, results = fr.route_rounds(problem, RULES, work, finish, rounds=4)
+    assert seen == [set(), {"U1-1", "U1-2", "U1-4", "U1-5"}]  # pad 3's exit is blocked by the resistor pad
+    assert len(results) == 2 and results[-1].exits == ("U1-1", "U1-2", "U1-4", "U1-5")
+    assert set(kb.open_nets(kb.load_board(out))) == {"N2", "N5"}  # no stub can help these: the loop ended
+    assert (work / "round-1" / "board.ses").read_text() == "stand-in" and (work / "board.ses").is_file()
+    assert not (work / "round-2").exists()  # the last round's files stay in the work directory
+
+
+def test_fine_pitch_plane_pins_are_left_to_their_layers_pour():
+    """D95: a 0.5 mm package's pin on a net that pours on the pin's layer gets no feed and leaves the router's
+    network; a pin of a net with no pour there, a passive's pad and a thermal pad do not."""
+    b = _qfn_board(edge_y=-8.0)
+    pours = [{"net": "N0", "layer": "F.Cu"}, {"net": "N1", "layer": "B.Cu"}]
+    left = fr.pour_pins(b, pours, {"N0", "N1", "N5"})
+    assert left == {"U1-1"}  # N0 pours on F.Cu where pad 1 sits; N1 pours on B.Cu only; N5 is the thermal pad
+    assert fr.pour_pins(b, [], {"N0"}) == set()
+    from tests.test_planes import RULES
+    from waffle_eda.route import planes
+    feeds = planes.plane_feeds(b, RULES, {"N0", "N1"}, skip=left)
+    assert "U1-1" not in {f.pad for f in feeds} and "U1-2" in {f.pad for f in feeds}
+
+
+def test_the_autoroute_settings_block_follows_the_boundary_in_the_jars_own_form():
+    """D96: trace costs raised on a plane's layer through the DSN, every layer active, the block after the boundary
+    and before the first plane or keepout, which the loader reads only in that order."""
+    dsn = ('(pcb "x"\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (layer In1.Cu\n      (type signal)\n    )\n'
+           '    (boundary\n      (path pcb 0  0 0  1000 0)\n    )\n    (plane GND (polygon In1.Cu 0  0 0  1000 0))\n'
+           '    (keepout "" (circle F.Cu 100 0 0))\n    (via "Via[0-1]_600:300_um")\n    (rule\n      (width 150)\n'
+           '      (clearance 140.7)\n    )\n  )\n  (placement\n  )\n)')
+    out = fr.autoroute_settings_dsn(dsn, ["F.Cu", "In1.Cu"], {"In1.Cu": 30.0}, via_costs=1)
+    assert out.index("(boundary") < out.index("(autoroute_settings") < out.index("(plane GND") < out.index("(keepout")
+    assert out.index("      (path pcb 0  0 0  1000 0)\n    )\n    (autoroute_settings\n") > 0
+    assert "(layer_rule In1.Cu\n        (active on)\n        (preferred_direction horizontal)\n        (preferred_direction_trace_costs 30.0)\n        (against_preferred_direction_trace_costs 30.0)" in out
+    assert "(layer_rule F.Cu\n        (active on)\n        (preferred_direction vertical)\n        (preferred_direction_trace_costs 1.0)\n        (against_preferred_direction_trace_costs 2.5)" in out
+    assert "(via_costs 1)" in out and "(plane_via_costs 5)" in out
+
+
+def test_a_via_band_is_four_via_keepout_strips_round_the_pads_on_every_signal_layer():
+    """D104: the router's vias kept out of a strip round a package's pads, tracks still allowed there."""
+    dsn = '(pcb "x"\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (boundary\n      (path pcb 0  0 0  1000 0)\n    )\n    (via "V")\n    (rule\n      (width 150)\n    )\n  )\n)'
+    out = fr.via_band_dsn(dsn, [(10.0, 20.0, 18.0, 28.0, 0.0, 1.0)])  # pads from x 10 to 18, y 20 to 28 mm
+    strips = [line for line in out.splitlines() if "(via_keepout" in line]
+    assert len(strips) == 4 and all("(rect signal " in s for s in strips) and out.index("(via_keepout") < out.index('(via "V")')
+    assert '(via_keepout "" (rect signal 9000.00 -20000.00 19000.00 -19000.00))' in out  # the top strip, y negated
+    assert '(via_keepout "" (rect signal 18000.00 -29000.00 19000.00 -19000.00))' in out  # the right strip
+
+
+def test_copy_tracks_carries_one_nets_tracks_and_vias_to_another_board_by_name():
+    """D106: a second stage starts from the first's routes, copied onto the bare board by net name."""
+    src, dst = pcbnew.BOARD(), pcbnew.BOARD()
+    for b in (src, dst):
+        b.GetDesignSettings().SetCopperLayerCount(4)
+        for name in ("A", "B"):
+            b.Add(pcbnew.NETINFO_ITEM(b, name))
+    for name, y in (("A", 1.0), ("B", 2.0)):
+        t = pcbnew.PCB_TRACK(src)
+        t.SetStart(pcbnew.VECTOR2I(0, kb.nm(y))); t.SetEnd(pcbnew.VECTOR2I(kb.nm(3.0), kb.nm(y)))
+        t.SetWidth(kb.nm(0.2)); t.SetLayer(pcbnew.B_Cu); t.SetNet(src.FindNet(name)); src.Add(t)
+    v = pcbnew.PCB_VIA(src)
+    v.SetPosition(pcbnew.VECTOR2I(kb.nm(3.0), kb.nm(1.0))); v.SetWidth(kb.nm(0.6)); v.SetDrill(kb.nm(0.3))
+    v.SetNet(src.FindNet("A")); src.Add(v)
+    assert fr.copy_tracks(src, dst, {"A"}) == 2
+    got = [(x.GetClass(), x.GetNetname(), dst.GetLayerName(x.GetLayer())) for x in dst.GetTracks()]
+    assert sorted(got) == [("PCB_TRACK", "A", "B.Cu"), ("PCB_VIA", "A", "F.Cu")]
+    assert [x for x in dst.GetTracks() if x.GetClass() == "PCB_VIA"][0].GetDrillValue() == kb.nm(0.3)
+
+
+def test_only_nets_leaves_the_named_nets_in_the_network_and_drops_the_rest():
+    dsn = '(pcb "x"\n  (network\n    (net "A"\n      (pins U1-1 U1-2)\n    )\n    (net "B"\n      (pins U1-3 U1-4)\n    )\n  )\n)'
+    every = {"A", "B"}
+    out = fr.drop_net_pins(dsn, every - {"A"})
+    assert "(net \"A\"\n      (pins U1-1 U1-2)" in out and "(net \"B\"\n      (pins )" in out
+
+
+def test_fine_pitch_bands_name_the_half_millimetre_packages_and_no_other():
+    """D120: every package at 0.5 mm pitch or finer gets a via keepout band, a 1.27 mm one does not."""
+    b = pcbnew.BOARD()
+    b.GetDesignSettings().SetCopperLayerCount(2)
+    net = pcbnew.NETINFO_ITEM(b, "N"); b.Add(net)
+    for ref, pitch in (("U1", 0.5), ("U2", 1.27), ("J1", 0.4)):
+        fp = pcbnew.FOOTPRINT(b); fp.SetReference(ref); b.Add(fp)
+        for k in range(4):
+            pad = pcbnew.PAD(fp); pad.SetNumber(str(k + 1)); pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+            pad.SetShape(pcbnew.PAD_SHAPE_RECT); pad.SetSize(pcbnew.VECTOR2I(kb.nm(0.2), kb.nm(0.6)))
+            pad.SetPosition(pcbnew.VECTOR2I(kb.nm(k * pitch), 0)); pad.SetLayerSet(pcbnew.PAD.SMDMask()); pad.SetNet(net)
+            fp.Add(pad)
+    assert sorted(r for r, _i, _o in fr.fine_pitch_bands(b)) == ["J1", "U1"]

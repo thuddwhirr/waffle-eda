@@ -155,17 +155,18 @@ def test_pieces_follow_kicads_connectivity_and_stitch_feeds_every_piece_but_the_
     assert len(planes.pieces(loaded, "GND")) == 2
 
 
-def test_another_nets_pour_keeps_a_stitch_via_out(tmp_path):
-    """On a routed board the fills are copper too: a via may not land in another net's pour."""
+def test_another_nets_pour_does_not_move_a_stitch_via(tmp_path):
+    """D98: a filled zone of another net is not an obstacle to a feed. The via keeps the site the bare board
+    gives it, and the refill clears the pour around the via: the fill keeps the via's ring plus the clearance."""
     from waffle_eda.kicad import refill
     b = _board()
     nets = b.GetNetsByName()
-    zone = pcbnew.ZONE(b)  # a SIG pour over the free space left of C1, where its feed would go
+    zone = pcbnew.ZONE(b)  # a SIG pour over the free space left of C1, covering the site of its feed
     zone.SetNet(nets["SIG"])
     zone.SetLayer(pcbnew.F_Cu)
     outline = zone.Outline()
     outline.NewOutline()
-    for x, y in ((6.0, -2.0), (8.2, -2.0), (8.2, 2.0), (6.0, 2.0)):
+    for x, y in ((6.0, -2.0), (9.4, -2.0), (9.4, 2.0), (6.0, 2.0)):
         outline.Append(kb.nm(x), kb.nm(y))
     zone.SetLocalClearance(kb.nm(0.2))
     zone.SetMinThickness(kb.nm(0.2))
@@ -174,9 +175,133 @@ def test_another_nets_pour_keeps_a_stitch_via_out(tmp_path):
     kb.save_board(b, path)
     assert refill.refill_file(path)["unfilled_zones"] == []
     loaded = kb.load_board(path)
-    assert any(z.GetFilledPolysList(pcbnew.F_Cu).OutlineCount() for z in loaded.Zones())
-    feeds = {f.pad: f for f in planes.plane_feeds(loaded, RULES, {"GND"}, copper=True)}
-    assert "C1-1" in feeds and feeds["C1-1"].via != (8.69, 0.0)  # the pour took the spot the bare board gave
     fill = [z for z in loaded.Zones() if z.GetNetname() == "SIG"][0].GetFilledPolysList(pcbnew.F_Cu)
+    assert fill.OutlineCount() and fill.Collide(pcbnew.VECTOR2I(kb.nm(8.69), kb.nm(0.0)), kb.nm(0.01))  # the pour covers the site
+    feeds = {f.pad: f for f in planes.plane_feeds(loaded, RULES, {"GND"}, copper=True)}
+    assert "C1-1" in feeds and feeds["C1-1"].via == (8.69, 0.0)  # the bare board's site, pour or no pour
+    planes.lay_feeds(loaded, [feeds["C1-1"]])
+    kb.save_board(loaded, path)
+    assert refill.refill_file(path)["unfilled_zones"] == []
+    refilled = kb.load_board(path)
+    fill = [z for z in refilled.Zones() if z.GetNetname() == "SIG"][0].GetFilledPolysList(pcbnew.F_Cu)
     via = feeds["C1-1"].via
-    assert not fill.Collide(pcbnew.VECTOR2I(kb.nm(via[0]), kb.nm(via[1])), kb.nm(0.3 + 0.2))
+    assert not fill.Collide(pcbnew.VECTOR2I(kb.nm(via[0]), kb.nm(via[1])), kb.nm(0.3 + 0.2 - 0.001))  # ring 0.3 + clearance 0.2
+
+
+def test_feeds_keep_clear_of_copper_already_on_the_board_when_asked():
+    """A fixed exit stub of another net laid before the feeds (the closure loop's, D86): placed against the pads
+    alone a feed lands on it; placed with the board's copper as obstacles it slides clear."""
+    b = _board()
+    nets = b.GetNetsByName()
+    blind = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}["C1-1"].via
+    track = pcbnew.PCB_TRACK(b)  # a signal track right across C1's exit, where the blind feed's via sits
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(blind[0]), kb.nm(-2.0)))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(blind[0]), kb.nm(2.0)))
+    track.SetWidth(kb.nm(0.2))
+    track.SetLayer(pcbnew.F_Cu)
+    track.SetNet(nets["SIG"])
+    b.Add(track)
+    assert {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}["C1-1"].via == blind  # pads only: unmoved
+    seeing = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, copper=True)}["C1-1"]
+    assert seeing.via != blind
+    assert abs(seeing.via[0] - blind[0]) >= 0.3 + 0.1 + 0.2 - 1e-9  # the via's radius, the track's half width, the rule
+
+
+
+def test_feeds_can_be_laid_as_vias_alone_and_the_stubs_come_later():
+    """D91's "vias" form: the router sees the feed vias only; the stubs are laid after the import."""
+    b = _board()
+    feeds = planes.plane_feeds(b, RULES, {"GND"})
+    assert len(planes.lay_feeds(b, feeds, in_pad=False, stubs=False)) == 1  # C1-1's via, nothing else
+    assert len(kb.track_segments(b)) == 0 and len(kb.vias(b)) == 1
+    assert len(planes.lay_feeds(b, feeds)) == 2  # the stub, and the via in the thermal pad
+    assert len(kb.track_segments(b)) == 1 and len(kb.vias(b)) == 2
+
+
+def test_a_pad_with_no_straight_site_gets_an_l_shaped_feed():
+    """D91: the straight exits of a pad blocked within the reach on all four sides, a free corner beyond one
+    of them; the feed turns once, its two legs are laid and re-laid idempotently."""
+    b = _board()
+    nets = b.GetNetsByName()
+    c4 = pcbnew.FOOTPRINT(b)  # a GND pad boxed in by signal pads on its four axes, with room diagonally
+    c4.SetReference("C4")
+    c4.SetPosition(pcbnew.VECTOR2I(kb.nm(5), kb.nm(3.5)))
+    b.Add(c4)
+    _pad(c4, "1", nets["GND"], 5, 3.5, 0.6, 0.6)
+    for k, (dx, dy) in enumerate(((1.3, 0), (-1.3, 0), (0, 1.3), (0, -1.3))):  # a straight site needs 1.52 mm
+        _pad(c4, str(k + 2), nets["SIG"], 5 + dx, 3.5 + dy, 0.4, 0.4)
+    feeds = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    f = feeds["C4-1"]
+    assert f.corner is not None and not f.in_pad
+    assert f.length_mm <= 2 * planes.REACH_MM
+    # the via clears the four signal pads and its own pad by the rules
+    rects = [r for r in planes._rects(b) if r.name.startswith("C4-")]
+    for r in rects:
+        need = 0.3 + (0.2 if r.name != "C4-1" else 0.2)
+        assert r.distance(f.via) >= need - 1e-9, (r.name, r.distance(f.via))
+    made = planes.lay_feeds(b, [f])
+    assert len(made) == 3  # two legs and the via
+    assert planes.lay_feeds(b, [f]) == []
+
+
+def test_the_pads_no_feed_reaches_get_their_nearest_feeds_as_targets():
+    """D91's reserved form: a pad with no site keeps its pin for the router and its net's nearest feeds go to
+    the router as fixed vias, within a reach, two at most."""
+    b = _board()
+    feeds = planes.plane_feeds(b, RULES, {"GND"})
+    assert planes.unfed_pads(b, feeds, {"GND"}) == {"C2-1"}  # hemmed in (the first test)
+    targets = planes.targets_for_unfed(b, feeds, {"GND"}, reach_mm=20.0)
+    assert [t.pad for t in targets] == ["C1-1"]  # the thermal pad's via is in a pad, not a target
+    assert planes.targets_for_unfed(b, feeds, {"GND"}, reach_mm=5.0) == []
+    assert planes.plane_pads(b, {"GND"}) >= {"U1-9", "C1-1", "C2-1"}
+    nets = b.GetNetsByName()
+    j1 = pcbnew.FOOTPRINT(b)  # a plated GND pin: unfed only when GND's pour comes after the import
+    j1.SetReference("J1")
+    j1.SetPosition(pcbnew.VECTOR2I(kb.nm(15), kb.nm(4)))
+    b.Add(j1)
+    _pad(j1, "1", nets["GND"], 15, 4, 1.7, 1.7, smd=False, drill=1.0)
+    assert "J1-1" not in planes.unfed_pads(b, feeds, {"GND"})
+    assert "J1-1" in planes.unfed_pads(b, feeds, {"GND"}, pth_nets={"GND"})
+
+
+def test_via_in_pad_feeds_any_pad_the_via_fits_and_never_a_qfn_pin():
+    """D93: with the fab's filled-and-capped option the via goes in a capacitor's pad; without, beside it as
+    the references do; a 0.25 mm QFN pin never holds a 0.6 mm via either way."""
+    b = _board()
+    nets = b.GetNetsByName()
+    u1 = [fp for fp in b.GetFootprints() if fp.GetReference() == "U1"][0]
+    _pad(u1, "5", nets["GND"], 2.0, -2.5, 0.3, 0.9)  # a GND pin in the QFN's row
+    c5 = pcbnew.FOOTPRINT(b)  # an 0603 capacitor: 0.9 x 0.95 pads, room for the 0.6 via and its margin
+    c5.SetReference("C5")
+    c5.SetPosition(pcbnew.VECTOR2I(kb.nm(15), kb.nm(-3)))
+    b.Add(c5)
+    _pad(c5, "1", nets["GND"], 14.2, -3, 0.9, 0.95)
+    _pad(c5, "2", nets["SIG"], 15.8, -3, 0.9, 0.95)
+    beside = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    inside = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, via_in_pad=True)}
+    assert not beside["C5-1"].in_pad and inside["C5-1"].in_pad  # the 0603 pad holds the via with the option only
+    assert not beside["C1-1"].in_pad and not inside["C1-1"].in_pad  # a 0.6 mm wide pad cannot hold a 0.6 mm via
+    assert beside["U1-9"].in_pad and inside["U1-9"].in_pad  # the thermal pad either way
+    assert not inside["U1-5"].in_pad  # the pin is 0.3 wide: the via goes beside it either way
+    assert "C2-1" not in inside  # hemmed in beside and too small for the via: unfed either way
+
+
+def test_a_thermal_pads_via_moves_inside_the_pad_off_another_nets_track_beneath():
+    """D99: on a routed board a track of another net under the thermal pad on another layer meets a through via at
+    the centre, so the via takes the nearest clear point inside the pad's copper, ring and margin inside, no stub."""
+    b = _board()
+    nets = b.GetNetsByName()
+    track = pcbnew.PCB_TRACK(b)  # a SIG track on B.Cu straight under the centre of U1-9
+    track.SetStart(pcbnew.VECTOR2I(kb.nm(-2.0), 0))
+    track.SetEnd(pcbnew.VECTOR2I(kb.nm(2.0), 0))
+    track.SetWidth(kb.nm(0.2))
+    track.SetLayer(pcbnew.B_Cu)
+    track.SetNet(nets["SIG"])
+    b.Add(track)
+    bare = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"})}
+    assert bare["U1-9"].via == (0.0, 0.0)  # the bare board's search: the centre
+    feeds = {f.pad: f for f in planes.plane_feeds(b, RULES, {"GND"}, copper=True)}
+    feed = feeds["U1-9"]
+    assert feed.in_pad and feed.legs == [] and feed.via != (0.0, 0.0)
+    assert abs(feed.via[1]) >= 0.1 + 0.3 + 0.2 and abs(feed.via[0]) <= 1.5 - 0.35 and abs(feed.via[1]) <= 1.5 - 0.35
+    assert len(planes.lay_feeds(b, [feed])) == 1  # one via, no stub
