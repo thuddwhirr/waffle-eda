@@ -8,7 +8,7 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D127, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D128, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-27, `claude/project-progress-assessment-2hob4y`).**
 
@@ -16,7 +16,7 @@ decision log, D87 to D127, and `docs/review-class-b.md`; do not re-derive it.
 |---|---|---|
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
 | `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | the router handed the rule itself (D127): a residue of 3 open nets (/CRESET_N, /LED_B, R3-1 to U3-5), no clearance, no short, both planes whole, the repair moving nothing |
-| `python3 scripts/gate.py b pico-ice-rev3` | FAIL, 74 of 95 | measured under D57's slack (D125: 21 nets, 14 clearances, VBUS open); not yet run at the rule itself |
+| `python3 scripts/gate.py b pico-ice-rev3` | FAIL, 70 of 95 | at the rule itself (D128): a residue of 25 open nets, 15 of them the FPGA's lines, no clearance, no short, every plane whole; under the slack it was 74 with 21 open, 14 clearances and VBUS open (D125) |
 | the other seven class B references | not run | never measured under the class B default |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
@@ -30,14 +30,15 @@ checkout with the upstream `v2.4.1` tag), In1 and In2 priced at 30 through the D
 via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D123), no feed, the stitching after, 6000 s,
 and no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm.
 
-**What this session found (D126, D127).** Freerouting's insertion asks 16 units (1.6 um) more clearance than the
-rule its maze plans with, so a path the maze pulls tight against a pad, a track or the edge is found and rejected
-on every pass: 231 failed insertions in upduino's 30-pass row. D57's slack worked round that margin on class A's
-SOT-563 and, on class B, only laid copper inside the rule for the repair to take back; handed the rule itself, the
-stock jar routes upduino to 83 of 86 with no clearance. The margin is fixed on the owner's fork (branch
+**What this session found (D126 to D128).** Freerouting's insertion asks 16 units (1.6 um) more clearance than the
+rule its maze plans with, so a path the maze pulls tight against a pad, a track or the edge is found and rejected on
+every pass: 231 failed insertions in upduino's 30-pass row. D57's slack worked round that margin on class A's
+SOT-563; on class B it laid copper inside the rule for the repair to take back. Handed the rule itself, the stock
+jar routes upduino to 83 of 86 with no clearance (79 with 8 under the slack) and pico-ice to 70 of 95 with no
+clearance (74 with 14 and VBUS open under the slack). The margin is fixed on the owner's fork (branch
 `waffle/maze-inserter-clearance`, two fixture tests that fail on 2.4.1; `tools/freerouting-2.4.1-d126.patch`): it
-cuts the failed insertions by four fifths but routes upduino to 75 at the rule and 80 with the slack, so it is a
-measured jar, not the default.
+cuts upduino's failed insertions by four fifths but routes it to 75 at the rule and 80 with the slack, so it is a
+measured jar, not the default; on pico-ice it is not yet measured.
 
 **Decisions the owner owes before class B moves again.**
 1. The class's scope (the review's option 3): the boards that route to a residue of minutes (upduino's kind),
@@ -47,8 +48,9 @@ measured jar, not the default.
 3. The synthetic class B design of the milestone: it needs the owner's board.
 
 **Then, in this order.**
-1. `python3 scripts/gate.py b pico-ice-rev3` under the default at the rule itself (about 75 minutes): D125's 14
-   clearances are the kind the slack lays, and its open nets were measured under the slack only.
+1. pico-ice's failed insertions classified (D128: 702 over the run, five times upduino's): a four-pass diagnostic
+   row at the rule (`patch_freerouting.py <fork checkout> d107 diag`, then `d107 d126 diag`), and if the margin
+   alone blocks most of them, as on D57's board, D126's jar at the rule for one 30-pass row.
 2. The seven unmeasured references under the default, one row each (20 to 75 minutes a board under the cap),
    each row's residue page read before its verdict is believed; a board that times out is not a measurement
    (D122).
@@ -94,7 +96,7 @@ python3 scripts/patch_freerouting.py <fork checkout> d107   # the class B jar, f
                                         # fork with the upstream v2.4.1 tag fetched (D107)
 python3 scripts/gate.py b upduino-v3.01   # class B's first rung under option 2 (D120, D124), at the rule itself
                                         # (D127): PASS, 83 of 86 with a residue of 3 nets, about 15 minutes;
-                                        # pico-ice-rev3 about 75 minutes, last measured under the slack (D125)
+                                        # pico-ice-rev3 FAIL, 70 of 95, about 80 minutes (D128)
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays

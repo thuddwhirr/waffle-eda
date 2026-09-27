@@ -864,6 +864,13 @@ gave nothing back on this board, so `CLASS_B` carries `"slack_mm": 0.0` on the s
 SOT-563 needs it on the stock jar, D57). D126 cuts failed insertions by four fifths and loses nets here; it stays a
 measured jar. Measurement.
 
+**D128. pico-ice at the rule itself: 70 of 95, 25 open nets, no clearance, every plane whole; FAIL** (2026-09-27,
+`python3 scripts/gate.py b pico-ice-rev3` under D127's default, 30 passes in 4642 s, dsn 3ff0b16e74, final
+215bdf8267). Against D125's row under the slack (74 of 95, 21 open, 14 clearances, VBUS open): four nets fewer, no
+clearance and the repair moving nothing, the planes whole, so the row fails on open nets alone. 15 of the 25 are the
+FPGA's lines (/ICE_*) and 3 the PMOD's, as in D125. The router: 32 unrouted on its best board, 702 failed insertions
+and 122 paths not found over the run, against upduino's 148 and 98 at the rule (D127). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
