@@ -1,7 +1,9 @@
 """Build a patched Freerouting jar: the 2.4.1 jar with the classes named by the patches in `tools/` recompiled from
 the 2.4.1 source. D107 (`freerouting-2.4.1-d107.patch`): per-layer trace costs handed over in the DSN's
 autoroute_settings block survive `RouterSettings.applyBoardSpecificOptimizations`. D109 (`-d109.patch`): the
-shove's recursion depths in `AutorouteControl` doubled.
+shove's recursion depths in `AutorouteControl` doubled. D126 (`-d126.patch`): the insertion checks ask no
+clearance margin beyond the rule the maze planned with (`ClearanceMatrix.clearance_safety_margin` 0 for 16); the
+same change and its two fixture tests are on the owner's fork, branch `waffle/maze-inserter-clearance`.
 
     python3 scripts/patch_freerouting.py [<freerouting checkout with the v2.4.1 tag>] [d107 d109 ...]
 

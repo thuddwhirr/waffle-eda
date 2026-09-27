@@ -194,8 +194,12 @@ CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui":
            # nets and as many hair-width clearances, every plane net whole and no short. The cap fits the
            # class's slowest reference: pico-ice takes about 150 s a pass and was killed at pass 28 of 30 under
            # 4200 s with no session written (D122)
+           # no clearance slack: the rule itself, 83 of 86 with no clearance on upduino for 79 with 8 under D57's
+           # slack, which worked round the jar's insertion margin (D126) and here only laid copper inside the rule;
+           # D126's jar ("d107-d126") measured 80 with the slack and 75 without (D127)
            "plane_type": "signal", "jar": "d107", "layer_costs": 30.0, "via_costs": 20, "plane_via_costs": 2,
-           "ripup_costs": 400, "via_bands": None, "residue_max": 10}  # no band: 79 of 86 for 77 banded at U3 (D123)
+           "ripup_costs": 400, "via_bands": None, "residue_max": 10,  # no band: 79 of 86 for 77 banded at U3 (D123)
+           "slack_mm": 0.0}
 
 
 def configuration(defaults: dict) -> dict:
@@ -219,6 +223,8 @@ def configuration(defaults: dict) -> dict:
         out["pour_pins"] = os.environ["WAFFLE_POUR_PINS"] == "1"
     if os.environ.get("WAFFLE_RESIDUE_MAX") and "residue_max" in out:
         out["residue_max"] = int(os.environ["WAFFLE_RESIDUE_MAX"])
+    if os.environ.get("WAFFLE_CLEARANCE_SLACK_MM") and "slack_mm" in out:  # the wrapper reads it too (D127)
+        out["slack_mm"] = float(os.environ["WAFFLE_CLEARANCE_SLACK_MM"])
     if os.environ.get("WAFFLE_VIA_BANDS") and "via_bands" in out:  # "none" or "fine-pitch" (D120, D121)
         out["via_bands"] = None if os.environ["WAFFLE_VIA_BANDS"] == "none" else os.environ["WAFFLE_VIA_BANDS"]
     return out
@@ -272,7 +278,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             if "plane_type" in cfg:  # the class B configuration of D120
                 extra = {"plane_type": cfg["plane_type"], "jar_name": cfg["jar"], "via_costs": cfg["via_costs"],
                          "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
-                         "via_bands": cfg["via_bands"],
+                         "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"],
                          "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,

@@ -1,0 +1,20 @@
+--- a/src/main/java/app/freerouting/rules/ClearanceMatrix.java
++++ b/src/main/java/app/freerouting/rules/ClearanceMatrix.java
+@@ -14,7 +14,16 @@ import java.util.Locale;
+  */
+ public class ClearanceMatrix implements Serializable {
+ 
+-  public static final int clearance_safety_margin = 16;
++  /**
++   * What {@link #getValue} adds to a clearance when asked for a safety margin. Zero: the maze
++   * search plans every connection against the matrix's own values (the compensated autoroute trees,
++   * with {@code AutorouteEngine.TRACE_WIDTH_TOLERANCE} to spare), so an insertion check that adds
++   * more rejects the connections the search found wherever they meet the rule with less than the
++   * margin to spare, the last leg into a fine-pitch pad or a channel between fixed pads, and the
++   * connection stays open on every pass (fixtures/clearance-margin-*.dsn).
++   */
++  public static final int clearance_safety_margin = 0;
++
+   private final LayerStructure layerStructure;
+   private final int[] maxValueOnLayer; //  maximum clearance value for each layer
+ 

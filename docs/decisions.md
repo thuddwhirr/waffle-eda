@@ -843,6 +843,27 @@ under option 2 as it did under every earlier configuration, thirteen nets better
 is an hour, not minutes. The class's scope (the review's option 3) is the next decision for the owner: the
 ladder has seven more references behind pico-ice, unmeasured under this default. Measurement.
 
+**D126. The jar's insertion asked 16 units more clearance than its maze plans with; the fork drops the margin**
+(2026-09-27, the owner's fork, branch `waffle/maze-inserter-clearance` at 5d300f7a5;
+`tools/freerouting-2.4.1-d126.patch`). Every insertion, shove and spring-over check adds
+`ClearanceMatrix.clearance_safety_margin`, 16 units (1.6 um, upstream 4cfd20d59, still on master), which the
+compensated trees the maze searches never add, and the maze lays a path 2 units off the rule. Logged by
+`tools/freerouting-2.4.1-diag.patch` (`scripts/insertion_blockers.py`): D57's board at the rule itself, 214 of 233
+failed insertions blocked by the margin alone, 8 units inside it, 0 of 6 nets; upduino at four passes 34 of 48, 2
+units inside it at the median. With the margin 0: D57's board 6 of 6 in 2 passes at the rule, no failed insertion,
+the repair moving nothing; upduino 11, none the margin's, 8 across another net's track the maze meant to shove. The
+fork's two fixtures fail on 2.4.1 and pass with it; its 499 tests pass. Measurement.
+
+**D127. Upduino at the rule itself: 83 of 86 with no clearance; class B drops D57's slack** (2026-09-27, `python3
+scripts/gate.py b upduino-v3.01`, 30 passes). The default under D57's slack: 79 of 86, 7 open nets, 8 clearances,
+231 failed insertions (D123's row, reproduced). The stock jar handed the rule itself: **83 of 86**, 3 open
+(/CRESET_N, /LED_B, R3-1 to U3-5), no clearance, the repair moving nothing, 148 failed insertions. D126's jar with
+the slack: 80, 6 open, 17 clearances of 0.007 mm the repair left, 44; at the rule: 75, 11 open, none, 35, the router
+stopping itself at pass 19. The slack laid copper up to 0.0072 mm inside the rule wherever the router was tight and
+gave nothing back on this board, so `CLASS_B` carries `"slack_mm": 0.0` on the stock jar; class A keeps it (its
+SOT-563 needs it on the stock jar, D57). D126 cuts failed insertions by four fifths and loses nets here; it stays a
+measured jar. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

@@ -107,6 +107,15 @@ def test_the_measured_rules_become_the_routers_rules():
     assert d.pin_clearance_mm is None
 
 
+def test_a_run_can_hand_the_router_the_rule_itself(monkeypatch):
+    # D126: the slack worked round the jar's own insertion margin; a run on the patched jar asks for none
+    monkeypatch.delenv("WAFFLE_CLEARANCE_SLACK_MM", raising=False)
+    assert fr.dsn_rules(_rules(), None, slack_mm=0.0).clearance_mm == 0.1972
+    assert fr.dsn_rules(_rules(), None).clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)
+    monkeypatch.setenv("WAFFLE_CLEARANCE_SLACK_MM", "0.01")  # a measurement overrides the run's own slack
+    assert fr.dsn_rules(_rules(), None, slack_mm=0.0).clearance_mm == round(0.1972 - 0.01, 4)
+
+
 def test_a_hole_rule_the_ordinary_clearance_already_meets_needs_no_typed_rule():
     d = fr.dsn_rules(_rules(hole_to_copper_mm=0.3), pin_ring_mm=0.3)
     assert d.via_clearance_mm is None and d.pin_clearance_mm is None

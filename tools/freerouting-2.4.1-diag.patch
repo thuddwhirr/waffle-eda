@@ -1,0 +1,121 @@
+--- a/src/main/java/app/freerouting/autoroute/path/FoundConnectionInserter.java
++++ b/src/main/java/app/freerouting/autoroute/path/FoundConnectionInserter.java
+@@ -399,6 +399,9 @@ public final class FoundConnectionInserter {
+               "Net #" + ctrl.netNumber,
+               new Point[0]);
+         }
++        if (System.getenv("WAFFLE_DIAG_INSERT") != null) {
++          diagnoseFailedInsertion(trace, fromCornerNo, i, okPoint);
++        }
+         result = false;
+         break;
+       }
+@@ -784,6 +787,108 @@ public final class FoundConnectionInserter {
+     return true;
+   }
+ 
++  /**
++   * Diagnostic (WAFFLE_DIAG_INSERT): for a failed insertion, every item of another net within the
++   * clearance of the attempted segments, with the depth of its violation measured without the
++   * clearance matrix's safety margin, in board units.
++   */
++  private void diagnoseFailedInsertion(
++      FoundConnectionLocatorAnyAngle.ResultItem trace, int fromCornerNo, int toCornerNo,
++      Point okPoint) {
++    int layer = trace.layer;
++    int halfWidth = ctrl.traceHalfWidth[layer];
++    int[] netNumbers = new int[] {ctrl.netNumber};
++    app.freerouting.board.searchtree.ShapeSearchTree tree =
++        board.searchTreeManager.getDefaultTree();
++    StringBuilder sb = new StringBuilder();
++    sb.append("WAFFLE_DIAG insert_fail net=").append(ctrl.netNumber);
++    sb.append(" layer=").append(layer);
++    sb.append(" corner=").append(toCornerNo).append('/').append(trace.corners.length - 1);
++    sb.append(" from=").append(fromCornerNo);
++    sb.append(" half=").append(halfWidth);
++    sb.append(" ok=").append(formatPoint(okPoint));
++    Point last = trace.corners[trace.corners.length - 1];
++    String target = "none";
++    ItemSelectionFilter pinFilter =
++        new ItemSelectionFilter(ItemSelectionFilter.SelectableChoices.PINS);
++    for (Item it : board.pickItems(last, layer, pinFilter)) {
++      if (it instanceof Pin p && p.containsNet(ctrl.netNumber)) {
++        target = p.componentName() + "-" + p.name();
++      }
++    }
++    sb.append(" target=").append(target);
++    sb.append(" end=").append(formatPoint(last));
++    Set<Item> seen = new LinkedHashSet<>();
++    for (int k = fromCornerNo; k < toCornerNo; k++) {
++      Point a = trace.corners[k];
++      Point b = trace.corners[k + 1];
++      if (a.equals(b)) {
++        continue;
++      }
++      Polyline seg = new Polyline(a, b);
++      if (seg.lines.length < 3) {
++        continue;
++      }
++      app.freerouting.geometry.planar.TileShape segShape = seg.offsetShape(halfWidth, 0);
++      app.freerouting.geometry.planar.TileShape segLine = seg.offsetShape(1, 0);
++      FloatPoint fa = a.toFloat();
++      FloatPoint fb = b.toFloat();
++      for (Item it :
++          tree.overlappingItemsWithClearance(
++              segShape, layer, netNumbers, ctrl.traceClearanceClassIndex)) {
++        if (!seen.add(it)) {
++          continue;
++        }
++        double best = Double.MAX_VALUE;
++        for (int s = 0; s < it.treeShapeCount(tree); s++) {
++          if (it.shapeLayer(s) != layer) {
++            continue;
++          }
++          app.freerouting.geometry.planar.TileShape shape = it.getTreeShape(tree, s);
++          if (shape == null) {
++            continue;
++          }
++          double d;
++          if (shape.intersects(segLine)) {
++            d = 0;
++          } else {
++            d = Math.min(shape.distance(fa), shape.distance(fb));
++            for (FloatPoint v : shape.cornerApproxArr()) {
++              d = Math.min(d, segmentDistance(v, fa, fb));
++            }
++          }
++          best = Math.min(best, d);
++        }
++        int c0 =
++            board.rules.clearanceMatrix.getValue(
++                ctrl.traceClearanceClassIndex, it.clearanceClassIndex(), layer, false);
++        long deficit = Math.round(halfWidth + c0 - best);
++        String name = it.getClass().getSimpleName();
++        if (it instanceof Pin p) {
++          name = "Pin:" + p.componentName() + "-" + p.name();
++        }
++        sb.append(" | ").append(name);
++        sb.append(" seg=").append(k);
++        sb.append(" fixed=").append(it.getFixedState());
++        sb.append(" net=").append(it.netCount() > 0 ? it.getNetNumber(0) : -1);
++        sb.append(" cl=").append(c0);
++        sb.append(" deficit=").append(deficit);
++      }
++    }
++    FRLogger.info(sb.toString());
++  }
++
++  private static double segmentDistance(FloatPoint p, FloatPoint a, FloatPoint b) {
++    double dx = b.x - a.x;
++    double dy = b.y - a.y;
++    double len2 = dx * dx + dy * dy;
++    double t = len2 <= 0 ? 0 : ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
++    t = Math.max(0, Math.min(1, t));
++    double qx = a.x + t * dx - p.x;
++    double qy = a.y + t * dy - p.y;
++    return Math.sqrt(qx * qx + qy * qy);
++  }
++
+   private boolean shouldTraceFanoutDiagnostics() {
+     return ctrl.isFanout
+         && ctrl.fanoutStartPinName != null

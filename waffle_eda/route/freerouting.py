@@ -79,11 +79,20 @@ JAVA_MAJOR = 25  # the minimum Java that runs the jar: 2.4.1 is compiled for cla
 # only and everything else exactly, which connected 4 of 6 there and is kept for measurement.
 CLEARANCE_SLACK_MM = 0.0072
 # `WAFFLE_CLEARANCE_SLACK_MM` overrides it for a measurement (D90: the router's failed insertions stop against
-# its own copper, not at a hair of clearance, so a larger slack was measured not to help on upduino).
+# its own copper, not at a hair of clearance, so a larger slack was measured not to help on upduino). What the
+# check rejected was the jar's own 16-unit margin over the rule its maze plans with (D126). On class B the slack
+# only laid copper inside the rule for the repair to take back, and a run there hands the router the rule itself
+# (`route_board(slack_mm=0)`: upduino 83 of 86 with no clearance for 79 with 8, D127); class A keeps the slack,
+# which its SOT-563 needs on the stock jar.
 
 
-def clearance_slack_mm() -> float:
-    return float(os.environ.get("WAFFLE_CLEARANCE_SLACK_MM", CLEARANCE_SLACK_MM))
+def clearance_slack_mm(default: float | None = None) -> float:
+    """The slack a run hands the router: the environment's for a measurement, else the run's own ``default``,
+    else :data:`CLEARANCE_SLACK_MM`."""
+    env = os.environ.get("WAFFLE_CLEARANCE_SLACK_MM")
+    if env is not None:
+        return float(env)
+    return CLEARANCE_SLACK_MM if default is None else default
 # The router writes via drills in whole micrometres (248.9 became 248), so the drill is rounded up to one.
 DRILL_STEP_MM = 0.001
 # The default via cost of 50 stops the router placing any via of its own on a 15 x 25 mm board (D57: 0 vias,
@@ -224,11 +233,12 @@ class DsnRules:
     smd_clearance_mm: float | None = None  # typed clearance wire to SMD pad: the rule less the slack
 
 
-def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True) -> DsnRules:
-    """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for."""
+def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True, slack_mm: float | None = None) -> DsnRules:
+    """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for. ``slack_mm`` is
+    the run's clearance slack (:func:`clearance_slack_mm`)."""
     import math
     exact = round(rules.clearance_mm, 4)
-    slack = round(rules.clearance_mm - clearance_slack_mm(), 4)
+    slack = round(rules.clearance_mm - clearance_slack_mm(slack_mm), 4)
     clearance = slack if slack_all else exact
     drill = math.ceil(rules.min_drill_mm / DRILL_STEP_MM - 1e-9) * DRILL_STEP_MM
     via_ring = (rules.min_via_mm - drill) / 2
@@ -2018,11 +2028,12 @@ def parse_log(text: str) -> dict:
     return facts
 
 
-def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRules, dict[str, str]]:
+def export_dsn(board, rules, out: Path, slack_all: bool = True,
+               slack_mm: float | None = None) -> tuple[DsnRules, dict[str, str]]:
     """Write the DSN for ``board`` under ``rules``; the board is left with its references renamed (see
     :func:`unique_references`) so that the session can be imported into it, and the mapping is returned."""
     _via_ring, pin_ring = smallest_ring_mm(board)
-    d = dsn_rules(rules, pin_ring, slack_all=slack_all)
+    d = dsn_rules(rules, pin_ring, slack_all=slack_all, slack_mm=slack_mm)
     apply_rules(board, d)
     renamed = unique_references(board)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -2081,7 +2092,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 via_bands=None, only_nets: set[str] | None = None,
                 fix_existing: bool = False, plane_type: str = "power", jar_name: str | None = None,
                 via_costs: int | None = None, plane_via_costs: int | None = None,
-                ripup_costs: int | None = None) -> FreeroutingResult:
+                ripup_costs: int | None = None, slack_mm: float | None = None) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2123,7 +2134,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     ``plane_via_costs`` and ``ripup_costs`` are the router's, the environment's `WAFFLE_*` on top.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
-    `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
+    `power`, which closes the plane to vias in 2.4.1 ("layers are disabled"). ``slack_mm`` is the clearance
+    slack handed to the router (:data:`CLEARANCE_SLACK_MM` when None); a jar with D126's patch needs none."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -2164,7 +2176,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             feedlib.lay_feeds(board, targets, in_pad=False, stubs=False)  # (their stubs come after the import)
         say(f"plane feeds {'found' if feeds_mode == 'reserved' else 'laid'}: {len(laid_feeds)}, "
             f"{sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
-    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
+    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all, slack_mm=slack_mm)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
     if only_nets is not None:
@@ -2261,7 +2273,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
     jar = jar_path(jar_name) if jar_name else None
     if jar is not None and not jar.is_file():
-        raise RuntimeError(f"patched jar {jar} not found: python3 scripts/patch_freerouting.py {jar_name}")
+        raise RuntimeError(f"patched jar {jar} not found: python3 scripts/patch_freerouting.py <fork checkout> "
+                           f"{jar_name.replace('-', ' ')}")
     code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm, jar=jar,
                               via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs,
                               fanout=fanout, gui=gui)
