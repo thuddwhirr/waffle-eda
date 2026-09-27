@@ -44,7 +44,7 @@ def export(key: str, klass: str) -> Path:
     if "plane_type" in cfg:
         extra = {"plane_type": cfg["plane_type"], "via_costs": cfg["via_costs"],
                  "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
-                 "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"],
+                 "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"], "ring_per_axis": cfg["ring_per_axis"],
                  "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
     work = refs.repo_root() / "build" / "fr" / f"{key}-translation"
 

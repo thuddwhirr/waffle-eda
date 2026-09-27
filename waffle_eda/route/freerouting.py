@@ -199,13 +199,15 @@ def restore_references(board, renamed: dict[str, str]) -> None:
             fp.SetReference(original)
 
 
-def smallest_ring_mm(board) -> tuple[float | None, float | None]:
+def smallest_ring_mm(board, per_axis: bool = True) -> tuple[float | None, float | None]:
     """The smallest copper ring around a hole, for vias and for plated pads: (via ring, pin ring), in mm.
 
     A via's ring comes from the rules, so the via ring here is only what the board already carries (None on a
     stripped board). A pad whose copper is smaller than its hole (a castellation) has a ring of zero. A slot's
     ring is taken along each of its axes: the pad's short side less the slot's long side counted a USB shield's
-    0.3 mm ring as none and fenced every plated pin at the whole hole rule (D130).
+    0.3 mm ring as none and fenced every plated pin at the whole hole rule (D130). ``per_axis`` False keeps
+    that measure, which class A's gate passed under and does not pass without (esp32c3 32 of 34, rp2040 three
+    clearances, D130).
     """
     via_rings = [(kb.via_diameter_mm(v) - kb.via_drill_mm(v)) / 2 for v in kb.vias(board)]
     pin_rings = []
@@ -217,7 +219,8 @@ def smallest_ring_mm(board) -> tuple[float | None, float | None]:
             best = None
             for layer in pad.GetLayerSet().CuStack():
                 size = pad.GetSize(layer)
-                ring = min(size.x - drill.x, size.y - drill.y) / 2
+                ring = (min(size.x - drill.x, size.y - drill.y) if per_axis
+                        else min(size.x, size.y) - max(drill.x, drill.y)) / 2
                 best = ring if best is None else min(best, ring)
             pin_rings.append(max(0.0, kb.mm(best if best is not None else 0)))
     return (min(via_rings) if via_rings else None, min(pin_rings) if pin_rings else None)
@@ -2030,11 +2033,11 @@ def parse_log(text: str) -> dict:
     return facts
 
 
-def export_dsn(board, rules, out: Path, slack_all: bool = True,
-               slack_mm: float | None = None) -> tuple[DsnRules, dict[str, str]]:
+def export_dsn(board, rules, out: Path, slack_all: bool = True, slack_mm: float | None = None,
+               ring_per_axis: bool = False) -> tuple[DsnRules, dict[str, str]]:
     """Write the DSN for ``board`` under ``rules``; the board is left with its references renamed (see
     :func:`unique_references`) so that the session can be imported into it, and the mapping is returned."""
-    _via_ring, pin_ring = smallest_ring_mm(board)
+    _via_ring, pin_ring = smallest_ring_mm(board, per_axis=ring_per_axis)
     d = dsn_rules(rules, pin_ring, slack_all=slack_all, slack_mm=slack_mm)
     apply_rules(board, d)
     renamed = unique_references(board)
@@ -2094,7 +2097,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 via_bands=None, only_nets: set[str] | None = None,
                 fix_existing: bool = False, plane_type: str = "power", jar_name: str | None = None,
                 via_costs: int | None = None, plane_via_costs: int | None = None,
-                ripup_costs: int | None = None, slack_mm: float | None = None) -> FreeroutingResult:
+                ripup_costs: int | None = None, slack_mm: float | None = None,
+                ring_per_axis: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2137,7 +2141,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
     `power`, which closes the plane to vias in 2.4.1 ("layers are disabled"). ``slack_mm`` is the clearance
-    slack handed to the router (:data:`CLEARANCE_SLACK_MM` when None); a jar with D126's patch needs none."""
+    slack handed to the router (:data:`CLEARANCE_SLACK_MM` when None); a jar with D126's patch needs none.
+    ``ring_per_axis`` measures a slotted pad's ring along its axes (:func:`smallest_ring_mm`, D130)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -2178,7 +2183,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             feedlib.lay_feeds(board, targets, in_pad=False, stubs=False)  # (their stubs come after the import)
         say(f"plane feeds {'found' if feeds_mode == 'reserved' else 'laid'}: {len(laid_feeds)}, "
             f"{sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
-    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all, slack_mm=slack_mm)
+    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all, slack_mm=slack_mm, ring_per_axis=ring_per_axis)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
     if only_nets is not None:

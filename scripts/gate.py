@@ -199,7 +199,9 @@ CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui":
            # D126's jar ("d107-d126") measured 80 with the slack and 75 without (D127)
            "plane_type": "signal", "jar": "d107", "layer_costs": 30.0, "via_costs": 20, "plane_via_costs": 2,
            "ripup_costs": 400, "via_bands": None, "residue_max": 10,  # no band: 79 of 86 for 77 banded at U3 (D123)
-           "slack_mm": 0.0}
+           "slack_mm": 0.0,
+           # a slotted pad's ring along its axes (D130): the whole hole rule no longer fences every plated pin
+           "ring_per_axis": True}
 
 
 def configuration(defaults: dict) -> dict:
@@ -279,6 +281,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                 extra = {"plane_type": cfg["plane_type"], "jar_name": cfg["jar"], "via_costs": cfg["via_costs"],
                          "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
                          "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"],
+                         "ring_per_axis": cfg["ring_per_axis"],
                          "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
