@@ -880,6 +880,16 @@ pass 10 (39 unrouted) and the router's own rule stopped it at pass 20, as it sto
 while the stock jar ran all 30 passes on both boards. Four fifths fewer failed insertions closed no net on either
 board; D126 stays a measured jar. Measurement.
 
+**D130. The router's version of a reference against its own copper: the slot ring fenced every plated pin**
+(2026-09-27, `scripts/translation_check.py`, `tools/DsnDrc.java`). `smallest_ring_mm` took a slotted pad's short
+side less its slot's long side, counted a USB shield's 0.3 mm ring as none, and handed the whole hole rule (0.2526
+mm) over as the clearance from every plated pin's edge: the reference's own copper broke it 90 times on upduino and
+127 on pico-ice, 15 and 6 with the ring along the slot's axes. Also: the jar joins a track to a pin only at its
+exact centre and KiCad writes wires in whole micrometres, so copper laid before the router (D85 to D106) was open to
+it; the reference puts vias on SMD pads the DSN forbids. Per axis, class A fails (esp32c3 32 of 34, rp2040 three
+clearances) and keeps the old measure, its DSNs byte-identical; class B takes it: upduino 80 of 86 for 83, pico-ice
+76 of 95 for 70 (19 open, no clearance, VBUS open, final 362315cce9). Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

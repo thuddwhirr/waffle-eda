@@ -8,15 +8,15 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D129, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D130, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-27, `claude/project-progress-assessment-2hob4y`).**
 
 | Gate | Result | What it means |
 |---|---|---|
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
-| `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | the router handed the rule itself (D127): a residue of 3 open nets (/CRESET_N, /LED_B, R3-1 to U3-5), no clearance, no short, both planes whole, the repair moving nothing |
-| `python3 scripts/gate.py b pico-ice-rev3` | FAIL, 70 of 95 | at the rule itself (D128): a residue of 25 open nets, 15 of them the FPGA's lines, no clearance, no short, every plane whole; under the slack it was 74 with 21 open, 14 clearances and VBUS open (D125) |
+| `python3 scripts/gate.py b upduino-v3.01` | PASS, 80 of 86 | the rule itself and the slot ring per axis (D127, D130): a residue of 6 open nets, no clearance, no short, both planes whole; 83 with the old ring measure |
+| `python3 scripts/gate.py b pico-ice-rev3` | FAIL, 76 of 95 | the best pico-ice row (D130): 19 open nets, 12 of them the FPGA's lines, no clearance, VBUS open; 70 with the old ring measure (D128), 74 with 14 clearances under the slack (D125) |
 | the other seven class B references | not run | never measured under the class B default |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
@@ -28,18 +28,18 @@ number. The class B default (`scripts/gate.py`, `CLASS_B`) is the clean-plane co
 keeps the DSN's layer costs, D107; built by `python3 scripts/patch_freerouting.py <fork checkout> d107` from a
 checkout with the upstream `v2.4.1` tag), In1 and In2 priced at 30 through the DSN block, a via at 20 and a plane
 via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D123), no feed, the stitching after, 6000 s,
-and no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm.
+no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm, and a
+slotted pad's ring measured along its axes (D130; class A keeps the old measure, under which its gate passes).
 
-**What this session found (D126 to D129).** Freerouting's insertion asks 16 units (1.6 um) more clearance than the
-rule its maze plans with, so a path the maze pulls tight against a pad, a track or the edge is found and rejected on
-every pass: 231 failed insertions in upduino's 30-pass row. D57's slack worked round that margin on class A's
-SOT-563; on class B it laid copper inside the rule for the repair to take back. Handed the rule itself, the stock
-jar routes upduino to 83 of 86 with no clearance (79 with 8 under the slack) and pico-ice to 70 of 95 with no
-clearance (74 with 14 and VBUS open under the slack). The margin is fixed on the owner's fork (branch
-`waffle/maze-inserter-clearance`, two fixture tests that fail on 2.4.1; `tools/freerouting-2.4.1-d126.patch`), and
-the fix removes four fifths of the failed insertions on both boards but closes no net: at the rule it routes upduino
-to 75 and pico-ice to 62, the router stopping itself at pass 19 and 20 where the stock jar runs all 30 (D129). It is
-a measured jar, not the default.
+**What this session found (D126 to D130).** The router's insertion asked 16 units more clearance than its maze plans
+with (D126); fixed on the owner's fork with fixture tests, it removes four fifths of the failed insertions and
+closes no net (D127, D129), so it is a measured jar, not the default. D57's slack only laid copper inside the rule
+on class B (D127). `scripts/translation_check.py` then asked whether the router's version of a board admits the
+reference's own routing: it did not, because a slotted pad's ring was counted as none and every plated pin was
+fenced at the whole hole rule (D130); corrected, pico-ice reaches 76 of 95, its best. Two translation differences
+remain: the reference puts vias on SMD pads the DSN forbids (38 on upduino, 13 on pico-ice; D93 allows via-in-pad on
+class B), and the jar joins a track to a pin only at its exact centre, which leaves any copper laid before the
+router open to it (not a limit on routing from scratch).
 
 **Decisions the owner owes before class B moves again.**
 1. The class's scope (the review's option 3): the boards that route to a residue of minutes (upduino's kind),
@@ -49,22 +49,18 @@ a measured jar, not the default.
 3. The synthetic class B design of the milestone: it needs the owner's board.
 
 **Then, in this order.**
-1. The seven unmeasured references under the default, one row each (20 to 80 minutes a board under the cap),
-   each row's residue page read before its verdict is believed; a board that times out is not a measurement
-   (D122).
-2. Before another change inside the jar, what closes nets and what stops the router, read from the stock runs
-   at the rule: per pass, the unrouted count, the ripups and the nets that change state (the jar's log has
-   them), on upduino (83, all 30 passes) and pico-ice (70, all 30 passes) against D126's runs that stopped at
-   pass 19 and 20. A fix inside the jar is judged by the 30-pass row, never by its failed-insertion count
-   (D129). A failure class found this way goes into the fork first, as a fixture and a JUnit test that fails on
-   the current jar for that reason (check it with the diagnostic jar, `python3 scripts/patch_freerouting.py
-   <fork checkout> d107 diag` and `WAFFLE_DIAG_INSERT=1`: a fixture can fail for another reason, and the fork's
-   test harness runs the fanout stage unless told not to), then the fix until the fixture passes and
-   `./gradlew test` stays green, then one row. The measured lever from outside the jar stays a via keepout band
-   round one package (D104), never round every fine-pitch package (D121).
-3. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one, so a fresh container
-   does not need the fork checkout by hand; until then the gate names the script to run when the jar is
-   missing.
+1. The remaining translation difference that constrains routing: vias on SMD pads, which the reference uses and the
+DSN forbids (`attach off`); D93 allows via-in-pad on class B. A failing test first in `tests/test_freerouting.py`,
+the smallest change, class A's DSNs byte-identical, then `scripts/translation_check.py` on upduino and pico-ice and
+one row each.
+2. The owner's decision on Phase 2 of the plan of 2026-09-27: with the translation clean, what stays open is the
+router's search. The proposal is a negotiated-congestion closer (the PathFinder machinery of `route/escape.py` and
+`route/busplanner.py`, D15, D20) re-routing the region round the open nets of Freerouting's best board, fixture
+first, one session, a written review if it does not close pico-ice's FPGA-to-PMOD bundle.
+3. The seven unmeasured references under the default, one row each (20 to 80 minutes a board under the cap), for the
+class's scope, when the owner wants that decision's numbers.
+4. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one, so a fresh container does not
+need the fork checkout by hand; until then the gate names the script to run when the jar is missing.
 
 **Tools for a measurement**, all measured, none the default: `scripts/rung.py` (one row with every knob:
 `stitch`, `band=`, `costs=`, `first=`, `answer=`, the feed forms), the environment overrides `WAFFLE_VIA_COSTS`,
@@ -73,7 +69,8 @@ a measured jar, not the default.
 `tools/freerouting-2.4.1-d109.patch` (the shove's depths, no effect), `-d116.patch` (the inserter's ripup, fewer
 failed insertions and no gain at 30 passes), `-d126.patch` (no insertion margin, D126) and `-diag.patch` (every
 failed insertion's blockers in `freerouting.log`, which the jar appends across runs: delete it first),
-`scripts/insertion_stops.py`, `scripts/insertion_blockers.py`. The fork at <https://github.com/thuddwhirr/freerouting>
+`scripts/insertion_stops.py`, `scripts/insertion_blockers.py`, `scripts/translation_check.py` (the router's version of a
+reference against its own copper, D130). The fork at <https://github.com/thuddwhirr/freerouting>
 builds through the proxy with Gradle since 2026-09-27: `JAVA_HOME=<waffle-eda>/build/tools/jdk ./gradlew test` in
 the checkout runs its 499 tests in a few minutes, `--tests '*ClearanceMarginRoutingTest'` in seconds; its
 `AGENTS.md` asks for `spotlessCheck` and the Checkstyle tasks before a push, and `spotlessApply` on the changed
@@ -93,14 +90,14 @@ python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 min
 python3 scripts/patch_freerouting.py <fork checkout> d107   # the class B jar, from a checkout of the owner's
                                         # fork with the upstream v2.4.1 tag fetched (D107)
 python3 scripts/gate.py b upduino-v3.01   # class B's first rung under option 2 (D120, D124), at the rule itself
-                                        # (D127): PASS, 83 of 86 with a residue of 3 nets, about 15 minutes;
-                                        # pico-ice-rev3 FAIL, 70 of 95, about 80 minutes (D128)
+                                        # (D127, D130): PASS, 80 of 86 with a residue of 6 nets, about 18 minutes;
+                                        # pico-ice-rev3 FAIL, 76 of 95, about 85 minutes (D130)
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
-                                        # board, so `-m "not parked and not bench"` is the quick run, 145 tests in a minute
+                                        # board, so `-m "not parked and not bench"` is the quick run, 146 tests in a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
