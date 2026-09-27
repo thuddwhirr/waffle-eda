@@ -8,7 +8,7 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D128, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D129, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-27, `claude/project-progress-assessment-2hob4y`).**
 
@@ -30,15 +30,16 @@ checkout with the upstream `v2.4.1` tag), In1 and In2 priced at 30 through the D
 via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D123), no feed, the stitching after, 6000 s,
 and no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm.
 
-**What this session found (D126 to D128).** Freerouting's insertion asks 16 units (1.6 um) more clearance than the
+**What this session found (D126 to D129).** Freerouting's insertion asks 16 units (1.6 um) more clearance than the
 rule its maze plans with, so a path the maze pulls tight against a pad, a track or the edge is found and rejected on
 every pass: 231 failed insertions in upduino's 30-pass row. D57's slack worked round that margin on class A's
 SOT-563; on class B it laid copper inside the rule for the repair to take back. Handed the rule itself, the stock
 jar routes upduino to 83 of 86 with no clearance (79 with 8 under the slack) and pico-ice to 70 of 95 with no
 clearance (74 with 14 and VBUS open under the slack). The margin is fixed on the owner's fork (branch
-`waffle/maze-inserter-clearance`, two fixture tests that fail on 2.4.1; `tools/freerouting-2.4.1-d126.patch`): it
-cuts upduino's failed insertions by four fifths but routes it to 75 at the rule and 80 with the slack, so it is a
-measured jar, not the default; on pico-ice it is not yet measured.
+`waffle/maze-inserter-clearance`, two fixture tests that fail on 2.4.1; `tools/freerouting-2.4.1-d126.patch`), and
+the fix removes four fifths of the failed insertions on both boards but closes no net: at the rule it routes upduino
+to 75 and pico-ice to 62, the router stopping itself at pass 19 and 20 where the stock jar runs all 30 (D129). It is
+a measured jar, not the default.
 
 **Decisions the owner owes before class B moves again.**
 1. The class's scope (the review's option 3): the boards that route to a residue of minutes (upduino's kind),
@@ -48,23 +49,20 @@ measured jar, not the default; on pico-ice it is not yet measured.
 3. The synthetic class B design of the milestone: it needs the owner's board.
 
 **Then, in this order.**
-1. pico-ice's failed insertions classified (D128: 702 over the run, five times upduino's): a four-pass diagnostic
-   row at the rule (`patch_freerouting.py <fork checkout> d107 diag`, then `d107 d126 diag`), and if the margin
-   alone blocks most of them, as on D57's board, D126's jar at the rule for one 30-pass row.
-2. The seven unmeasured references under the default, one row each (20 to 75 minutes a board under the cap),
+1. The seven unmeasured references under the default, one row each (20 to 80 minutes a board under the cap),
    each row's residue page read before its verdict is believed; a board that times out is not a measurement
    (D122).
-3. Where a row fails on open nets, the failure first, then the fix, by the loop that found D126: a diagnostic jar
-   (`python3 scripts/patch_freerouting.py <fork checkout> d107 diag`, `WAFFLE_DIAG_INSERT=1`, a four-pass row,
-   `scripts/insertion_blockers.py` on its log) classifies the failed insertions; the smallest board that fails the
-   same way goes into the fork as a fixture and a JUnit test that fails on the current jar for that reason (check
-   it in the diagnostic log: a fixture can fail for another reason, and the fork's test harness runs the fanout
-   stage unless told not to); the fix in the fork until the fixture passes and `./gradlew test` stays green; the
-   patch into `tools/`; one row. On D126's jar what is left is copper of another net the found path crosses, a
-   track the maze planned to shove and the shove could not move (8 of 11 on upduino at four passes; D90's stops).
-   The measured lever from outside the jar stays what it was: a via keepout band round one package (D104), never
-   round every fine-pitch package (D121).
-4. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one, so a fresh container
+2. Before another change inside the jar, what closes nets and what stops the router, read from the stock runs
+   at the rule: per pass, the unrouted count, the ripups and the nets that change state (the jar's log has
+   them), on upduino (83, all 30 passes) and pico-ice (70, all 30 passes) against D126's runs that stopped at
+   pass 19 and 20. A fix inside the jar is judged by the 30-pass row, never by its failed-insertion count
+   (D129). A failure class found this way goes into the fork first, as a fixture and a JUnit test that fails on
+   the current jar for that reason (check it with the diagnostic jar, `python3 scripts/patch_freerouting.py
+   <fork checkout> d107 diag` and `WAFFLE_DIAG_INSERT=1`: a fixture can fail for another reason, and the fork's
+   test harness runs the fanout stage unless told not to), then the fix until the fixture passes and
+   `./gradlew test` stays green, then one row. The measured lever from outside the jar stays a via keepout band
+   round one package (D104), never round every fine-pitch package (D121).
+3. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one, so a fresh container
    does not need the fork checkout by hand; until then the gate names the script to run when the jar is
    missing.
 

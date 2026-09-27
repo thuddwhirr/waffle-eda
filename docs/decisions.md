@@ -871,6 +871,15 @@ clearance and the repair moving nothing, the planes whole, so the row fails on o
 FPGA's lines (/ICE_*) and 3 the PMOD's, as in D125. The router: 32 unrouted on its best board, 702 failed insertions
 and 122 paths not found over the run, against upduino's 148 and 98 at the rule (D127). Measurement.
 
+**D129. pico-ice on D126's jar at the rule: 62 of 95, 33 open, VBUS open; the router stops itself at pass 20**
+(2026-09-27, `WAFFLE_FREEROUTING_JAR=<abs>/build/tools/freerouting-2.4.1-d107-d126.jar python3 scripts/gate.py b
+pico-ice-rev3`, 3061 s, final e311057a08). A four-pass row on the stock jar at the rule first: 77 failed insertions,
+50 of them the margin's alone (`scripts/insertion_blockers.py`). The 30-pass row on D126's jar has 171 failed
+insertions for D128's 702 and 60 paths not found for 122, and ends at 62 of 95 for D128's 70: its best board came at
+pass 10 (39 unrouted) and the router's own rule stopped it at pass 20, as it stopped upduino's at pass 19 (D127),
+while the stock jar ran all 30 passes on both boards. Four fifths fewer failed insertions closed no net on either
+board; D126 stays a measured jar. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
