@@ -306,6 +306,32 @@ def test_pads_with_a_clearance_override_become_keepouts_grown_by_it():
     assert structure.index("(keepout") < structure.index("(via ")  # where KiCad puts its own
 
 
+def test_a_pad_the_router_must_reach_is_no_keepout_whatever_its_clearance():
+    """A keepout carries no net, and the circle covers the whole pad, so its own net cannot reach it:
+    olimex-esp32-poe-m1's D1, D3 and D8 and tinkerforge-master-v3.2's nine capacitors, U2, L2, D14 and two switches
+    (D136). A fiducial whose net is its own single pad keeps its keepout (olimex-rp2040-pico-pc's `Net-(FID1-..)`)."""
+    board = pcbnew.BOARD()
+    nets = {}
+    for name in ("VIN", "Net-(FID1-PadFid1)"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+    for ref, x, net in (("D1", 2, "VIN"), ("C1", 6, "VIN"), ("FID1", 10, "Net-(FID1-PadFid1)")):
+        fp = pcbnew.FOOTPRINT(board)
+        fp.SetReference(ref)
+        pad = pcbnew.PAD(fp)
+        pad.SetNumber("1")
+        pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+        pad.SetLayerSet(pad.SMDMask())
+        pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+        pad.SetNet(nets[net])
+        if ref != "C1":
+            pad.SetLocalClearance(kb.nm(1.0))
+        fp.Add(pad)
+        fp.SetPosition(pcbnew.VECTOR2I(kb.nm(x), kb.nm(5)))
+        board.Add(fp)
+    assert [k.reference for k in fr.pad_keepouts(board, clearance_mm=0.15)] == ["FID1"]
+
+
 def test_the_smoke_board_carries_overrides_too_and_an_override_below_the_rule_is_none():
     """Its four mounting holes hold copper 0.899 mm away and its two fiducials 0.65; asked for a clearance above
     those, nothing is a keepout."""

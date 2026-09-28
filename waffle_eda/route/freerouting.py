@@ -322,12 +322,17 @@ def _local_clearance_mm(item) -> float:
 
 
 def pad_keepouts(board, clearance_mm: float, hole_clearance_mm: float = 0.0) -> list[PadKeepout]:
-    """Every pad whose own clearance override exceeds the clearance the router is asked for."""
+    """Every pad whose own clearance override exceeds the clearance the router is asked for, except a pad the
+    router must reach: a keepout carries no net and covers the whole pad, so its own net could not (D136).
+    A pad alone on its net (a fiducial's `Net-(FID1-..)`) keeps its keepout."""
     names = {lid: name for lid, name in kb.copper_layers(board)}
+    pads_on = Counter(pad.GetNetname() for fp in board.GetFootprints() for pad in fp.Pads() if pad.GetNetname())
     out = []
     for fp in board.GetFootprints():
         fp_clr = _local_clearance_mm(fp)
         for pad in fp.Pads():
+            if pads_on[pad.GetNetname()] > 1:
+                continue
             override = max(fp_clr, _local_clearance_mm(pad))
             drill = pad.GetDrillSize()
             if not pad.GetNetname() and max(drill.x, drill.y) > 0:

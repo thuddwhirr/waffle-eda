@@ -924,6 +924,21 @@ buried In1 to In2 (0.2/0.1 and 0.5/0.2 mm) round a 0.4 mm WLCSP (U5); the DSN of
 on all four layers. definition.md puts HDI blind and buried vias out of scope; the other eight class B
 references use through vias only. Measurement; the scope is the owner's.
 
+**D135. sensor-watch-c1 fails: 55 of 61, no clearance, no short, GND open** (2026-09-28, `python3 scripts/gate.py b
+sensor-watch-c1`, 228 s, dsn 23e401cc8b, final d3f4e0152d). The router's four unrouted connections are the four
+plated pads of U$2 (MODE, LIGHT, ALARM, BUZZER) that cross the board outline, 0.000 mm from it on every layer in
+the translation check; the reference connects all four. /COM1 is whole on the imported board and open on the
+final one (the repair moved 53 items and left 7); GND is open at U$2-GND, a finger 0.41 mm from the top edge.
+The measured edge rule is 0.5948 mm, the search's upper bound (0.60), while 11 reference tracks lie within
+0.0878 mm of the DSN's outline. Measurement.
+
+**D136. A pad the router must reach is no keepout** (2026-09-28, `pad_keepouts`). D59's keepouts carry no net and
+cover the whole pad; on a pad with a net of two or more pads they shut the pad's own net out:
+olimex-esp32-poe-m1's D1, D3 and D8, tinkerforge-master-v3.2's nine capacitors, U2, L2, D14, SW1 and SW2,
+tinytapeout-demo's C46 and C47. Such a pad now has none (the DRC and the repair hold its override); a pad alone
+on its net keeps it (class A's only netted keepouts are fiducials of that kind, so its DSNs are unchanged).
+Translation lines: poe-m1 318 to 292 violations, tinkerforge-master 699 to 507. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
