@@ -917,6 +917,13 @@ any area forbidding neither tracks nor vias. No other reference has such an area
 mch2022-badge's DSN has an empty `(boundary)` and does not load: its outline builds on the reference file (1 outline)
 and not after any pcbnew load and save (0), with the same edge shapes and two points where four edges meet. Measurement.
 
+**D134. fomu-pvt fails: 7 of 27, its reference is HDI** (2026-09-28, `python3 scripts/gate.py b fomu-pvt`, 350 s,
+dsn 9f1d38006b, final 8b3ac9d15e). 20 nets open, 6 shorts, every plane net open; the router sat at about 40
+unrouted from pass 10 to 30. The reference has no through via: 29 microvias F.Cu to In1, 167 In2 to B.Cu, 53
+buried In1 to In2 (0.2/0.1 and 0.5/0.2 mm) round a 0.4 mm WLCSP (U5); the DSN offers one through via, 0.2/0.1 mm
+on all four layers. definition.md puts HDI blind and buried vias out of scope; the other eight class B
+references use through vias only. Measurement; the scope is the owner's.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

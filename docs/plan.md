@@ -17,7 +17,8 @@ decision log, D87 to D133, and `docs/review-class-b.md`; do not re-derive it.
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
 | `python3 scripts/gate.py b upduino-v3.01` | PASS, 85 of 86 | under D132's default (vias on SMD pads): /FLASH_MISO open, no clearance, no short, both planes whole; 82 before (D131) |
 | `python3 scripts/gate.py b pico-ice-rev3` | PASS, 91 of 95 | under D132's default: 4 open nets, no clearance, no short, every plane whole; 85 before (D131) |
-| the other seven class B references | not run | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
+| `python3 scripts/gate.py b fomu-pvt` | FAIL, 7 of 27 | 20 open nets, 6 shorts, every plane net open; the reference is HDI (microvias and buried vias, no through via) and the DSN offers a through via only (D134); scope is the owner's |
+| the other six class B references | not run | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
 passes when the router's board has every plane net whole, no short, and a documented residue of at most ten
@@ -51,6 +52,8 @@ Then D131: the references route a quarter of their track through the split pours
    bound: D103 to D125, all under D57's slack).
 2. The residue bound, ten or another number.
 3. The synthetic class B design of the milestone: it needs the owner's board.
+4. fomu-pvt (D134): its reference is built on microvias and buried vias, which definition.md puts out of scope;
+   either it leaves class B or blind and buried vias come into scope (the DSN then offers the reference's spans).
 
 Then D132 and D133: vias on same-net SMD pads, allowed by D93 but never written into the DSN, take upduino to 85
 of 86 and pico-ice to 91 of 95. The translation check now runs beside every class B row; its first lines on the
@@ -64,7 +67,7 @@ of its 453 violations, fixed).
    edge rule (tinkerforge-master 76, sensor-watch 16); mch2022-badge, whose DSN has no boundary after any pcbnew
    save (D133), so neither its line nor its row can run until its outline survives the save. A cause in our export gets a failing
    test and the smallest fix, as D130 to D133 did.
-2. The seven references under the default, one row each, smallest first (fomu-pvt, sensor-watch-c1,
+2. The seven references under the default, one row each, smallest first (fomu-pvt done, D134; sensor-watch-c1,
    olimex-esp32-poe-m1, tinkerforge-master-v3.2, buspirate5-rev10, tinytapeout-demo, mch2022-badge), one run at a
    time: two Freerouting runs at once wrote libresolar an empty session on 2026-09-28 (the pitfall in
    `freerouting.py`).
