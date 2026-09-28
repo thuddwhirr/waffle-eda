@@ -890,6 +890,15 @@ it; the reference puts vias on SMD pads the DSN forbids. Per axis, class A fails
 clearances) and keeps the old measure, its DSNs byte-identical; class B takes it: upduino 80 of 86 for 83, pico-ice
 76 of 95 for 70 (19 open, no clearance, VBUS open, final 362315cce9). Measurement.
 
+**D131. The inner layer the references route on, given to the router: pico-ice 85 of 95, PASS** (2026-09-28,
+`WAFFLE_PLANES=gnd python3 scripts/gate.py b pico-ice-rev3`, 2233 s, dsn 9566c86809, final d4050b140a). The
+references route signals through their split inner pours (pico-ice 576 mm on In2, a quarter of its track; upduino
+236 mm); the class B default handed every inner pour to the router as a solid plane priced at 30, a choice measured
+on upduino only and under D130's pin fence. With only the GND plane handed over and the others laid after the
+import: 85 of 95 for 76, 10 open nets (/ICE_19, /ICE_2, /ICE_26, /ICE_31, /ICE_34, two PMOD, /SRAM_SS, /LED_R,
+/+3V3_STDBY), every plane whole, one clearance (a track 0.15 mm short of fiducial FID2), the router at 12 unrouted
+and in half the time. `CLASS_B["planes"]` becomes "gnd". Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

@@ -184,7 +184,7 @@ def router_budget() -> dict:
 # reference's way at a QFN's GND pins); `WAFFLE_POUR_PINS=1` selects it for a measurement.
 CLASS_A = {"planes": "none", "feeds": False, "stubs": False, "rounds": 1, "gui": True, "feeds_mode": "fixed",
            "via_in_pad": False, "pour_pins": False}
-CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 6000.0,
+CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": False, "timeout_s": 6000.0,
            "feeds_mode": "none", "via_in_pad": False, "pour_pins": False,
            # D120 (option 2 of docs/review-class-b.md): the clean-plane configuration, the planes on `signal`
            # layers the router connects itself with D107's jar keeping their layers priced through the DSN block,
@@ -202,6 +202,8 @@ CLASS_B = {"planes": "inner", "feeds": True, "stubs": False, "rounds": 1, "gui":
            "slack_mm": 0.0,
            # a slotted pad's ring along its axes (D130): the whole hole rule no longer fences every plated pin
            "ring_per_axis": True}
+# D131: only the GND plane goes to the router before the export ("gnd"); the other inner pours are laid after
+# the import, so the router routes on the inner layer the references route on (pico-ice 85 of 95 for 76)
 
 
 def configuration(defaults: dict) -> dict:
