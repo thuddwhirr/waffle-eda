@@ -897,7 +897,8 @@ references route signals through their split inner pours (pico-ice 576 mm on In2
 on upduino only and under D130's pin fence. With only the GND plane handed over and the others laid after the
 import: 85 of 95 for 76, 10 open nets (/ICE_19, /ICE_2, /ICE_26, /ICE_31, /ICE_34, two PMOD, /SRAM_SS, /LED_R,
 /+3V3_STDBY), every plane whole, one clearance (a track 0.15 mm short of fiducial FID2), the router at 12 unrouted
-and in half the time. `CLASS_B["planes"]` becomes "gnd". Measurement.
+and in half the time. `CLASS_B["planes"]` becomes "gnd"; upduino under it: 82 of 86 for 80, 4 open, no clearance,
+planes whole. Measurement.
 
 ## BGA escape (the class B+ machinery; passes its gate)
 

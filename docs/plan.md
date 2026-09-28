@@ -8,30 +8,30 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D130, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D131, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-27, `claude/project-progress-assessment-2hob4y`).**
 
 | Gate | Result | What it means |
 |---|---|---|
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
-| `python3 scripts/gate.py b upduino-v3.01` | PASS, 80 of 86 | the rule itself and the slot ring per axis (D127, D130): a residue of 6 open nets, no clearance, no short, both planes whole; 83 with the old ring measure |
-| `python3 scripts/gate.py b pico-ice-rev3` | FAIL, 76 of 95 | the best pico-ice row (D130): 19 open nets, 12 of them the FPGA's lines, no clearance, VBUS open; 70 with the old ring measure (D128), 74 with 14 clearances under the slack (D125) |
+| `python3 scripts/gate.py b upduino-v3.01` | PASS, 82 of 86 | under D131's default: a residue of 4 open nets, no clearance, no short, both planes whole |
+| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | under D131's default (the inner layer the reference routes on given to the router): 10 open nets, one clearance at a fiducial, every plane whole; 76 before (D130) |
 | the other seven class B references | not run | never measured under the class B default |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
 passes when the router's board has every plane net whole, no short, and a documented residue of at most ten
 open nets and ten clearances the repair left; the page beside the routed board lists each with its pieces,
 pad positions and shortfall. The bound of ten is an assumption from the measured residue, not the owner's
-number. The class B default (`scripts/gate.py`, `CLASS_B`) is the clean-plane configuration: planes on
-`signal` layers the router connects itself, `build/tools/freerouting-2.4.1-d107.jar` (the one-class patch that
+number. The class B default (`scripts/gate.py`, `CLASS_B`): only the GND plane (In1) handed to the router, on a `signal`
+layer it connects itself, the other inner pours laid after the import (D131), `build/tools/freerouting-2.4.1-d107.jar` (the one-class patch that
 keeps the DSN's layer costs, D107; built by `python3 scripts/patch_freerouting.py <fork checkout> d107` from a
 checkout with the upstream `v2.4.1` tag), In1 and In2 priced at 30 through the DSN block, a via at 20 and a plane
 via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D123), no feed, the stitching after, 6000 s,
 no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm, and a
 slotted pad's ring measured along its axes (D130; class A keeps the old measure, under which its gate passes).
 
-**What this session found (D126 to D130).** The router's insertion asked 16 units more clearance than its maze plans
+**What this session found (D126 to D131).** The router's insertion asked 16 units more clearance than its maze plans
 with (D126); fixed on the owner's fork with fixture tests, it removes four fifths of the failed insertions and
 closes no net (D127, D129), so it is a measured jar, not the default. D57's slack only laid copper inside the rule
 on class B (D127). `scripts/translation_check.py` then asked whether the router's version of a board admits the
@@ -41,6 +41,8 @@ remain: the reference puts vias on SMD pads the DSN forbids (38 on upduino, 13 o
 class B), and the jar joins a track to a pin only at its exact centre, which leaves any copper laid before the
 router open to it (not a limit on routing from scratch).
 
+Then D131: the references route a quarter of their track through the split pours of their inner layers, and the default had handed those pours to the router as solid planes; with only GND handed over and the rest laid after the import, pico-ice passes at 85 of 95 and upduino at 82 of 86, both with every plane whole.
+
 **Decisions the owner owes before class B moves again.**
 1. The class's scope (the review's option 3): the boards that route to a residue of minutes (upduino's kind),
    or the dense ones too (pico-ice's kind, which no measurement from outside the jar has brought within the
@@ -49,18 +51,16 @@ router open to it (not a limit on routing from scratch).
 3. The synthetic class B design of the milestone: it needs the owner's board.
 
 **Then, in this order.**
-1. The remaining translation difference that constrains routing: vias on SMD pads, which the reference uses and the
-DSN forbids (`attach off`); D93 allows via-in-pad on class B. A failing test first in `tests/test_freerouting.py`,
-the smallest change, class A's DSNs byte-identical, then `scripts/translation_check.py` on upduino and pico-ice and
-one row each.
-2. The owner's decision on Phase 2 of the plan of 2026-09-27: with the translation clean, what stays open is the
-router's search. The proposal is a negotiated-congestion closer (the PathFinder machinery of `route/escape.py` and
-`route/busplanner.py`, D15, D20) re-routing the region round the open nets of Freerouting's best board, fixture
-first, one session, a written review if it does not close pico-ice's FPGA-to-PMOD bundle.
-3. The seven unmeasured references under the default, one row each (20 to 80 minutes a board under the cap), for the
-class's scope, when the owner wants that decision's numbers.
-4. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one, so a fresh container does not
-need the fork checkout by hand; until then the gate names the script to run when the jar is missing.
+1. Vias on SMD pads for class B (D93, never effective for the router: every DSN carries `(attach off)` and no
+   `via_at_smd`): a failing test in `tests/test_freerouting.py` first, `via_at_smd_dsn()` applied under a
+   `CLASS_B["via_at_smd"]`, class A's DSNs byte-identical, `scripts/translation_check.py` showing the references'
+   vias on pads (38 upduino, 13 pico-ice) legal, one row each against D131's.
+2. `scripts/translation_check.py` as a standing precheck in the gate for every reference: the router's version of
+   a board must admit the reference's own copper before a row is believed (D130 found the pin fence this way).
+3. The seven unmeasured references under the default, one row each, now that both measured rungs pass.
+4. Fanout, the optimizer and the outer-layer pours (D57, D65, D62) were set under the conditions D130 and D131
+   found wrong; each is re-measured only with a stated hypothesis, by the translation check first.
+5. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
 
 **Tools for a measurement**, all measured, none the default: `scripts/rung.py` (one row with every knob:
 `stitch`, `band=`, `costs=`, `first=`, `answer=`, the feed forms), the environment overrides `WAFFLE_VIA_COSTS`,
@@ -90,8 +90,8 @@ python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 min
 python3 scripts/patch_freerouting.py <fork checkout> d107   # the class B jar, from a checkout of the owner's
                                         # fork with the upstream v2.4.1 tag fetched (D107)
 python3 scripts/gate.py b upduino-v3.01   # class B's first rung under option 2 (D120, D124), at the rule itself
-                                        # (D127, D130): PASS, 80 of 86 with a residue of 6 nets, about 18 minutes;
-                                        # pico-ice-rev3 FAIL, 76 of 95, about 85 minutes (D130)
+                                        # (D127, D131): PASS, 82 of 86 with a residue of 4 nets, about 8 minutes;
+                                        # pico-ice-rev3 PASS, 85 of 95, about 40 minutes (D131)
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays
