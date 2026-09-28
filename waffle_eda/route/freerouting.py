@@ -381,28 +381,32 @@ def copper_art(board) -> list[tuple[str, list[tuple[float, float]]]]:
     footprint shape touching pads of one net only is that pad's copper and is left out, as a netless keepout on it
     would wall the pad off (D136); one bridging pads of two nets (a bridged solder jumper) is art (D143)."""
     names = {lid: name for lid, name in kb.copper_layers(board)}
-    items = [d for d in board.GetDrawings() if d.GetLayer() in names]
+    items = [(d, []) for d in board.GetDrawings() if d.GetLayer() in names]
     for fp in board.GetFootprints():
         pads = list(fp.Pads())
         for g in fp.GraphicalItems():
             layer = g.GetLayer()
             if layer not in names:
                 continue
+            touched = []
             if g.GetClass() == "PCB_SHAPE":
                 shape = g.GetEffectiveShape(layer)
-                touched = {p.GetNetname() for p in pads
-                           if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)}
-                if len(touched) == 1:
+                touched = [p for p in pads if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)]
+                if len({p.GetNetname() for p in touched}) == 1:
                     continue
-            items.append(g)
-        items += [f for f in (fp.Reference(), fp.Value()) if f.GetLayer() in names and f.IsVisible()]
+            items.append((g, touched))  # a bridge less the pads it overlaps, which stay the router's to reach
+        items += [(f, []) for f in (fp.Reference(), fp.Value()) if f.GetLayer() in names and f.IsVisible()]
     out = []
-    for item in items:
+    for item, pads_under in items:
         if hasattr(item, "GetNetCode") and item.GetNetCode() > 0:
             continue  # copper with a net is not an obstacle to its own net; no reference has any
         poly = pcbnew.SHAPE_POLY_SET()
         item.TransformShapeToPolygon(poly, item.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_INSIDE)
         poly.Simplify()  # a filled shape comes as its fill and its stroke's pieces; one outline each
+        for pad in pads_under:
+            cut = pcbnew.SHAPE_POLY_SET()
+            pad.TransformShapeToPolygon(cut, item.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_OUTSIDE)
+            poly.BooleanSubtract(cut)
         for i in range(poly.OutlineCount()):
             ring = poly.Outline(i)
             pts = [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y)) for k in range(ring.PointCount())]

@@ -341,6 +341,7 @@ def _art_board():
             pad.SetNumber(str(i + 1))
             pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
             pad.SetLayerSet(pad.SMDMask())
+            pad.SetShape(pcbnew.F_Cu, pcbnew.PAD_SHAPE_RECT)
             pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
             pad.SetPosition(pcbnew.VECTOR2I(kb.nm(x + dx), kb.nm(5)))
             pad.SetNet(nets[net])
@@ -379,15 +380,17 @@ def test_copper_the_export_leaves_out_becomes_keepouts():
         by_layer.setdefault(layer, []).append(outline)
     assert sorted(by_layer) == ["F.Cu", "In1.Cu"]
     assert len(by_layer["F.Cu"]) == 1  # the bridge; U1's own shape is not art
+    # less the pads it overlaps (1.35 and 2.65, 1 mm wide): a keepout on a pad walls it off, and tinytapeout's
+    # 1.4 mm bridges over 0603 pads slowed its row threefold and timed it out (D143)
     xs = [x for x, _y in by_layer["F.Cu"][0]]
-    assert min(xs) == pytest.approx(1.5, abs=0.01) and max(xs) == pytest.approx(2.5, abs=0.01)
+    assert min(xs) == pytest.approx(1.85, abs=0.01) and max(xs) == pytest.approx(2.15, abs=0.01)
     assert all(12 < x < 16 for outline in by_layer["In1.Cu"] for x, _y in outline)  # the glyph, where it was put
     text = fr.copper_art_dsn(DSN, art)
     structure = text[text.index("(structure"):text.index("(placement")]
     assert structure.count('(keepout "" (polygon F.Cu 0 ') == 1
     assert structure.count('(keepout "" (polygon In1.Cu 0 ') == len(by_layer["In1.Cu"])
     assert structure.index("(keepout") < structure.index("(via ")
-    assert "1500.00 -4800.00" in structure or "1500.00 -5200.00" in structure  # micrometres, y negated
+    assert "1850.00 -4800.00" in structure or "1850.00 -5200.00" in structure  # micrometres, y negated
     assert fr.copper_art_dsn(DSN, []) == DSN
 
 
