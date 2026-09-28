@@ -952,6 +952,14 @@ router via through the layer-marker text "3" on In2.Cu: copper text is not in th
 tinkerforge-master-v3.2` after D136, 796 s, dsn 8fac5625dd, final ebccee7635). 7 open nets (three J6/J7 pins to
 RP307, Port-D-MOSI, STACK-SELECT-04, -05, -07), no clearance, no short, every plane whole. Measurement.
 
+**D140. buspirate5-rev10: the router had no via; 94 of 183 before, 168 after, FAIL** (2026-09-28, `python3
+scripts/gate.py b buspirate5-rev10`, 3267 s, dsn d64f2dff7e, final 6c11b7c533). Freerouting reads the padstack
+`"Via[0-3]_654.8:350_um"` back as `Via[0-3]_654:350_um` while the net classes keep the name as written: every
+via rule held 0 vias (probed in the jar) and the row placed 0 for the reference's 547. `plain_via_names` writes
+such names without the point (only buspirate5 has one). After: 431 vias, 15 open nets, GND open, no clearance, no
+short. The router reported 8 unrouted; the repair left 83 items (worst 0.5698 mm) and the final board has 15
+open. Typing every layer `signal` (a board file types In2.Cu `power`) changed nothing here. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
