@@ -323,6 +323,74 @@ def test_pads_with_a_clearance_override_become_keepouts_grown_by_it():
     assert structure.index("(keepout") < structure.index("(via ")  # where KiCad puts its own
 
 
+def _art_board():
+    """A four-layer board with a bridged solder jumper (a copper rect joining pads of two nets), a pad with a copper
+    shape of its own, and a copper text on In1.Cu: the kinds of copper KiCad's export leaves out."""
+    board = pcbnew.BOARD()
+    board.SetCopperLayerCount(4)
+    nets = {}
+    for name in ("A", "B", "C"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+
+    def footprint(ref, x, pad_nets):
+        fp = pcbnew.FOOTPRINT(board)
+        fp.SetReference(ref)
+        for i, (dx, net) in enumerate(pad_nets):
+            pad = pcbnew.PAD(fp)
+            pad.SetNumber(str(i + 1))
+            pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+            pad.SetLayerSet(pad.SMDMask())
+            pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+            pad.SetPosition(pcbnew.VECTOR2I(kb.nm(x + dx), kb.nm(5)))
+            pad.SetNet(nets[net])
+            fp.Add(pad)
+        board.Add(fp)
+        return fp
+
+    def rect(fp, x0, x1):
+        s = pcbnew.PCB_SHAPE(fp)
+        s.SetShape(pcbnew.SHAPE_T_RECT)
+        s.SetLayer(pcbnew.F_Cu)
+        s.SetFilled(True)
+        s.SetWidth(0)  # no stroke: the outline is the rect itself
+        s.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(4.8)))
+        s.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(5.2)))
+        fp.Add(s)
+
+    rect(footprint("JP1", 2, [(-0.65, "A"), (0.65, "B")]), 1.5, 2.5)  # bridges the two nets
+    rect(footprint("U1", 8, [(0, "C")]), 8.4, 9.4)  # an extension of its one pad
+    text = pcbnew.PCB_TEXT(board)
+    text.SetText("3")
+    text.SetLayer(pcbnew.In1_Cu)
+    text.SetTextSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+    text.SetPosition(pcbnew.VECTOR2I(kb.nm(14), kb.nm(5)))
+    board.Add(text)
+    return board
+
+
+def test_copper_the_export_leaves_out_becomes_keepouts():
+    """KiCad's export leaves copper graphics out of the DSN and the router routes through them: a via through the
+    layer marker "3" on poe-m1's In2.Cu (D138), four tracks through tinytapeout's solder-jumper bridges (D142). A
+    shape that touches pads of one net only is that pad's copper and stays out, as a keepout would wall the pad off."""
+    art = fr.copper_art(_art_board())
+    by_layer = {}
+    for layer, outline in art:
+        by_layer.setdefault(layer, []).append(outline)
+    assert sorted(by_layer) == ["F.Cu", "In1.Cu"]
+    assert len(by_layer["F.Cu"]) == 1  # the bridge; U1's own shape is not art
+    xs = [x for x, _y in by_layer["F.Cu"][0]]
+    assert min(xs) == pytest.approx(1.5, abs=0.01) and max(xs) == pytest.approx(2.5, abs=0.01)
+    assert all(12 < x < 16 for outline in by_layer["In1.Cu"] for x, _y in outline)  # the glyph, where it was put
+    text = fr.copper_art_dsn(DSN, art)
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.count('(keepout "" (polygon F.Cu 0 ') == 1
+    assert structure.count('(keepout "" (polygon In1.Cu 0 ') == len(by_layer["In1.Cu"])
+    assert structure.index("(keepout") < structure.index("(via ")
+    assert "1500.00 -4800.00" in structure or "1500.00 -5200.00" in structure  # micrometres, y negated
+    assert fr.copper_art_dsn(DSN, []) == DSN
+
+
 def test_a_pad_the_router_must_reach_is_no_keepout_whatever_its_clearance():
     """A keepout carries no net, and the circle covers the whole pad, so its own net cannot reach it:
     olimex-esp32-poe-m1's D1, D3 and D8 and tinkerforge-master-v3.2's nine capacitors, U2, L2, D14 and two switches

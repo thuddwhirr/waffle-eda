@@ -374,6 +374,60 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+def copper_art(board) -> list[tuple[str, list[tuple[float, float]]]]:
+    """The copper KiCad's export leaves out of the DSN, as (layer name, outline in mm): board-level copper shapes
+    and text, and copper shapes and text in footprints. The router routed through them: a via through the layer
+    marker "3" on poe-m1's In2.Cu (D138), four tracks through tinytapeout's solder-jumper bridges (D142). A
+    footprint shape touching pads of one net only is that pad's copper and is left out, as a netless keepout on it
+    would wall the pad off (D136); one bridging pads of two nets (a bridged solder jumper) is art (D143)."""
+    names = {lid: name for lid, name in kb.copper_layers(board)}
+    items = [d for d in board.GetDrawings() if d.GetLayer() in names]
+    for fp in board.GetFootprints():
+        pads = list(fp.Pads())
+        for g in fp.GraphicalItems():
+            layer = g.GetLayer()
+            if layer not in names:
+                continue
+            if g.GetClass() == "PCB_SHAPE":
+                shape = g.GetEffectiveShape(layer)
+                touched = {p.GetNetname() for p in pads
+                           if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)}
+                if len(touched) == 1:
+                    continue
+            items.append(g)
+        items += [f for f in (fp.Reference(), fp.Value()) if f.GetLayer() in names and f.IsVisible()]
+    out = []
+    for item in items:
+        if hasattr(item, "GetNetCode") and item.GetNetCode() > 0:
+            continue  # copper with a net is not an obstacle to its own net; no reference has any
+        poly = pcbnew.SHAPE_POLY_SET()
+        item.TransformShapeToPolygon(poly, item.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_INSIDE)
+        poly.Simplify()  # a filled shape comes as its fill and its stroke's pieces; one outline each
+        for i in range(poly.OutlineCount()):
+            ring = poly.Outline(i)
+            pts = [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y)) for k in range(ring.PointCount())]
+            if len(pts) >= 3:
+                out.append((names[item.GetLayer()], pts))
+    return out
+
+
+def copper_art_dsn(dsn_text: str, art: list[tuple[str, list[tuple[float, float]]]]) -> str:
+    """Add :func:`copper_art` to the structure section as keepout polygons, where :func:`keepouts_dsn` puts its
+    circles. Micrometres with y negated, as KiCad writes."""
+    lines = []
+    for layer, pts in art:
+        name = f'"{layer}"' if any(c in layer for c in " ()") or not layer.isascii() else layer
+        coords = "  ".join(f"{x * 1000:.2f} {-y * 1000:.2f}" for x, y in pts + pts[:1])
+        lines.append(f'    (keepout "" (polygon {name} 0  {coords}))')
+    if not lines:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    i = dsn_text.find("    (via ", start)
+    if i < 0:
+        i = dsn_text.index("    (rule\n", start)
+    return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
 def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, float, float]]) -> str:
     """Add via keepouts to the structure section, four strips round a rectangle: for each band
     ``(x0, y0, x1, y1, inner_mm, outer_mm)`` (the pads' extent in mm and the strip's offsets from it), the strip
@@ -2103,7 +2157,8 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True, slack_mm: float 
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
     text = drop_pins(typed_clearances(plain_via_names(out.read_text()), d), joined_pins(board))
-    out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm)))
+    text = keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm))
+    out.write_text(copper_art_dsn(text, copper_art(board)))  # the copper the export leaves out (D143)
     return d, renamed
 
 
