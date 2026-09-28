@@ -1905,6 +1905,13 @@ def type_layers_power(dsn_text: str, layers: list[str]) -> str:
     return dsn_text
 
 
+def type_layers_signal(dsn_text: str) -> str:
+    """Type every layer `signal` in the DSN's structure section. KiCad writes each layer's type from the board file,
+    and 2.4.1 closes a `power` layer to the router: buspirate5-rev10's In2.Cu took 0 vias for the reference's 547
+    (D140). The class B form, which hands its planes over on `signal` layers, wants none."""
+    return re.sub(r"(\(layer \S+\n\s*)\(type power\)", r"\1(type signal)", dsn_text)
+
+
 def autoroute_settings_dsn(dsn_text: str, layers: list[str], trace_costs: dict[str, float], via_costs: int,
                            plane_via_costs: int = 5, ripup_costs: int = 100) -> str:
     """Add an `(autoroute_settings ...)` block to the structure right after the boundary, in the form the jar's
@@ -2302,7 +2309,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
     if planes and plane_type == "power":
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
-    elif planes and plane_type != "signal":
+    elif plane_type == "signal":  # a layer the board file types power is closed to the router (D140)
+        dsn.write_text(type_layers_signal(dsn.read_text()))
+    elif planes:
         raise ValueError(f"plane_type {plane_type!r}: power or signal")
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")

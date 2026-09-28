@@ -951,6 +951,17 @@ def test_a_plane_layer_handed_to_the_router_is_typed_power_in_the_dsn():
         fr.type_layers_power(out, ["In1.Cu"])  # already power: typing it again is a mistake
 
 
+def test_a_layer_the_board_file_types_power_is_a_signal_layer_to_the_router():
+    """KiCad writes each layer's own type from the board file into the DSN: buspirate5-rev10 types In2.Cu `power`,
+    olimex-esp32-poe-m1 In1.Cu and In2.Cu, and 2.4.1 closes a `power` layer to the router; buspirate5's row placed
+    0 vias for the reference's 547 (D140). Under the class B form every layer is `signal`."""
+    dsn = ("(pcb x\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (layer In1.Cu\n      (type power)\n"
+           "    )\n    (layer In2.Cu\n      (type power)\n    )\n  )\n)")
+    out = fr.type_layers_signal(dsn)
+    assert "(type power)" not in out and out.count("(type signal)") == 3
+    assert fr.type_layers_signal(out) == out
+
+
 def test_a_plane_nets_pins_leave_the_network_and_the_net_stays():
     """D85: the router routes nothing of a plane net (its pours and feeds connect it) but the net must stay in
     the network section, since the fixed feed wires and vias name it."""
