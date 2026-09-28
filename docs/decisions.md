@@ -960,6 +960,11 @@ such names without the point (only buspirate5 has one). After: 431 vias, 15 open
 short. The router reported 8 unrouted; the repair left 83 items (worst 0.5698 mm) and the final board has 15
 open. Typing every layer `signal` (a board file types In2.Cu `power`) changed nothing here. Measurement.
 
+**D141. olimex-esp32-poe-m1 with its inner layers typed signal: 76 of 101, FAIL** (2026-09-28, `python3
+scripts/gate.py b olimex-esp32-poe-m1` after 6d66695). Its board file types In1.Cu and In2.Cu `power`, closed to
+the router in 2.4.1; typed `signal` (the one change since D138) the router ends at 28 unrouted for 77, the row at
+76 of 101 for 70, 227 vias for 158. 25 open nets, GND and Spare2 open, 2 clearances: tracks 0.1015 and 0.0493 mm
+short of the own-clearance of D3 and D8, the pads D136 took the keepouts from. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

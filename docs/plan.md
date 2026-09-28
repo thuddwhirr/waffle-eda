@@ -8,7 +8,7 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D140, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D141, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-28, `claude/project-progress-assessment-2hob4y`).**
 
@@ -18,7 +18,7 @@ decision log, D87 to D140, and `docs/review-class-b.md`; do not re-derive it.
 | `python3 scripts/gate.py b upduino-v3.01` | PASS, 85 of 86 | under D132's default (vias on SMD pads): /FLASH_MISO open, no clearance, no short, both planes whole; 82 before (D131) |
 | `python3 scripts/gate.py b pico-ice-rev3` | PASS, 91 of 95 | under D132's default: 4 open nets, no clearance, no short, every plane whole; 85 before (D131) |
 | `python3 scripts/gate.py b sensor-watch-c1` | FAIL, 55 of 61 | no clearance, no short; GND open, four plated pads of U$2 across the outline unreachable to the router, /COM1 opened by the finishing step (D135) |
-| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 70 of 101 | 31 open, one short (a via through copper text the DSN lacks), GND and Spare2 open; the router plateaus at 77 unrouted (D138) |
+| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 76 of 101 | 25 open, 2 clearances at pads with their own clearance (D136's cost), GND and Spare2 open; the router at 28 unrouted once its inner layers are typed signal (D141; 70 and 77 before, D138) |
 | `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open nets, no clearance, no short, every plane whole (D139) |
 | `python3 scripts/gate.py b buspirate5-rev10` | FAIL, 168 of 183 | 15 open, GND open, no clearance, no short; the router reports 8 unrouted, the finishing step leaves 15 (D140); 94 before its via name was fixed |
 | the other two class B references | not run | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
