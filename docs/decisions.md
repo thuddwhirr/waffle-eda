@@ -942,6 +942,12 @@ Translation lines: poe-m1 318 to 292 violations, tinkerforge-master 699 to 507. 
 **D137. fomu-pvt leaves class B** (2026-09-28). Its reference is built on microvias and buried vias (D134), which
 definition.md puts out of scope. Class `-` in the registry, fetched, out of the ladder, as crkbd (D72). Owner.
 
+**D138. olimex-esp32-poe-m1 fails: 70 of 101, one short, GND and Spare2 open** (2026-09-28, `python3
+scripts/gate.py b olimex-esp32-poe-m1` after D136, 2659 s, dsn 17659c1cb8, final 672eca0245). The router sat at
+77 to 78 unrouted from pass 10 to 30 (102 after pass 1, about 90 s a pass). 22 of the 31 open nets end at U6, the
+ESP32-WROVER module, on pins all round it (not only its split pins 15 to 24), 12 at U4, the QFN-32. The short is a
+router via through the layer-marker text "3" on In2.Cu: copper text is not in the DSN. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
