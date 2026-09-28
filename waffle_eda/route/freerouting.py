@@ -383,17 +383,7 @@ def copper_art(board) -> list[tuple[str, list[tuple[float, float]]]]:
     names = {lid: name for lid, name in kb.copper_layers(board)}
     items = [(d, []) for d in board.GetDrawings() if d.GetLayer() in names]
     for fp in board.GetFootprints():
-        pads = list(fp.Pads())
-        for g in fp.GraphicalItems():
-            layer = g.GetLayer()
-            if layer not in names:
-                continue
-            touched = []
-            if g.GetClass() == "PCB_SHAPE":
-                shape = g.GetEffectiveShape(layer)
-                touched = [p for p in pads if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)]
-                if len({p.GetNetname() for p in touched}) == 1:
-                    continue
+        for g, touched in _footprint_art(fp, names):
             items.append((g, touched))  # a bridge less the pads it overlaps, which stay the router's to reach
         items += [(f, []) for f in (fp.Reference(), fp.Value()) if f.GetLayer() in names and f.IsVisible()]
     out = []
@@ -415,14 +405,60 @@ def copper_art(board) -> list[tuple[str, list[tuple[float, float]]]]:
     return out
 
 
-def copper_art_dsn(dsn_text: str, art: list[tuple[str, list[tuple[float, float]]]]) -> str:
+def _footprint_art(fp, names: dict) -> list:
+    """A footprint's copper graphics that are not a pad's own copper, each with the pads it touches: a shape
+    touching pads of one net only is that pad's copper and is left out; one touching pads of two or more nets is a
+    bridge (a bridged solder jumper)."""
+    pads = list(fp.Pads())
+    out = []
+    for g in fp.GraphicalItems():
+        layer = g.GetLayer()
+        if layer not in names:
+            continue
+        touched = []
+        if g.GetClass() == "PCB_SHAPE":
+            shape = g.GetEffectiveShape(layer)
+            touched = [p for p in pads if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)]
+            if len({p.GetNetname() for p in touched}) == 1:
+                continue
+        out.append((g, touched))
+    return out
+
+
+def bridge_pad_outlines(board) -> list[tuple[str, list[tuple[float, float]]]]:
+    """The pads a bridged solder jumper's copper joins, as (layer name, outline in mm), for via keepouts: a via in
+    such a pad reaches past it into the bridge, which has no net, and the gate's DRC calls it a short (upduino's
+    +3V3 via in R28's pad 2, D143). Tracks still reach the pads."""
+    names = {lid: name for lid, name in kb.copper_layers(board)}
+    out, seen = [], set()
+    for fp in board.GetFootprints():
+        for g, touched in _footprint_art(fp, names):
+            for pad in touched:
+                key = (fp.GetReference(), pad.GetNumber(), pad.GetPosition().x, pad.GetPosition().y, g.GetLayer())
+                if key in seen:  # not id(pad): pcbnew's proxies are freed and their ids reused
+                    continue
+                seen.add(key)
+                poly = pcbnew.SHAPE_POLY_SET()
+                pad.TransformShapeToPolygon(poly, g.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_OUTSIDE)
+                poly.Simplify()
+                for i in range(poly.OutlineCount()):
+                    ring = poly.Outline(i)
+                    out.append((names[g.GetLayer()], [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y))
+                                                      for k in range(ring.PointCount())]))
+    return out
+
+
+def copper_art_dsn(dsn_text: str, art: list[tuple[str, list[tuple[float, float]]]], kind: str = "keepout") -> str:
     """Add :func:`copper_art` to the structure section as keepout polygons, where :func:`keepouts_dsn` puts its
-    circles. Micrometres with y negated, as KiCad writes."""
+    circles; ``kind`` "via_keepout" keeps vias only out (:func:`bridge_pad_outlines`). Micrometres with y negated,
+    as KiCad writes."""
+    if kind not in ("keepout", "via_keepout"):
+        raise ValueError(f"kind {kind!r}: keepout or via_keepout")
     lines = []
     for layer, pts in art:
         name = f'"{layer}"' if any(c in layer for c in " ()") or not layer.isascii() else layer
         coords = "  ".join(f"{x * 1000:.2f} {-y * 1000:.2f}" for x, y in pts + pts[:1])
-        lines.append(f'    (keepout "" (polygon {name} 0  {coords}))')
+        lines.append(f'    ({kind} "" (polygon {name} 0  {coords}))')
     if not lines:
         return dsn_text
     start = dsn_text.index("(structure")
@@ -2162,7 +2198,8 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True, slack_mm: float 
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
     text = drop_pins(typed_clearances(plain_via_names(out.read_text()), d), joined_pins(board))
     text = keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm))
-    out.write_text(copper_art_dsn(text, copper_art(board)))  # the copper the export leaves out (D143)
+    text = copper_art_dsn(text, copper_art(board))  # the copper the export leaves out (D143)
+    out.write_text(copper_art_dsn(text, bridge_pad_outlines(board), kind="via_keepout"))
     return d, renamed
 
 

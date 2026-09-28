@@ -394,6 +394,21 @@ def test_copper_the_export_leaves_out_becomes_keepouts():
     assert fr.copper_art_dsn(DSN, []) == DSN
 
 
+def test_no_via_goes_into_a_bridged_jumpers_pads():
+    """A via in a bridged jumper's pad reaches past the pad into the bridge, which has no net: upduino's +3V3 via in
+    R28's pad 2 overlapped the bridge by 0.05 mm and the gate's DRC called it a short (D143). The pads a bridge
+    joins get a via keepout; tracks still reach them."""
+    pads = fr.bridge_pad_outlines(_art_board())
+    assert [layer for layer, _o in pads] == ["F.Cu", "F.Cu"]  # JP1's two pads; U1's pad is not a bridge's
+    centres = sorted(round(sum(x for x, _y in o) / len(o), 2) for _l, o in pads)
+    assert centres == [1.35, 2.65]
+    text = fr.copper_art_dsn(DSN, pads, kind="via_keepout")
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.count('(via_keepout "" (polygon F.Cu 0 ') == 2 and '(keepout ""' not in structure
+    assert structure.index("(via_keepout") < structure.index("(via ")
+    assert fr.copper_art_dsn(DSN, [], kind="via_keepout") == DSN
+
+
 def test_a_pad_the_router_must_reach_is_no_keepout_whatever_its_clearance():
     """A keepout carries no net, and the circle covers the whole pad, so its own net cannot reach it:
     olimex-esp32-poe-m1's D1, D3 and D8 and tinkerforge-master-v3.2's nine capacitors, U2, L2, D14 and two switches
