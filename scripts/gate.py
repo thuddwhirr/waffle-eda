@@ -52,7 +52,7 @@ def m4_references():
 
 
 CLASS_B_ORDER = ["upduino-v3.01", "pico-ice-rev3", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
-                 "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
+                 "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge"]  # fomu-pvt out (D137)
 
 
 def class_b_references():

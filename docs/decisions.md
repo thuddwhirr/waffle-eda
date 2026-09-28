@@ -939,6 +939,9 @@ tinytapeout-demo's C46 and C47. Such a pad now has none (the DRC and the repair 
 on its net keeps it (class A's only netted keepouts are fiducials of that kind, so its DSNs are unchanged).
 Translation lines: poe-m1 318 to 292 violations, tinkerforge-master 699 to 507. Measurement.
 
+**D137. fomu-pvt leaves class B** (2026-09-28). Its reference is built on microvias and buried vias (D134), which
+definition.md puts out of scope. Class `-` in the registry, fetched, out of the ladder, as crkbd (D72). Owner.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

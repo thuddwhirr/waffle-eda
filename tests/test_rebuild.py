@@ -14,7 +14,7 @@ LADDER = ["tinkerforge-temperature", "open-book-c1", "olimex-esp32c3-devkit", "l
 # Class B, in the order the plan lists its references (D75, reordered by D84): the benchmark was only asserted
 # on class A, so its sanity pair is the first thing class B measures (docs/plan.md, "B. A class B board").
 LADDER_B = ["upduino-v3.01", "pico-ice-rev3", "sensor-watch-c1", "tinkerforge-master-v3.2", "buspirate5-rev10",
-            "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge", "fomu-pvt"]
+            "olimex-esp32-poe-m1", "tinytapeout-demo", "mch2022-badge"]  # fomu-pvt out (D137)
 # The class B boards cost minutes each here (one DRC of mch2022-badge takes 158 s, D77), so their cases carry the
 # `bench` marker: run by default, left out of a quick run with `pytest -m "not parked and not bench"` (a
 # `-m` on the command line replaces the one in pyproject, so the parked marker is named again).
