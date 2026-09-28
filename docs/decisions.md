@@ -900,6 +900,23 @@ import: 85 of 95 for 76, 10 open nets (/ICE_19, /ICE_2, /ICE_26, /ICE_31, /ICE_3
 and in half the time. `CLASS_B["planes"]` becomes "gnd"; upduino under it: 82 of 86 for 80, 4 open, no clearance,
 planes whole. Measurement.
 
+**D132. Vias on SMD pads for class B: upduino 85 of 86, pico-ice 91 of 95, PASS** (2026-09-28,
+`python3 scripts/gate.py b <key>`). D93's via-in-pad never reached the router: KiCad writes `(attach off)` on every
+padstack and no `(control (via_at_smd on))`. `via_at_smd_dsn()` writes both for the via padstacks
+(`CLASS_B["via_at_smd"]`); the translation check's same-net pin/via violations go 38 to 0 on upduino (81 to 43 in
+all) and 13 to 0 on pico-ice (58 to 45). upduino 85 of 86 for 82 (/FLASH_MISO open, dsn e446f97a44, final
+124d579ab3, 216 s); pico-ice 91 of 95 for 85 (/+3V3_STDBY, /ICE_19, /ICE_20_G3, /~{ICE_RST} open, dsn 4a6350384e,
+final 2d12139722, 955 s); both with no clearance, no short, every plane whole. Measurement.
+
+**D133. Every class B row carries the reference's own copper under our rules; rule areas that forbid nothing are
+not keepouts** (2026-09-28, `scripts/gate.py` `_translation`). The first lines for the seven unmeasured
+references: fomu-pvt 282 violations, sensor-watch-c1 54, olimex-esp32-poe-m1 318, tinkerforge-master-v3.2 699,
+buspirate5-rev10 166, tinytapeout-demo 453. KiCad exports a rule area that forbids nothing (a name a custom DRC
+rule refers to) as a full keepout: tinytapeout's four gave 371 of its 453, 82 once `pour_only_rule_areas` lifts
+any area forbidding neither tracks nor vias. No other reference has such an area; class A's DSNs are unchanged.
+mch2022-badge's DSN has an empty `(boundary)` and does not load: its outline builds on the reference file (1 outline)
+and not after any pcbnew load and save (0), with the same edge shapes and two points where four edges meet. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

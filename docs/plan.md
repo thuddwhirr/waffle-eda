@@ -8,16 +8,16 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D131, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D133, and `docs/review-class-b.md`; do not re-derive it.
 
-**State (2026-09-27, `claude/project-progress-assessment-2hob4y`).**
+**State (2026-09-28, `claude/project-progress-assessment-2hob4y`).**
 
 | Gate | Result | What it means |
 |---|---|---|
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
-| `python3 scripts/gate.py b upduino-v3.01` | PASS, 82 of 86 | under D131's default: a residue of 4 open nets, no clearance, no short, both planes whole |
-| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | under D131's default (the inner layer the reference routes on given to the router): 10 open nets, one clearance at a fiducial, every plane whole; 76 before (D130) |
-| the other seven class B references | not run | never measured under the class B default |
+| `python3 scripts/gate.py b upduino-v3.01` | PASS, 85 of 86 | under D132's default (vias on SMD pads): /FLASH_MISO open, no clearance, no short, both planes whole; 82 before (D131) |
+| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 91 of 95 | under D132's default: 4 open nets, no clearance, no short, every plane whole; 85 before (D131) |
+| the other seven class B references | not run | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
 passes when the router's board has every plane net whole, no short, and a documented residue of at most ten
@@ -28,8 +28,10 @@ layer it connects itself, the other inner pours laid after the import (D131), `b
 keeps the DSN's layer costs, D107; built by `python3 scripts/patch_freerouting.py <fork checkout> d107` from a
 checkout with the upstream `v2.4.1` tag), In1 and In2 priced at 30 through the DSN block, a via at 20 and a plane
 via at 2 (D103), the ripup start at 400 (D111), no via keepout band (D123), no feed, the stitching after, 6000 s,
-no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm, and a
-slotted pad's ring measured along its axes (D130; class A keeps the old measure, under which its gate passes).
+no clearance slack (D127): the router is handed the measured rule, not the rule less D57's 0.0072 mm, a
+slotted pad's ring measured along its axes (D130; class A keeps the old measure, under which its gate passes), and
+vias allowed on same-net SMD pads (D132). Every class B row also prints the reference's own copper checked against
+the DSN it was routed from (D133): a row whose line shows violations nobody has explained is not believed.
 
 **What this session found (D126 to D131).** The router's insertion asked 16 units more clearance than its maze plans
 with (D126); fixed on the owner's fork with fixture tests, it removes four fifths of the failed insertions and
@@ -50,17 +52,25 @@ Then D131: the references route a quarter of their track through the split pours
 2. The residue bound, ten or another number.
 3. The synthetic class B design of the milestone: it needs the owner's board.
 
+Then D132 and D133: vias on same-net SMD pads, allowed by D93 but never written into the DSN, take upduino to 85
+of 86 and pico-ice to 91 of 95. The translation check now runs beside every class B row; its first lines on the
+seven unmeasured references found KiCad exporting rule areas that forbid nothing as keepouts (tinytapeout, 371
+of its 453 violations, fixed).
+
 **Then, in this order.**
-1. Vias on SMD pads for class B (D93, never effective for the router: every DSN carries `(attach off)` and no
-   `via_at_smd`): a failing test in `tests/test_freerouting.py` first, `via_at_smd_dsn()` applied under a
-   `CLASS_B["via_at_smd"]`, class A's DSNs byte-identical, `scripts/translation_check.py` showing the references'
-   vias on pads (38 upduino, 13 pico-ice) legal, one row each against D131's.
-2. `scripts/translation_check.py` as a standing precheck in the gate for every reference: the router's version of
-   a board must admit the reference's own copper before a row is believed (D130 found the pin fence this way).
-3. The seven unmeasured references under the default, one row each, now that both measured rungs pass.
-4. Fanout, the optimizer and the outer-layer pours (D57, D65, D62) were set under the conditions D130 and D131
+1. The translation lines of the seven unmeasured references, each explained before its row is believed: our pad
+   keepouts (D59 circles) that olimex-esp32-poe-m1 (74 violations) and tinkerforge-master-v3.2 (204) route
+   through; same-net vias closer than the via rule (stitching, 48 to 264 a board); pins nearer the edge than our
+   edge rule (tinkerforge-master 76, sensor-watch 16); mch2022-badge, whose DSN has no boundary after any pcbnew
+   save (D133), so neither its line nor its row can run until its outline survives the save. A cause in our export gets a failing
+   test and the smallest fix, as D130 to D133 did.
+2. The seven references under the default, one row each, smallest first (fomu-pvt, sensor-watch-c1,
+   olimex-esp32-poe-m1, tinkerforge-master-v3.2, buspirate5-rev10, tinytapeout-demo, mch2022-badge), one run at a
+   time: two Freerouting runs at once wrote libresolar an empty session on 2026-09-28 (the pitfall in
+   `freerouting.py`).
+3. Fanout, the optimizer and the outer-layer pours (D57, D65, D62) were set under the conditions D130 to D132
    found wrong; each is re-measured only with a stated hypothesis, by the translation check first.
-5. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
+4. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
 
 **Tools for a measurement**, all measured, none the default: `scripts/rung.py` (one row with every knob:
 `stitch`, `band=`, `costs=`, `first=`, `answer=`, the feed forms), the environment overrides `WAFFLE_VIA_COSTS`,

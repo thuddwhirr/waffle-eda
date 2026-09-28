@@ -162,6 +162,54 @@ def test_typed_clearances_go_into_the_structures_rule_block_only():
     assert structure.index("(clearance 190)") < structure.index("(type via_via)") < structure.index("(type smd_smd)")
 
 
+LIBRARY = """  (library
+    (padstack RoundRect[T]Pad_1000x950_um
+      (shape (polygon F.Cu 0  -500 475  500 475  500 -475  -500 -475))
+      (attach off)
+    )
+    (padstack "Via[0-1]_701:249_um"
+      (shape (circle F.Cu 701))
+      (shape (circle B.Cu 701))
+      (attach off)
+    )
+  )
+"""
+
+
+def test_a_via_may_sit_on_an_smd_pad_when_the_run_allows_it():
+    # D93 allowed vias in pads on class B; the router takes one only with `(control (via_at_smd on))` in the
+    # structure and `(attach on)` on the via's padstack, and KiCad's export writes neither (the references put
+    # 38 vias on SMD pads on upduino and 13 on pico-ice, every one illegal in our DSN until now)
+    dsn = DSN.replace("  (placement\n", LIBRARY + "  (placement\n")
+    text = fr.via_at_smd_dsn(dsn)
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert "(control\n      (via_at_smd on)\n    )" in structure
+    assert structure.index("(via ") < structure.index("(control") < structure.index("(rule")
+    via = text[text.index('(padstack "Via[0-1]_701:249_um"'):]
+    assert via[:via.index("\n    )")].count("(attach on)") == 1
+    pin = text[text.index("(padstack RoundRect"):text.index('(padstack "Via')]
+    assert "(attach off)" in pin and "(attach on)" not in pin
+    assert fr.via_at_smd_dsn(text) == text  # once is enough
+
+
+def test_a_via_list_kicad_wraps_over_two_lines_is_read_whole():
+    # mch2022-badge has five via sizes; KiCad wraps the structure's (via ...) list, and a pre-laid via in the
+    # wiring must not be taken for it
+    wrapped = '    (via "Via[0-1]_701:249_um" "Via[0-1]_800:400_um" "Via[0-1]_900:500_um" "Via[0-1]_950:500_um"\n' \
+              '       "Via[0-1]_3000:2500_um")\n'
+    stacks = "".join(f'    (padstack "Via[0-1]_{s}_um"\n      (shape (circle F.Cu 1))\n      (attach off)\n    )\n'
+                     for s in ("800:400", "900:500", "950:500", "3000:2500"))
+    dsn = DSN.replace('    (via "Via[0-1]_701:249_um")\n', wrapped)
+    dsn = dsn.replace("  (placement\n", LIBRARY.replace("  )\n", stacks + "  )\n", 1)[:-len("  )\n")] + "  )\n"
+                      + "  (placement\n")
+    dsn = dsn.replace("  (network\n", '  (wiring\n    (via "Via[0-1]_701:249_um"  220 -27800 (net GND)(type fix))\n'
+                      "  )\n  (network\n")
+    text = fr.via_at_smd_dsn(dsn)
+    assert text.count("(attach on)") == 5 and text.count("(attach off)") == 1  # the pin's alone stays off
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.index('"Via[0-1]_3000:2500_um")') < structure.index("(control") < structure.index("(rule")
+
+
 def test_the_via_cost_goes_into_the_settings_file(tmp_path):
     import json
     path = fr.settings_json(tmp_path, threads=1, passes=30, edge_clearance_mm=0.5948)
@@ -592,6 +640,33 @@ def test_a_rule_area_that_forbids_only_the_pour_is_not_a_keepout_to_the_router(t
     assert [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y)) for k in range(ring.PointCount())] == \
         [(2, 5), (5, 5), (5, 8), (2, 8)]
     assert back.IsOnLayer(pcbnew.F_Cu)
+
+
+def test_a_rule_area_that_forbids_nothing_is_not_a_keepout_to_the_router(tmp_path):
+    """A named area a custom DRC rule refers to forbids nothing, and KiCad still writes it as a plain (keepout):
+    tinytapeout-demo's four (CARRIERBREAKOUT, ANALOGBREAKOUT, LAYERMARKERS) gave 371 of the 453 violations its
+    own copper has under our DSN (D132)."""
+    board = _rule_area_board(tmp_path)
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetLayer(pcbnew.F_Cu)
+    z.SetZoneName("BREAKOUT")
+    for off in (z.SetDoNotAllowCopperPour, z.SetDoNotAllowTracks, z.SetDoNotAllowVias, z.SetDoNotAllowPads,
+                z.SetDoNotAllowFootprints):
+        off(False)
+    o = z.Outline()
+    o.NewOutline()
+    for px, py in ((16, 12), (19, 12), (19, 15), (16, 15)):
+        o.Append(kb.nm(px), kb.nm(py))
+    board.Add(z)
+    assert sorted(z.GetZoneName() for z in fr.pour_only_rule_areas(board)) == ["BREAKOUT", "pour-only"]
+    fr.export_dsn(board, _rules(), tmp_path / "board.dsn")
+    text = (tmp_path / "board.dsn").read_text()
+    assert text.count('(keepout "" (polygon') == 1  # the one forbidding everything
+    assert "16000 -12000" not in text
+    back = {z.GetZoneName(): z for z in board.Zones()}["BREAKOUT"]
+    assert back.GetIsRuleArea() and not back.GetDoNotAllowCopperPour() and not back.GetDoNotAllowTracks()
+    assert not back.GetDoNotAllowVias() and not back.GetDoNotAllowPads() and not back.GetDoNotAllowFootprints()
 
 
 def test_the_rp2040_boards_no_pour_areas_leave_its_tssop_pads_to_the_router():

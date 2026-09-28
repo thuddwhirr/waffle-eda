@@ -391,6 +391,28 @@ def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, fl
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+def via_at_smd_dsn(dsn_text: str) -> str:
+    """Let the router put a via on a same-net SMD pad (D93, D132): `(control (via_at_smd on))` in the structure,
+    after its `(via ...)` line, and `(attach on)` on the padstacks that line names. Freerouting needs both
+    (`Structure.readControlScope`, `Network.createDefaultViaInfos`); KiCad's export writes `(attach off)` on
+    every padstack and no control. A pin's own attach flag does not matter: a single-layer pin admits a
+    same-net via whatever it says (`Pin.drillAllowed`)."""
+    if "(via_at_smd on)" in dsn_text:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    # the list wraps onto more lines when a board has many via sizes (mch2022-badge's five)
+    m = re.compile(r"\n    \(via ([^()]*)\)\n").search(dsn_text, start, dsn_text.index("(placement", start))
+    if not m:
+        raise ValueError("no (via ...) list in the structure section of the DSN")
+    names = re.findall(r'"[^"]*"|\S+', m.group(1))
+    text = dsn_text[:m.end()] + "    (control\n      (via_at_smd on)\n    )\n" + dsn_text[m.end():]
+    for name in names:
+        i = text.index(f"(padstack {name}\n")
+        j = text.index("\n    )", i)
+        text = text[:i] + text[i:j].replace("(attach off)", "(attach on)") + text[j:]
+    return text
+
+
 def copy_tracks(src, dst, nets: set[str]) -> int:
     """Copy the tracks and vias of ``nets`` from one board to another (the nets by name), for a second routing
     stage that starts from the first's routes (D106). Returns how many items were copied; arcs are not."""
@@ -434,9 +456,9 @@ def pad_extent_mm(board, reference: str) -> tuple[float, float, float, float]:
 
 # --- rule areas the export gets wrong -------------------------------------------------------------------------
 def pour_only_rule_areas(board) -> list:
-    """The rule areas that forbid the copper pour and nothing the router lays (no tracks, no vias)."""
-    return [z for z in board.Zones() if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()
-            and not z.GetDoNotAllowTracks() and not z.GetDoNotAllowVias()]
+    """The rule areas that forbid nothing the router lays (no tracks, no vias): the pour only, or nothing at all
+    (a named area a custom DRC rule refers to; tinytapeout-demo's four, D132)."""
+    return [z for z in board.Zones() if z.GetIsRuleArea() and not z.GetDoNotAllowTracks() and not z.GetDoNotAllowVias()]
 
 
 def lift_pour_only_rule_areas(board) -> list[dict]:
@@ -461,7 +483,8 @@ def lift_pour_only_rule_areas(board) -> list[dict]:
                 holes.append([(hole.CPoint(k).x, hole.CPoint(k).y) for k in range(hole.PointCount())])
             outlines.append((pts, holes))
         facts.append({"name": zone.GetZoneName(), "layers": list(zone.GetLayerSet().Seq()), "outlines": outlines,
-                      "pads": zone.GetDoNotAllowPads(), "footprints": zone.GetDoNotAllowFootprints()})
+                      "pads": zone.GetDoNotAllowPads(), "footprints": zone.GetDoNotAllowFootprints(),
+                      "pour": zone.GetDoNotAllowCopperPour()})
         board.Delete(zone)
     return facts
 
@@ -473,7 +496,7 @@ def lay_rule_areas(board, facts: list[dict]) -> list:
     for f in facts:
         zone = pcbnew.ZONE(board)
         zone.SetIsRuleArea(True)
-        zone.SetDoNotAllowCopperPour(True)
+        zone.SetDoNotAllowCopperPour(f.get("pour", True))
         zone.SetDoNotAllowTracks(False)
         zone.SetDoNotAllowVias(False)
         zone.SetDoNotAllowPads(f["pads"])
@@ -2098,7 +2121,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 fix_existing: bool = False, plane_type: str = "power", jar_name: str | None = None,
                 via_costs: int | None = None, plane_via_costs: int | None = None,
                 ripup_costs: int | None = None, slack_mm: float | None = None,
-                ring_per_axis: bool = False) -> FreeroutingResult:
+                ring_per_axis: bool = False, via_at_smd: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2142,7 +2165,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
     `power`, which closes the plane to vias in 2.4.1 ("layers are disabled"). ``slack_mm`` is the clearance
     slack handed to the router (:data:`CLEARANCE_SLACK_MM` when None); a jar with D126's patch needs none.
-    ``ring_per_axis`` measures a slotted pad's ring along its axes (:func:`smallest_ring_mm`, D130)."""
+    ``ring_per_axis`` measures a slotted pad's ring along its axes (:func:`smallest_ring_mm`, D130).
+    ``via_at_smd`` lets a via sit on a same-net SMD pad (:func:`via_at_smd_dsn`, D93, D132)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -2196,6 +2220,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         kb.save_board(board, work_dir / "problem.kicad_pcb")  # 166 items to 19), so it comes back from this
         dsn.write_text(fix_wires(dsn.read_text()))  # snapshot after the import
         say(f"the problem board's own copper typed fixed: {len(fixed_nets)} nets")
+    if via_at_smd:  # D93, D132: a via may sit on a same-net SMD pad, as the references' do
+        dsn.write_text(via_at_smd_dsn(dsn.read_text()))
+        say("vias allowed on SMD pads")
     if via_bands == "fine-pitch":
         via_bands = fine_pitch_bands(board)
     if via_bands:

@@ -201,7 +201,9 @@ CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": F
            "ripup_costs": 400, "via_bands": None, "residue_max": 10,  # no band: 79 of 86 for 77 banded at U3 (D123)
            "slack_mm": 0.0,
            # a slotted pad's ring along its axes (D130): the whole hole rule no longer fences every plated pin
-           "ring_per_axis": True}
+           "ring_per_axis": True,
+           # a via may sit on a same-net SMD pad (D93, D132), as 38 of upduino's and 13 of pico-ice's do
+           "via_at_smd": True}
 # D131: only the GND plane goes to the router before the export ("gnd"); the other inner pours are laid after
 # the import, so the router routes on the inner layer the references route on (pico-ice 85 of 95 for 76)
 
@@ -229,6 +231,8 @@ def configuration(defaults: dict) -> dict:
         out["residue_max"] = int(os.environ["WAFFLE_RESIDUE_MAX"])
     if os.environ.get("WAFFLE_CLEARANCE_SLACK_MM") and "slack_mm" in out:  # the wrapper reads it too (D127)
         out["slack_mm"] = float(os.environ["WAFFLE_CLEARANCE_SLACK_MM"])
+    if os.environ.get("WAFFLE_VIA_AT_SMD") and "via_at_smd" in out:
+        out["via_at_smd"] = os.environ["WAFFLE_VIA_AT_SMD"] == "1"
     if os.environ.get("WAFFLE_VIA_BANDS") and "via_bands" in out:  # "none" or "fine-pitch" (D120, D121)
         out["via_bands"] = None if os.environ["WAFFLE_VIA_BANDS"] == "none" else os.environ["WAFFLE_VIA_BANDS"]
     return out
@@ -271,6 +275,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             finishing.update(feedlib.finish(routed, out, rules, plane_nets or set()))  # fallbacks (the
             return out  # in-process fill can take an hour), the plane nets stitched, the file scored below
 
+        translation = _translation(ref.key) if "plane_type" in cfg else ""
         try:
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
@@ -283,7 +288,7 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                 extra = {"plane_type": cfg["plane_type"], "jar_name": cfg["jar"], "via_costs": cfg["via_costs"],
                          "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
                          "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"],
-                         "ring_per_axis": cfg["ring_per_axis"],
+                         "ring_per_axis": cfg["ring_per_axis"], "via_at_smd": cfg["via_at_smd"],
                          "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
@@ -316,8 +321,28 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             page.write_text(rebuild.residue_markdown(r))
             verdict, residue_note = rebuild.residue_verdict(r, cfg["residue_max"])
             residue_note = f" | {residue_note} ({page.name})"
-        rows.append((ref.key, verdict, s.summary() + residue_note + " | " + result.summary() + fill_note + config_note))
+        rows.append((ref.key, verdict, s.summary() + residue_note + " | " + result.summary() + fill_note + config_note
+                     + (f" | {translation}" if translation else "")))
     return rows
+
+
+def _translation(key: str) -> str:
+    """The reference's own copper under the router's rules (scripts/translation_check.py, D130): the line the
+    class B row carries beside its verdict. Informational: many track-to-pin or via-to-pin violations mean the
+    problem handed to the router is harder than the one the designer solved, and the row is not believed until
+    they are explained. A subprocess, as the check stubs the jar's runner."""
+    import subprocess
+    script = refs.repo_root() / "scripts" / "translation_check.py"
+    run = subprocess.run([sys.executable, str(script), key, "b"], capture_output=True, text=True)
+    lines = run.stdout.splitlines()
+    head = next((line for line in lines if line.startswith("clearance violations")), None)
+    if head is None:
+        line = f"translation check failed (exit {run.returncode})"
+    else:
+        kinds = [" ".join(line.split()) for line in lines if line.startswith("  ")]
+        line = "reference copper under our rules: " + head + (" (" + ", ".join(kinds) + ")" if kinds else "")
+    print(f"{key}: {line}", flush=True)
+    return line
 
 
 def gate_m3() -> list[tuple[str, bool, str]]:
