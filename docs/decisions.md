@@ -948,6 +948,10 @@ scripts/gate.py b olimex-esp32-poe-m1` after D136, 2659 s, dsn 17659c1cb8, final
 ESP32-WROVER module, on pins all round it (not only its split pins 15 to 24), 12 at U4, the QFN-32. The short is a
 router via through the layer-marker text "3" on In2.Cu: copper text is not in the DSN. Measurement.
 
+**D139. tinkerforge-master-v3.2 passes: 144 of 151** (2026-09-28, `python3 scripts/gate.py b
+tinkerforge-master-v3.2` after D136, 796 s, dsn 8fac5625dd, final ebccee7635). 7 open nets (three J6/J7 pins to
+RP307, Port-D-MOSI, STACK-SELECT-04, -05, -07), no clearance, no short, every plane whole. Measurement.
+
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
