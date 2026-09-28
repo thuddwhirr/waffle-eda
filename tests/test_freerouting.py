@@ -210,6 +210,23 @@ def test_a_via_list_kicad_wraps_over_two_lines_is_read_whole():
     assert structure.index('"Via[0-1]_3000:2500_um")') < structure.index("(control") < structure.index("(rule")
 
 
+def test_a_via_name_with_a_decimal_point_is_written_without_one():
+    """Freerouting reads the padstack `"Via[0-3]_654.8:350_um"` back as `Via[0-3]_654:350_um` while the net
+    classes still ask for the name as written, so every via rule holds no via and the router places none:
+    buspirate5-rev10, 0 vias for the reference's 547 (D140). The name is rewritten everywhere it appears."""
+    name = '"Via[0-1]_654.8:350_um"'
+    dsn = (DSN.replace('"Via[0-1]_701:249_um"', name)
+           .replace("  (placement\n", LIBRARY.replace('"Via[0-1]_701:249_um"', name) + "  (placement\n")
+           .replace("  (network\n", f"  (wiring\n    (via {name}  220 -27800 (net GND)(type fix))\n  )\n  (network\n"))
+    out = fr.plain_via_names(dsn)
+    assert "654.8" not in out
+    new = '"Via[0-1]_654_8:350_um"'
+    assert out.count(new) == 4  # the structure's list, the padstack, the class's use_via, the fixed via
+    assert out.count("(padstack RoundRect[T]Pad_1000x950_um") == 1  # a pin's padstack is left alone
+    assert fr.plain_via_names(out) == out
+    assert fr.plain_via_names(DSN) == DSN  # a whole-number name is not touched
+
+
 def test_the_via_cost_goes_into_the_settings_file(tmp_path):
     import json
     path = fr.settings_json(tmp_path, threads=1, passes=30, edge_clearance_mm=0.5948)

@@ -418,6 +418,21 @@ def via_at_smd_dsn(dsn_text: str) -> str:
     return text
 
 
+def plain_via_names(dsn_text: str) -> str:
+    """Write every via name that has a decimal point without one, wherever it appears. KiCad names a via padstack
+    by its size (`"Via[0-3]_654.8:350_um"`); Freerouting reads the padstack's name back as `Via[0-3]_654:350_um`
+    while the net classes' `use_via` keep the name as written, so every via rule holds no via and the router
+    places none (buspirate5-rev10: 0 vias for the reference's 547, D140)."""
+    start = dsn_text.index("(structure")
+    m = re.compile(r"\n    \(via ([^()]*)\)\n").search(dsn_text, start, dsn_text.index("(placement", start))
+    if not m:
+        return dsn_text
+    for name in re.findall(r'"[^"]*"|\S+', m.group(1)):
+        if "." in name:
+            dsn_text = dsn_text.replace(name, name.replace(".", "_"))
+    return dsn_text
+
+
 def copy_tracks(src, dst, nets: set[str]) -> int:
     """Copy the tracks and vias of ``nets`` from one board to another (the nets by name), for a second routing
     stage that starts from the first's routes (D106). Returns how many items were copied; arcs are not."""
@@ -2087,7 +2102,7 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True, slack_mm: float 
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
-    text = drop_pins(typed_clearances(out.read_text(), d), joined_pins(board))
+    text = drop_pins(typed_clearances(plain_via_names(out.read_text()), d), joined_pins(board))
     out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm)))
     return d, renamed
 
