@@ -965,6 +965,11 @@ scripts/gate.py b olimex-esp32-poe-m1` after 6d66695). Its board file types In1.
 the router in 2.4.1; typed `signal` (the one change since D138) the router ends at 28 unrouted for 77, the row at
 76 of 101 for 70, 227 vias for 158. 25 open nets, GND and Spare2 open, 2 clearances: tracks 0.1015 and 0.0493 mm
 short of the own-clearance of D3 and D8, the pads D136 took the keepouts from. Measurement.
+
+**D142. tinytapeout-demo fails: 129 of 137, four shorts, GND open** (2026-09-28, `python3 scripts/gate.py b
+tinytapeout-demo` after D133 and 6d66695). 8 open nets (within the bound), 401 vias for the reference's 402, but
+GND in 157 pieces and four shorts: tracks through the copper rectangles of solder jumpers JP1, JP3 and JP4,
+footprint graphics the DSN does not carry (as poe-m1's copper text, D138). Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
