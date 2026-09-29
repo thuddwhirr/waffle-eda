@@ -632,6 +632,42 @@ def test_a_hole_without_copper_gets_a_no_pour_rule_area_sized_by_the_hole_rule()
         assert kb.mm(bb.GetWidth()) >= 2 * 0.2526  # at least the rule around the hole
 
 
+def test_a_plated_pad_its_own_pour_must_reach_gets_no_no_pour_area():
+    """buspirate5's USB shield pads J202-S1 and S2 (a 0.65 x 1.75 mm slot in a 1.05 x 2.1 mm pad) got a no-pour
+    circle 2.25 mm across on every layer, which shut out their own GND plane: GND stayed in three pieces
+    (2026-09-29). An area stays round a plated pad on a layer its own net does not pour, and round every hole
+    without copper, as open-book's mounting holes."""
+    board = pcbnew.BOARD()
+    gnd = pcbnew.NETINFO_ITEM(board, "GND")
+    board.Add(gnd)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("J202")
+    for number, x, attribute, net in (("S1", 10.0, pcbnew.PAD_ATTRIB_PTH, gnd), ("", 14.0, pcbnew.PAD_ATTRIB_NPTH, None)):
+        pad = pcbnew.PAD(fp)
+        pad.SetNumber(number)
+        pad.SetAttribute(attribute)
+        pad.SetShape(pcbnew.PAD_SHAPE_OVAL)
+        pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.05), kb.nm(2.1)) if net else pcbnew.VECTOR2I(kb.nm(0.7), kb.nm(0.7)))
+        pad.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_OBLONG if net else pcbnew.PAD_DRILL_SHAPE_CIRCLE)
+        pad.SetDrillSize(pcbnew.VECTOR2I(kb.nm(0.65), kb.nm(1.75)) if net else pcbnew.VECTOR2I(kb.nm(0.7), kb.nm(0.7)))
+        pad.SetLayerSet(pcbnew.PAD.PTHMask() if net else pcbnew.PAD.UnplatedHoleMask())
+        pad.SetPosition(pcbnew.VECTOR2I(kb.nm(x), kb.nm(10.0)))
+        if net:
+            pad.SetNet(net)
+        fp.Add(pad)
+    board.Add(fp)
+    rules = _rules(hole_to_copper_mm=0.2495)
+    front, back = board.GetLayerName(pcbnew.F_Cu), board.GetLayerName(pcbnew.B_Cu)
+
+    def centres(areas):
+        return sorted((round(kb.mm(z.GetBoundingBox().GetCenter().x), 1), board.GetLayerName(z.GetFirstLayer()))
+                      for z in areas)
+
+    # GND pours on the front only: the pad keeps its area on the back, the unplated hole on both
+    made = fr.hole_rule_areas(board, rules, poured={("GND", front)})
+    assert centres(made) == sorted([(10.0, back), (14.0, front), (14.0, back)])
+
+
 # --- the result must not depend on item order (D25) ---------------------------------------------------------
 def _crowded_board(tmp_path, order):
     """Eight parallel tracks of four nets, 0.19 mm apart under a 0.1972 rule, inserted in ``order``."""

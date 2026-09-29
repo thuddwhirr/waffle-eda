@@ -1674,10 +1674,13 @@ def design_rules(board, rules) -> None:
     ds.m_TrackMinWidth = kb.nm(rules.min_track_mm)
 
 
-def hole_rule_areas(board, rules) -> list:
+def hole_rule_areas(board, rules, poured: set[tuple[str, str]] = frozenset()) -> list:
     """A rule area forbidding copper pour around every hole whose copper ring is smaller than the hole rule:
     the filler keeps the zone clearance from a pad's copper, and a non-plated hole has none (open-book's pour
-    came 0.1 mm too close to its four mounting holes on both layers). The circle is the hole plus the rule."""
+    came 0.1 mm too close to its four mounting holes on both layers). The circle is the hole plus the rule.
+    ``poured`` names the (net, layer) pairs the pours will cover: a plated pad gets no area on a layer its own
+    net pours, since the area shuts out every pour and the pad's own must reach it (buspirate5's USB shield
+    pads, cut off from their GND plane on every layer, 2026-09-29)."""
     import math
     made = []
     enabled = [lid for lid, _n in kb.copper_layers(board)]  # a pad's layer set names all 32 copper ids
@@ -1697,6 +1700,8 @@ def hole_rule_areas(board, rules) -> list:
             radius = (hole / 2 + rules.hole_to_copper_mm) / math.cos(math.pi / sides)
             pos = pad.GetPosition()
             for layer in (layers or enabled):
+                if pad.GetNetname() and (pad.GetNetname(), board.GetLayerName(layer)) in poured:
+                    continue
                 zone = pcbnew.ZONE(board)
                 zone.SetIsRuleArea(True)
                 zone.SetDoNotAllowCopperPour(True)
@@ -2356,8 +2361,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         say(f"exit stubs laid for {len(exits)} of {len(stub_pads)} pads left open: {sorted(x.pad for x in exits)}")
     laid_feeds = []
     targets: list = []  # reserved: the feeds fixed as vias for the pads no feed reaches (D91)
-    if planes:
-        hole_rule_areas(board, rules)
+    if planes:  # a plated pad of a poured net is left to its own pour (class A's pads keep theirs: it passes so)
+        hole_rule_areas(board, rules, poured={(p["net"], p["layer"]) for p in planes + list(pours or [])})
         # the fill keeps its clearance from a via's pad, not its hole (D62): the plane's clearance allows for
         # the smallest ring the rules give a via, since the vias come after the plane here
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
