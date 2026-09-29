@@ -979,6 +979,16 @@ bridge and read as a short). tinytapeout-demo 132 of 137, FAIL: the four jumper 
 3 edge clearances. upduino 83 of 86, pico-ice 85 of 95, both PASS, no short (85 and 91 in D132; single rows,
 poe-m1 ran 8 nets apart on a one-connection change, D141). poe-m1 68 of 101 with its four layer-marker keepouts,
 no short. Class A has no such copper: gate PASS 5 of 5, DSNs unchanged. Measurement.
+
+**D144. The repair broke joints the router made: sensor-watch-c1 passes, 57 of 61** (2026-09-29, 42e251f,
+`python3 scripts/gate.py b sensor-watch-c1`, 261 s, dsn 23e401cc8b, final 185b80e111). Traced move by move on the
+imported board: an undo re-decided which neighbours to carry whole by their length after the move, and tore
+/COM1's 0.647 mm diagonal (0.512 after the move, under CARRY_MM) off its run; end moves took U$2-GND's track
+0.38 mm off its via, which never moves with a track, then off its finger pad. Undo now restores positions; a move
+is kept only if every moved item joined to unmoved copper of its net is joined still, as KiCad 9 joins (overlap
+on a shared layer, measured). Residue 4 nets, U$2's pads across the outline (D135); planes whole. buspirate5 on
+42e251f: the same 11 nets open on the imported and the final board (D140: 8 unrouted, 15 open). Class A PASS 5
+of 5, DSNs and imports unchanged, rp2040's and libresolar's finals changed (the undo). Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
