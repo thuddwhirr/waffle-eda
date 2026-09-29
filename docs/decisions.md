@@ -989,6 +989,23 @@ is kept only if every moved item joined to unmoved copper of its net is joined s
 on a shared layer, measured). Residue 4 nets, U$2's pads across the outline (D135); planes whole. buspirate5 on
 42e251f: the same 11 nets open on the imported and the final board (D140: 8 unrouted, 15 open). Class A PASS 5
 of 5, DSNs and imports unchanged, rp2040's and libresolar's finals changed (the undo). Measurement.
+
+**D145. A plated pad of a poured net is left to its own pour: buspirate5-rev10 passes, 174 of 183** (2026-09-29,
+a786a5b, `python3 scripts/gate.py b`, 3325 s, dsn d64f2dff7e, final 4745ae57f3). On 42e251f GND stayed in three
+pieces: the USB shield pads J202-S1 and S2 (a 0.65 x 1.75 mm slot in a 1.05 x 2.1 mm pad) sat in `hole_rule_areas`'
+no-pour circles, 2.25 mm across on every layer, which shut out their own plane; dropping the 52 such areas round
+plated pads of a net pouring on the layer joined GND on that router output with no violation. Under class B's planes
+a plated pad now gets no area on its net's poured layers; the areas never reach the DSN; class A's path is unchanged.
+The row: 9 open, no clearance, no short, planes whole. The router ended at 8, 10 and 9 unrouted on three runs of
+this one DSN (D140, 42e251f, a786a5b), with different nets open each time. Measurement.
+
+**D146. The class B gate on a786a5b: FAIL, 5 of 8** (2026-09-29, `python3 scripts/gate.py b`, after class A PASS 5 of
+5). upduino 83 of 86, pico-ice 85 of 95 (10 open), tinkerforge-master 144 of 151: unchanged. tinytapeout-demo 131 of
+137: 6 open, GND in 2 pieces (J5-R41 alone; 157 in D143), 3 edge clearances of one +3V3 track at (152.0, 15.7)
+(dsn 2a09c8105f, final 33de883539, 2601 s). olimex-esp32-poe-m1 68 of 101: the router ends at 36 unrouted, the
+finishing changes nothing (imported = final 3dfc47a586), GND in 3 pieces (LAN_CON1-7 and -8 alone), +3.3V and Spare2
+open, 2 tracks 0.1015 mm inside the own clearance of D3's and D1's pads (D136's; dsn a5fbccd76f, 4074 s).
+mch2022-badge: the jar exits 1 (D133). Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

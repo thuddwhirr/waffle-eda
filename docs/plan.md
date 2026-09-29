@@ -8,36 +8,34 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D143, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D146, and `docs/review-class-b.md`; do not re-derive it.
 
-**State (2026-09-29, `claude/project-progress-assessment-2hob4y`).** Class B: FAIL, 3 of 7 references pass.
+**State (2026-09-29, `claude/clever-knuth-c41w4c`, a786a5b).** `python3 scripts/gate.py b`: FAIL, 5 of 8 (D146).
 
 | Gate | Result | What it means |
 |---|---|---|
-| `python3 scripts/gate.py a` | PASS 5 of 5 | DSNs byte-identical through D143; run it clean (no `WAFFLE_*`) and alone before any push to shared code |
-| `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | no clearance, no short, planes whole (D143; 85 in D132) |
-| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | at the bound: 10 open, no clearance, no short, planes whole (D143; 91 in D132) |
-| `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open, no clearance, no short, planes whole (D139) |
-| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 132 of 137 | no short (the jumper shorts gone, D143); GND in 157 pieces, 3 edge clearances |
-| `python3 scripts/gate.py b buspirate5-rev10` | FAIL, 168 of 183 | the router ends at 8 unrouted, the final board has 15 open; GND open (D140) |
-| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 68 of 101 | 33 open, 2 clearances at pads with their own clearance, planes open; 76 in D141 (D143) |
-| `python3 scripts/gate.py b sensor-watch-c1` | FAIL, 55 of 61 | four plated pads of U$2 across the outline unreachable, /COM1 opened by the finishing step, GND open (D135) |
+| `python3 scripts/gate.py a` | PASS 5 of 5 | DSNs and imported boards byte-identical through D146; run it clean (no `WAFFLE_*`) and alone before any push to shared code |
+| `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | 3 open, no clearance, no short, planes whole (D146) |
+| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | at the bound: 10 open, no clearance, no short, planes whole (D146) |
+| `python3 scripts/gate.py b sensor-watch-c1` | PASS, 57 of 61 | the residue is U$2's four plated pads across the outline (D135); planes whole (D144) |
+| `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open, no clearance, no short, planes whole (D146) |
+| `python3 scripts/gate.py b buspirate5-rev10` | PASS, 174 of 183 | 9 open, no clearance, no short, planes whole (D145); its router ends at 8 to 10 on one DSN |
+| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 131 of 137 | 6 open, no short; GND in 2 pieces (J5-R41 alone), 3 edge clearances of one +3V3 track (D146) |
+| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 68 of 101 | the router ends at 36 unrouted; 33 open, GND (LAN_CON1-7, -8), +3.3V and Spare2 open, 2 clearances at D3 and D1 (D146) |
 | `mch2022-badge` | cannot run | its outline is lost on any pcbnew save; the DSN has no boundary (D133) |
 
-fomu-pvt left class B (owner, D137: its reference is HDI). A row takes 4 to 55 minutes; run one router at a time.
+fomu-pvt left class B (owner, D137: its reference is HDI). A row takes 4 to 70 minutes and the whole class B gate
+4 h 10 min (2026-09-29); run one router at a time.
 
-**First thing next session: the finishing step drops connections the router made.** It fails two boards and is
-entirely our code, so it is the cheapest gain. Evidence: buspirate5's router ends at 8 unrouted and its final board
-has 15 open nets (the repair left 83 items, worst 0.5698 mm, D140); sensor-watch's /COM1 is whole on
-`build/fr/sensor-watch-c1/imported.kicad_pcb` and open on `build/bench/sensor-watch-c1-routed.kicad_pcb` (D135).
-Steps:
-1. Find the step that opens it: `kb.open_nets` on the imported board, then after each finishing step in
-   `route_board` (`prune_dangling`, `repair_clearances`, around `freerouting.py:2461`) and after the gate's
-   `planes.finish` (`planes.py:439`: fill, stitching). sensor-watch is the fast board (about 4 minutes a row); its
-   imported board is on disk, so no router run is needed to start.
-2. A failing test that reproduces it on the smallest board piece that shows it (tests/test_freerouting.py or
-   tests/test_planes.py), then the smallest fix; class A's gate and the three passing class B rows must hold.
-3. Re-run buspirate5 and sensor-watch.
+**First thing next session: tinytapeout-demo, the nearest failing row.** Its six open nets are within the bound;
+what fails it comes after the router:
+1. GND: J5-R41 at (129.425, 65.25) is its own piece. Find why nothing of GND reaches it: `kb.open_nets` on
+   `build/fr/tinytapeout-demo/imported.kicad_pcb` and after `repair_clearances` (the way D144 was found), then the
+   pad itself against D145's rule areas, the plane's outline and the stitching (3 feeds laid).
+2. Three `copper_edge_clearance` violations of one +3V3 track at (152.0, 15.7) on F.Cu: whether the router laid it
+   there or the repair moved it (the repair left 9 items, worst 0.1589 mm).
+Each gets a failing test first and the smallest fix; class A's gate and the five passing class B rows must hold. A
+fresh container has no imported board: the row (about 45 minutes) writes it.
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
 passes when the router's board has every plane net whole, no short, and a documented residue of at most ten
@@ -53,14 +51,16 @@ slotted pad's ring measured along its axes (D130; class A keeps the old measure,
 vias allowed on same-net SMD pads (D132). Every class B row also prints the reference's own copper checked against
 the DSN it was routed from (D133): a row whose line shows violations nobody has explained is not believed.
 
-**What the last sessions found (D126 to D143).** Every gain came from making the DSN say what the board says, found
+**What the last sessions found (D126 to D146).** Every gain came from making the DSN say what the board says, found
 by `scripts/translation_check.py` (the reference's own copper under our DSN) and the router's own view of the DSN
 (`tools/DsnDrc.java`, and a probe of its via rules): a slotted pad's ring (D130), the inner layers the references
 route on (D131), vias on SMD pads (D132), rule areas that forbid nothing (D133), keepouts round pads their own net
 must reach (D136), a via name with a decimal point that left the router no via (buspirate5 94 to 168, D140), board
-files typing inner layers `power` (poe-m1's router 77 to 28 unrouted, D141), copper graphics (D143). Router
-parameter changes gained nothing (D103 to D125). On the larger boards single rows differ by several nets on a
-trivial DSN change (poe-m1 76 and 68): read a short gone or present as a result, a few nets up or down as noise.
+files typing inner layers `power` (poe-m1's router 77 to 28 unrouted, D141), copper graphics (D143); and from our
+finishing, which opened nets the router had joined (D144) and fenced plated pads off their own plane (D145). Router
+parameter changes gained nothing (D103 to D125). On the larger boards single rows are not repeatable: poe-m1 76 and
+68 on a trivial DSN change (D141, D143), buspirate5 8, 10 and 9 unrouted on one DSN (D145); read a short gone or
+present as a result, a few nets up or down as noise.
 
 **Decisions the owner owes.**
 1. The residue bound, ten or another number (pico-ice sits at ten).
@@ -68,12 +68,12 @@ trivial DSN change (poe-m1 76 and 68): read a short gone or present as a result,
 3. Whether to spend router time on a noise band (item 4 below) before reading small row differences.
 
 **Then, in this order.** Every class B reference has a row (mch2022 excepted); what fails them is on our side:
-1. The finishing step (above).
-2. GND open on tinytapeout (157 pieces, D143), buspirate5 and poe-m1: why the plane net does not come out whole.
-3. Pads across the board outline (sensor-watch's U$2, D135) and mch2022's outline lost on a pcbnew save (D133).
-4. Single rows on the larger boards differ by several nets on a trivial DSN change (poe-m1: 76 and 68, D141, D143);
-   before a small difference is read as an effect, run the board two or three times with harmless DSN changes and
-   take the spread as the noise band (the owner's call on the router time).
+1. tinytapeout (above).
+2. poe-m1: GND's LAN_CON1-7 and -8 (plated pads? D145's rule is the first thing to check), +3.3V and Spare2 open;
+   then the router's 36 unrouted (22 of 31 open nets ended at U6 in D138).
+3. mch2022's outline lost on a pcbnew save (D133).
+4. The noise band: run a large board two or three times and take the spread before a small difference is read as
+   an effect (the owner's call on the router time; the buspirate5 spread above is free evidence).
 5. D61's netless pad pieces walling their own net (fomu's U9, poe-m1's exposed pad U4-33; D73 settled it on class
    A); fanout, the optimizer and the outer pours (D57, D65, D62) re-measured only with a stated hypothesis.
 6. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
@@ -107,16 +107,16 @@ python3 scripts/fetch_references.py     # clones the 23 reference boards into re
 python3 scripts/gate.py a               # expect PASS 5 of 5 (D73), about 12 minutes; the first three boards alone
                                         # (`gate.py a tinkerforge-temperature open-book-c1 olimex-esp32c3-devkit`) in two
 python3 scripts/patch_freerouting.py <fork checkout> d107   # the class B jar, from a checkout of the owner's
-                                        # fork with the upstream v2.4.1 tag fetched (D107)
-python3 scripts/gate.py b upduino-v3.01   # class B's first rung under option 2 (D120, D124), at the rule itself
-                                        # (D127, D131): PASS, 82 of 86 with a residue of 4 nets, about 8 minutes;
-                                        # pico-ice-rev3 PASS, 85 of 95, about 40 minutes (D131)
+                                        # fork with the upstream v2.4.1 tag fetched (D107): in the checkout,
+                                        # `git fetch --depth 1 https://github.com/freerouting/freerouting.git tag v2.4.1`
+python3 scripts/gate.py b upduino-v3.01   # class B's first rung under option 2 (D120, D124): PASS, 83 of 86, about
+                                        # 4 minutes; `gate.py b` alone runs all eight rows, about 4 h (D146)
 python3 scripts/design.py status temperature-sensor   # the synthetic design: six gates PASS, what waits on the owner
 python3 scripts/design.py run temperature-sensor      # re-runs all six stages, about 30 s; the committed files change
                                                       # only in their timestamps and in what the router lays
 python3 -m pytest -q -rs                # classes A and B (the parked classes' tests carry a marker pyproject deselects;
                                         # `-m parked` runs them); expect 0 failed; the class B sanity pair costs minutes a
-                                        # board, so `-m "not parked and not bench"` is the quick run, 146 tests in a minute
+                                        # board, so `-m "not parked and not bench"` is the quick run, 157 tests in a minute
 ```
 
 **Milestone A, task 1 (continued): stage 5's baseline passes the gate.** `scripts/gate.py a` strips each class A
@@ -344,7 +344,7 @@ rising order; the target board to fab outputs.
 | `tools/freerouting-2.4.1-*.patch` | the patches, unified diffs against the 2.4.1 source |
 | `scripts/insertion_stops.py` | where a run's failed insertions stopped (D90): the jar's "insert trace failed" lines read back onto the routed board, the nearest copper by kind and the corridor at each stop |
 | `scripts/rung.py` | one class B gate row with the plane handling, the feeds and their form (`stitch` for none, D96; `loose`, `after`, `reserved`, `vias`; `costs=L:C,...` for D97's block), the stubs, the router's fanout stage and the closure loop's rounds selectable (`rounds=N`, `open=<board>`, `exits=...`), for iterating on a rung under a short budget (D77, D81 to D91) |
-| `tests/` | 290 tests: 144 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 18 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
+| `tests/` | 301 tests: 157 in the quick run (`pytest -m "not parked and not bench"`, about a minute), 16 more in the default run (the class B sanity pair, `bench`, minutes a board), 128 parked (`pytest -m parked`) |
 | `salvage/waffle-fpga/` | the old project's tools verbatim: Freerouting wrappers, a schematic generator, plane and power tools |
 
 ## Parked (class C, not before)
