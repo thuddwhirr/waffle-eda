@@ -1002,6 +1002,115 @@ def test_a_kept_collision_never_deepens_under_an_end_move_or_a_push(tmp_path):
     assert kb.mm(a.GetEnd().y) == pytest.approx(5.0)  # nothing moved
 
 
+def _com1_board():
+    """sensor-watch's /COM1 on In1.Cu as the router left it: a 1.2 mm track, a 0.647 mm diagonal (longer than
+    CARRY_MM) and a long run, joined end to end; and another net's track clear of them, below the first two."""
+    board = pcbnew.BOARD()
+    net, other = pcbnew.NETINFO_ITEM(board, "/COM1"), pcbnew.NETINFO_ITEM(board, "B")
+    board.Add(net)
+    board.Add(other)
+
+    def seg(n, x0, y0, x1, y1):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(y1)))
+        t.SetWidth(kb.nm(0.089))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(n)
+        board.Add(t)
+        return t
+
+    first = seg(net, 7.9839, 4.6205, 9.1872, 4.6205)
+    diagonal = seg(net, 9.1872, 4.6205, 9.6447, 5.078)
+    run = seg(net, 9.6447, 5.078, 21.9776, 5.078)
+    seg(other, 8.0, 4.95, 9.0, 4.95)
+    return board, first, diagonal, run
+
+
+def _ends(board):
+    return sorted((t.m_Uuid.AsString(), t.GetStart().x, t.GetStart().y, t.GetEnd().x, t.GetEnd().y)
+                  for t in kb.track_segments(board))
+
+
+def test_a_move_tried_and_undone_leaves_every_track_where_it_was():
+    """sensor-watch's /COM1 was whole as imported and open after the repair (D135): a move of a track 0.2286 mm
+    towards its diagonal neighbour, tried and undone, left that neighbour 0.512 mm long, under CARRY_MM, so the
+    undo carried it whole and its far end left the run it had shared (2026-09-29). Every undo must restore the
+    copper exactly: a trial move (`_room`), a move whose check fails, the blocker probe, a refused end move."""
+    from waffle_eda.route.obstacles import Obstacles
+    rules = _rules(clearance_mm=0.0878, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.089)
+    board, first, diagonal, _run = _com1_board()
+    before = _ends(board)
+    obstacles = Obstacles(board)
+    assert fr._move_checked(board, obstacles, first, 0.0, 0.1, rules, keep=False)  # clear: tried and undone
+    assert _ends(board) == before
+    assert not fr._move_checked(board, obstacles, first, 0.0, 0.2286, rules)  # into the other net's track
+    assert _ends(board) == before
+    assert fr._blocker(board, obstacles, first, 0.0, 1.0, 0.2286, rules) is not None
+    assert _ends(board) == before
+    # the diagonal's lower end moved 0.65 mm left leaves the first track 0.55 mm long, under CARRY_MM, and the
+    # diagonal into the other net's track: refused
+    assert not fr._move_end_checked(board, obstacles, diagonal, 0, -0.65, 0.0, rules, allowed=frozenset())
+    assert _ends(board) == before
+
+
+def _finger_board():
+    """sensor-watch's U$2-GND as the router left it: a 0.37 x 2.3 mm finger pad, a 0.089 mm track from its
+    centre to a 0.45 mm via 1.72 mm away; and a second track of the net ending on the via 0.1 mm off its centre."""
+    board = pcbnew.BOARD()
+    net = pcbnew.NETINFO_ITEM(board, "GND")
+    board.Add(net)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("U$2")
+    pad = pcbnew.PAD(fp)
+    pad.SetNumber("GND")
+    pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+    pad.SetShape(pcbnew.PAD_SHAPE_RECT)
+    pad.SetSize(pcbnew.VECTOR2I(kb.nm(0.37), kb.nm(2.3)))
+    pad.SetLayerSet(pcbnew.PAD.SMDMask())
+    pad.SetPosition(pcbnew.VECTOR2I(kb.nm(13.4755), kb.nm(1.58)))
+    pad.SetNet(net)
+    fp.Add(pad)
+    board.Add(fp)
+    via = pcbnew.PCB_VIA(board)
+    via.SetPosition(pcbnew.VECTOR2I(kb.nm(13.4755), kb.nm(3.2981)))
+    via.SetWidth(kb.nm(0.45))
+    via.SetDrill(kb.nm(0.2))
+    via.SetNet(net)
+    board.Add(via)
+    tracks = []
+    for (x0, y0), (x1, y1) in (((13.4755, 3.2981), (13.4755, 1.5801)), ((15.0, 3.2981), (13.5755, 3.2981))):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(y1)))
+        t.SetWidth(kb.nm(0.089))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(net)
+        board.Add(t)
+        tracks.append(t)
+    return board, tracks[0], tracks[1], via
+
+
+def test_a_repair_move_never_takes_an_end_off_the_copper_it_was_on():
+    """sensor-watch's U$2-GND was reached as imported and cut off after the repair (2026-09-29): an end move
+    took the track's end 0.38 mm off its via, which does not move with a track, and a later end move took the
+    other end off the finger pad. A move is kept only if every end on copper of its net that stays put, and
+    every such end on copper that moves, is on it still. Nothing of another net is near, so only this refuses."""
+    from waffle_eda.route.obstacles import Obstacles
+    rules = _rules(clearance_mm=0.0878, hole_to_copper_mm=0.0, edge_clearance_mm=0.0, min_track_mm=0.089)
+    board, track, spur, via = _finger_board()
+    before = _ends(board)
+    obstacles = Obstacles(board)
+    assert not fr._move_end_checked(board, obstacles, track, 0, -0.3798, 0.0, rules)  # off the via
+    # off the pad: 1 mm, since up to 0.7 the track from the via still crosses the pad's top corner (KiCad joins it)
+    assert not fr._move_end_checked(board, obstacles, track, 1, -1.0, 0.0, rules)
+    assert not fr._move_checked(board, obstacles, track, 0.3, 0.0, rules)  # off both
+    assert not fr._move_checked(board, obstacles, via, 0.0, 0.3, rules)  # the spur's end, off the via's centre, left
+    assert _ends(board) == before
+    assert fr._move_checked(board, obstacles, track, 0.05, 0.0, rules)  # still on the via and the pad: kept
+    assert kb.mm(track.GetStart().x) == pytest.approx(13.5255)
+
+
 # --- pad pieces the router leaves apart (D73) -----------------------------------------------------------------
 def test_piece_groups_the_router_left_apart_are_joined_where_the_run_is_clear():
     """libresolar's USB shield: twelve pieces in six groups; the router reached 1 of the 6 connections."""

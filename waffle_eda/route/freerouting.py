@@ -925,9 +925,10 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
             for mid, hits in before.items() for oid, o in hits.items()}
     for m in moved:
         obstacles.remove(m)
+    saved, joints = _positions(moved), _joints(obstacles, moved)
     _move(board, item, moved, kb.nm(dx_mm), kb.nm(dy_mm))
-    clean = True
-    for m in moved:
+    clean = _joints_hold(joints)
+    for m in moved if clean else ():
         mid = m.m_Uuid.AsString()
         after = _hits(obstacles, m, rules)
         if mid == own and allowed is not None:  # the caller vouches: it moves away from these
@@ -943,7 +944,7 @@ def _move_checked(board, obstacles, item, dx_mm: float, dy_mm: float, rules, kee
             clean = False
             break
     if not clean or not keep:
-        _move(board, item, moved, -kb.nm(dx_mm), -kb.nm(dy_mm))
+        _put_back(saved)
     for m in moved:
         obstacles.add(m)
     return clean
@@ -976,6 +977,7 @@ def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, r
     before = {m.m_Uuid.AsString(): _hit_ids(obstacles, m, rules) for m in moved}
     for m in moved:
         obstacles.remove(m)
+    saved = _positions(moved)
     _move(board, item, moved, kb.nm(ux * distance_mm), kb.nm(uy * distance_mm))
     best = None
     for m in moved:
@@ -986,7 +988,7 @@ def _blocker(board, obstacles, item, ux: float, uy: float, distance_mm: float, r
             key = (round(_gap_mm(m, o, layer), 4), _item_key(o))
             if best is None or key < best[0]:
                 best = (key, o)
-    _move(board, item, moved, -kb.nm(ux * distance_mm), -kb.nm(uy * distance_mm))
+    _put_back(saved)
     for m in moved:
         obstacles.add(m)
     return None if best is None else best[1]
@@ -1020,6 +1022,7 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
     gaps = {(m.m_Uuid.AsString(), oid): _gap_mm(m, o, layer) for m in moved for oid, o in before[m.m_Uuid.AsString()].items()}
     for m in moved:
         obstacles.remove(m)
+    saved, joints = _positions(moved), _joints(obstacles, moved)
     dx, dy = kb.nm(dx_mm), kb.nm(dy_mm)
 
     def shift(item, points):
@@ -1028,9 +1031,7 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
         if item.GetEnd() in points:
             item.SetEnd(pcbnew.VECTOR2I(item.GetEnd().x + dx, item.GetEnd().y + dy))
 
-    def apply(sign):
-        nonlocal dx, dy
-        dx, dy = sign * abs(dx) * (1 if dx_mm >= 0 else -1), sign * abs(dy) * (1 if dy_mm >= 0 else -1)
+    def apply():
         anchors = [end]
         if end_index == 0:
             track.SetStart(pcbnew.VECTOR2I(track.GetStart().x + dx, track.GetStart().y + dy))
@@ -1049,9 +1050,9 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
             shift(o, anchors[1:])
         end.x, end.y = end.x + dx, end.y + dy
 
-    apply(1)
-    clean = True
-    for m in moved:
+    apply()
+    clean = _joints_hold(joints)
+    for m in moved if clean else ():
         after = _hits(obstacles, m, rules)
         if m is track and allowed is not None:
             clean = set(after) <= allowed
@@ -1060,7 +1061,7 @@ def _move_end_checked(board, obstacles, track, end_index: int, dx_mm: float, dy_
         if not clean:
             break
     if not clean:
-        apply(-1)
+        _put_back(saved)
     for m in moved:
         obstacles.add(m)
     return clean
@@ -1122,6 +1123,58 @@ def _move(board, item, moved, dx_nm: int, dy_nm: int) -> None:
             o.SetStart(pcbnew.VECTOR2I(o.GetStart().x + dx_nm, o.GetStart().y + dy_nm))
         if o.GetEnd() in anchors:
             o.SetEnd(pcbnew.VECTOR2I(o.GetEnd().x + dx_nm, o.GetEnd().y + dy_nm))
+
+
+def _positions(items) -> list:
+    """Where each of ``items`` is, for :func:`_put_back`. A move is undone by these, never by the opposite
+    move: which neighbours a move carries whole depends on their length, which the move itself changes, and
+    sensor-watch's /COM1 came apart when an undo carried a diagonal that the move had shortened under
+    CARRY_MM (2026-09-29)."""
+    return [(i, pcbnew.VECTOR2I(i.GetPosition()), None) if i.GetClass() == "PCB_VIA"
+            else (i, pcbnew.VECTOR2I(i.GetStart()), pcbnew.VECTOR2I(i.GetEnd())) for i in items]
+
+
+def _put_back(saved: list) -> None:
+    for item, a, b in saved:
+        if b is None:
+            item.SetPosition(a)
+        else:
+            item.SetStart(a)
+            item.SetEnd(b)
+
+
+def _joined(a, b) -> bool:
+    """Whether copper ``a`` and ``b`` of one net are joined as KiCad 9 joins them: their copper overlaps on a
+    layer both are on. Measured 2026-09-29: a via whose centre is off a track but whose copper overlaps it is
+    joined, so are two tracks crossing, and a track whose end cap stops short of a pad is not."""
+    track = next((x for x in (a, b) if x.GetClass() not in ("PCB_VIA", "PAD")), None)
+    pad = next((x for x in (a, b) if x.GetClass() == "PAD"), None)
+    layer = track.GetLayer() if track is not None else (pad or a).GetLayerSet().CuStack()[0]
+    if not (a.IsOnLayer(layer) and b.IsOnLayer(layer)):
+        return False
+    return a.GetEffectiveShape(layer).Collide(b.GetEffectiveShape(layer), 0)
+
+
+def _joints(obstacles, moved) -> list:
+    """Every joint a move of ``moved`` (already out of ``obstacles``) could break: a moved item joined to copper
+    of its net that stays put. The repair moved ends by collisions alone, and sensor-watch's U$2-GND lost its via
+    and then its pad to two end moves (2026-09-29)."""
+    from waffle_eda.route.obstacles import Obstacles
+    out, seen = [], set()
+    for m in moved:
+        net, mid = m.GetNetname(), m.m_Uuid.AsString()
+        for cell in Obstacles._cells(m.GetBoundingBox()):
+            for onet, _bb, other, kind, uid in obstacles.cells.get(cell, ()):
+                if not net or onet != net or kind not in ("pad", "via", "track") or (mid, uid) in seen:
+                    continue
+                seen.add((mid, uid))
+                if _joined(m, other):
+                    out.append((m, other))
+    return out
+
+
+def _joints_hold(joints) -> bool:
+    return all(_joined(m, other) for m, other in joints)
 
 
 def _move_track(board, track, dx_nm: int, dy_nm: int) -> None:
