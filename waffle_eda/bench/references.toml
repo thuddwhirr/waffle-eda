@@ -241,7 +241,7 @@ notes = "4 layers, 150 x 98 mm, ESP32-WROVER, RP2040, iCE40 UP5K, display and au
 [[reference]]
 key = "fomu-pvt"
 title = "fomu-pvt"
-class = "B"
+class = "-"
 repo = "https://github.com/im-tomu/fomu-hardware.git"
 commit = "9fdebede731c1d963335d65d25c7663cb934f925"
 board = "archive/pvt/pcb/tomu-fpga.kicad_pcb"
@@ -249,7 +249,7 @@ licence = "CC-BY-SA"
 licence_file = "LICENSE"
 attribution = "Tomu / Sean Cross"
 key_parts = ["U5"]
-notes = "4 layers, 13 x 9 mm, iCE40 UP5K in WLCSP-30 at 0.35 mm pitch, 0.1 mm tracks: the hardest fine-pitch case without a BGA lattice. CC-BY-SA."
+notes = "4 layers, 13 x 9 mm, iCE40 UP5K in WLCSP-30 at 0.35 mm pitch, 0.1 mm tracks: the hardest fine-pitch case without a BGA lattice; built on microvias and buried vias, out of class B by the owner (D137). CC-BY-SA."
 
 [[reference]]
 key = "tinyfpga-bx"

@@ -79,11 +79,20 @@ JAVA_MAJOR = 25  # the minimum Java that runs the jar: 2.4.1 is compiled for cla
 # only and everything else exactly, which connected 4 of 6 there and is kept for measurement.
 CLEARANCE_SLACK_MM = 0.0072
 # `WAFFLE_CLEARANCE_SLACK_MM` overrides it for a measurement (D90: the router's failed insertions stop against
-# its own copper, not at a hair of clearance, so a larger slack was measured not to help on upduino).
+# its own copper, not at a hair of clearance, so a larger slack was measured not to help on upduino). What the
+# check rejected was the jar's own 16-unit margin over the rule its maze plans with (D126). On class B the slack
+# only laid copper inside the rule for the repair to take back, and a run there hands the router the rule itself
+# (`route_board(slack_mm=0)`: upduino 83 of 86 with no clearance for 79 with 8, D127); class A keeps the slack,
+# which its SOT-563 needs on the stock jar.
 
 
-def clearance_slack_mm() -> float:
-    return float(os.environ.get("WAFFLE_CLEARANCE_SLACK_MM", CLEARANCE_SLACK_MM))
+def clearance_slack_mm(default: float | None = None) -> float:
+    """The slack a run hands the router: the environment's for a measurement, else the run's own ``default``,
+    else :data:`CLEARANCE_SLACK_MM`."""
+    env = os.environ.get("WAFFLE_CLEARANCE_SLACK_MM")
+    if env is not None:
+        return float(env)
+    return CLEARANCE_SLACK_MM if default is None else default
 # The router writes via drills in whole micrometres (248.9 became 248), so the drill is rounded up to one.
 DRILL_STEP_MM = 0.001
 # The default via cost of 50 stops the router placing any via of its own on a 15 x 25 mm board (D57: 0 vias,
@@ -190,11 +199,15 @@ def restore_references(board, renamed: dict[str, str]) -> None:
             fp.SetReference(original)
 
 
-def smallest_ring_mm(board) -> tuple[float | None, float | None]:
+def smallest_ring_mm(board, per_axis: bool = True) -> tuple[float | None, float | None]:
     """The smallest copper ring around a hole, for vias and for plated pads: (via ring, pin ring), in mm.
 
     A via's ring comes from the rules, so the via ring here is only what the board already carries (None on a
-    stripped board). A pad whose copper is smaller than its hole (a castellation, a slot) has a ring of zero.
+    stripped board). A pad whose copper is smaller than its hole (a castellation) has a ring of zero. A slot's
+    ring is taken along each of its axes: the pad's short side less the slot's long side counted a USB shield's
+    0.3 mm ring as none and fenced every plated pin at the whole hole rule (D130). ``per_axis`` False keeps
+    that measure, which class A's gate passed under and does not pass without (esp32c3 32 of 34, rp2040 three
+    clearances, D130).
     """
     via_rings = [(kb.via_diameter_mm(v) - kb.via_drill_mm(v)) / 2 for v in kb.vias(board)]
     pin_rings = []
@@ -206,7 +219,8 @@ def smallest_ring_mm(board) -> tuple[float | None, float | None]:
             best = None
             for layer in pad.GetLayerSet().CuStack():
                 size = pad.GetSize(layer)
-                ring = (min(size.x, size.y) - max(drill.x, drill.y)) / 2
+                ring = (min(size.x - drill.x, size.y - drill.y) if per_axis
+                        else min(size.x, size.y) - max(drill.x, drill.y)) / 2
                 best = ring if best is None else min(best, ring)
             pin_rings.append(max(0.0, kb.mm(best if best is not None else 0)))
     return (min(via_rings) if via_rings else None, min(pin_rings) if pin_rings else None)
@@ -224,11 +238,12 @@ class DsnRules:
     smd_clearance_mm: float | None = None  # typed clearance wire to SMD pad: the rule less the slack
 
 
-def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True) -> DsnRules:
-    """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for."""
+def dsn_rules(rules, pin_ring_mm: float | None, slack_all: bool = True, slack_mm: float | None = None) -> DsnRules:
+    """Map the gate's measured rules (`bench/rebuild.BoardRules`) to what the router is asked for. ``slack_mm`` is
+    the run's clearance slack (:func:`clearance_slack_mm`)."""
     import math
     exact = round(rules.clearance_mm, 4)
-    slack = round(rules.clearance_mm - clearance_slack_mm(), 4)
+    slack = round(rules.clearance_mm - clearance_slack_mm(slack_mm), 4)
     clearance = slack if slack_all else exact
     drill = math.ceil(rules.min_drill_mm / DRILL_STEP_MM - 1e-9) * DRILL_STEP_MM
     via_ring = (rules.min_via_mm - drill) / 2
@@ -307,12 +322,17 @@ def _local_clearance_mm(item) -> float:
 
 
 def pad_keepouts(board, clearance_mm: float, hole_clearance_mm: float = 0.0) -> list[PadKeepout]:
-    """Every pad whose own clearance override exceeds the clearance the router is asked for."""
+    """Every pad whose own clearance override exceeds the clearance the router is asked for, except a pad the
+    router must reach: a keepout carries no net and covers the whole pad, so its own net could not (D136).
+    A pad alone on its net (a fiducial's `Net-(FID1-..)`) keeps its keepout."""
     names = {lid: name for lid, name in kb.copper_layers(board)}
+    pads_on = Counter(pad.GetNetname() for fp in board.GetFootprints() for pad in fp.Pads() if pad.GetNetname())
     out = []
     for fp in board.GetFootprints():
         fp_clr = _local_clearance_mm(fp)
         for pad in fp.Pads():
+            if pads_on[pad.GetNetname()] > 1:
+                continue
             override = max(fp_clr, _local_clearance_mm(pad))
             drill = pad.GetDrillSize()
             if not pad.GetNetname() and max(drill.x, drill.y) > 0:
@@ -354,6 +374,100 @@ def keepouts_dsn(dsn_text: str, keepouts: list[PadKeepout], layers: list[str] | 
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
 
 
+def copper_art(board) -> list[tuple[str, list[tuple[float, float]]]]:
+    """The copper KiCad's export leaves out of the DSN, as (layer name, outline in mm): board-level copper shapes
+    and text, and copper shapes and text in footprints. The router routed through them: a via through the layer
+    marker "3" on poe-m1's In2.Cu (D138), four tracks through tinytapeout's solder-jumper bridges (D142). A
+    footprint shape touching pads of one net only is that pad's copper and is left out, as a netless keepout on it
+    would wall the pad off (D136); one bridging pads of two nets (a bridged solder jumper) is art (D143)."""
+    names = {lid: name for lid, name in kb.copper_layers(board)}
+    items = [(d, []) for d in board.GetDrawings() if d.GetLayer() in names]
+    for fp in board.GetFootprints():
+        for g, touched in _footprint_art(fp, names):
+            items.append((g, touched))  # a bridge less the pads it overlaps, which stay the router's to reach
+        items += [(f, []) for f in (fp.Reference(), fp.Value()) if f.GetLayer() in names and f.IsVisible()]
+    out = []
+    for item, pads_under in items:
+        if hasattr(item, "GetNetCode") and item.GetNetCode() > 0:
+            continue  # copper with a net is not an obstacle to its own net; no reference has any
+        poly = pcbnew.SHAPE_POLY_SET()
+        item.TransformShapeToPolygon(poly, item.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_INSIDE)
+        poly.Simplify()  # a filled shape comes as its fill and its stroke's pieces; one outline each
+        for pad in pads_under:
+            cut = pcbnew.SHAPE_POLY_SET()
+            pad.TransformShapeToPolygon(cut, item.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_OUTSIDE)
+            poly.BooleanSubtract(cut)
+        for i in range(poly.OutlineCount()):
+            ring = poly.Outline(i)
+            pts = [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y)) for k in range(ring.PointCount())]
+            if len(pts) >= 3:
+                out.append((names[item.GetLayer()], pts))
+    return out
+
+
+def _footprint_art(fp, names: dict) -> list:
+    """A footprint's copper graphics that are not a pad's own copper, each with the pads it touches: a shape
+    touching pads of one net only is that pad's copper and is left out; one touching pads of two or more nets is a
+    bridge (a bridged solder jumper)."""
+    pads = list(fp.Pads())
+    out = []
+    for g in fp.GraphicalItems():
+        layer = g.GetLayer()
+        if layer not in names:
+            continue
+        touched = []
+        if g.GetClass() == "PCB_SHAPE":
+            shape = g.GetEffectiveShape(layer)
+            touched = [p for p in pads if p.IsOnLayer(layer) and shape.Collide(p.GetEffectiveShape(layer), 0)]
+            if len({p.GetNetname() for p in touched}) == 1:
+                continue
+        out.append((g, touched))
+    return out
+
+
+def bridge_pad_outlines(board) -> list[tuple[str, list[tuple[float, float]]]]:
+    """The pads a bridged solder jumper's copper joins, as (layer name, outline in mm), for via keepouts: a via in
+    such a pad reaches past it into the bridge, which has no net, and the gate's DRC calls it a short (upduino's
+    +3V3 via in R28's pad 2, D143). Tracks still reach the pads."""
+    names = {lid: name for lid, name in kb.copper_layers(board)}
+    out, seen = [], set()
+    for fp in board.GetFootprints():
+        for g, touched in _footprint_art(fp, names):
+            for pad in touched:
+                key = (fp.GetReference(), pad.GetNumber(), pad.GetPosition().x, pad.GetPosition().y, g.GetLayer())
+                if key in seen:  # not id(pad): pcbnew's proxies are freed and their ids reused
+                    continue
+                seen.add(key)
+                poly = pcbnew.SHAPE_POLY_SET()
+                pad.TransformShapeToPolygon(poly, g.GetLayer(), 0, kb.nm(0.005), pcbnew.ERROR_OUTSIDE)
+                poly.Simplify()
+                for i in range(poly.OutlineCount()):
+                    ring = poly.Outline(i)
+                    out.append((names[g.GetLayer()], [(kb.mm(ring.CPoint(k).x), kb.mm(ring.CPoint(k).y))
+                                                      for k in range(ring.PointCount())]))
+    return out
+
+
+def copper_art_dsn(dsn_text: str, art: list[tuple[str, list[tuple[float, float]]]], kind: str = "keepout") -> str:
+    """Add :func:`copper_art` to the structure section as keepout polygons, where :func:`keepouts_dsn` puts its
+    circles; ``kind`` "via_keepout" keeps vias only out (:func:`bridge_pad_outlines`). Micrometres with y negated,
+    as KiCad writes."""
+    if kind not in ("keepout", "via_keepout"):
+        raise ValueError(f"kind {kind!r}: keepout or via_keepout")
+    lines = []
+    for layer, pts in art:
+        name = f'"{layer}"' if any(c in layer for c in " ()") or not layer.isascii() else layer
+        coords = "  ".join(f"{x * 1000:.2f} {-y * 1000:.2f}" for x, y in pts + pts[:1])
+        lines.append(f'    ({kind} "" (polygon {name} 0  {coords}))')
+    if not lines:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    i = dsn_text.find("    (via ", start)
+    if i < 0:
+        i = dsn_text.index("    (rule\n", start)
+    return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
 def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, float, float]]) -> str:
     """Add via keepouts to the structure section, four strips round a rectangle: for each band
     ``(x0, y0, x1, y1, inner_mm, outer_mm)`` (the pads' extent in mm and the strip's offsets from it), the strip
@@ -374,6 +488,43 @@ def via_band_dsn(dsn_text: str, bands: list[tuple[float, float, float, float, fl
     if i < 0:
         i = dsn_text.index("    (rule\n", start)
     return dsn_text[:i] + "\n".join(lines) + "\n" + dsn_text[i:]
+
+
+def via_at_smd_dsn(dsn_text: str) -> str:
+    """Let the router put a via on a same-net SMD pad (D93, D132): `(control (via_at_smd on))` in the structure,
+    after its `(via ...)` line, and `(attach on)` on the padstacks that line names. Freerouting needs both
+    (`Structure.readControlScope`, `Network.createDefaultViaInfos`); KiCad's export writes `(attach off)` on
+    every padstack and no control. A pin's own attach flag does not matter: a single-layer pin admits a
+    same-net via whatever it says (`Pin.drillAllowed`)."""
+    if "(via_at_smd on)" in dsn_text:
+        return dsn_text
+    start = dsn_text.index("(structure")
+    # the list wraps onto more lines when a board has many via sizes (mch2022-badge's five)
+    m = re.compile(r"\n    \(via ([^()]*)\)\n").search(dsn_text, start, dsn_text.index("(placement", start))
+    if not m:
+        raise ValueError("no (via ...) list in the structure section of the DSN")
+    names = re.findall(r'"[^"]*"|\S+', m.group(1))
+    text = dsn_text[:m.end()] + "    (control\n      (via_at_smd on)\n    )\n" + dsn_text[m.end():]
+    for name in names:
+        i = text.index(f"(padstack {name}\n")
+        j = text.index("\n    )", i)
+        text = text[:i] + text[i:j].replace("(attach off)", "(attach on)") + text[j:]
+    return text
+
+
+def plain_via_names(dsn_text: str) -> str:
+    """Write every via name that has a decimal point without one, wherever it appears. KiCad names a via padstack
+    by its size (`"Via[0-3]_654.8:350_um"`); Freerouting reads the padstack's name back as `Via[0-3]_654:350_um`
+    while the net classes' `use_via` keep the name as written, so every via rule holds no via and the router
+    places none (buspirate5-rev10: 0 vias for the reference's 547, D140)."""
+    start = dsn_text.index("(structure")
+    m = re.compile(r"\n    \(via ([^()]*)\)\n").search(dsn_text, start, dsn_text.index("(placement", start))
+    if not m:
+        return dsn_text
+    for name in re.findall(r'"[^"]*"|\S+', m.group(1)):
+        if "." in name:
+            dsn_text = dsn_text.replace(name, name.replace(".", "_"))
+    return dsn_text
 
 
 def copy_tracks(src, dst, nets: set[str]) -> int:
@@ -419,9 +570,9 @@ def pad_extent_mm(board, reference: str) -> tuple[float, float, float, float]:
 
 # --- rule areas the export gets wrong -------------------------------------------------------------------------
 def pour_only_rule_areas(board) -> list:
-    """The rule areas that forbid the copper pour and nothing the router lays (no tracks, no vias)."""
-    return [z for z in board.Zones() if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()
-            and not z.GetDoNotAllowTracks() and not z.GetDoNotAllowVias()]
+    """The rule areas that forbid nothing the router lays (no tracks, no vias): the pour only, or nothing at all
+    (a named area a custom DRC rule refers to; tinytapeout-demo's four, D132)."""
+    return [z for z in board.Zones() if z.GetIsRuleArea() and not z.GetDoNotAllowTracks() and not z.GetDoNotAllowVias()]
 
 
 def lift_pour_only_rule_areas(board) -> list[dict]:
@@ -446,7 +597,8 @@ def lift_pour_only_rule_areas(board) -> list[dict]:
                 holes.append([(hole.CPoint(k).x, hole.CPoint(k).y) for k in range(hole.PointCount())])
             outlines.append((pts, holes))
         facts.append({"name": zone.GetZoneName(), "layers": list(zone.GetLayerSet().Seq()), "outlines": outlines,
-                      "pads": zone.GetDoNotAllowPads(), "footprints": zone.GetDoNotAllowFootprints()})
+                      "pads": zone.GetDoNotAllowPads(), "footprints": zone.GetDoNotAllowFootprints(),
+                      "pour": zone.GetDoNotAllowCopperPour()})
         board.Delete(zone)
     return facts
 
@@ -458,7 +610,7 @@ def lay_rule_areas(board, facts: list[dict]) -> list:
     for f in facts:
         zone = pcbnew.ZONE(board)
         zone.SetIsRuleArea(True)
-        zone.SetDoNotAllowCopperPour(True)
+        zone.SetDoNotAllowCopperPour(f.get("pour", True))
         zone.SetDoNotAllowTracks(False)
         zone.SetDoNotAllowVias(False)
         zone.SetDoNotAllowPads(f["pads"])
@@ -1862,6 +2014,13 @@ def type_layers_power(dsn_text: str, layers: list[str]) -> str:
     return dsn_text
 
 
+def type_layers_signal(dsn_text: str) -> str:
+    """Type every layer `signal` in the DSN's structure section. KiCad writes each layer's type from the board file,
+    and 2.4.1 closes a `power` layer to the router: buspirate5-rev10's In2.Cu took 0 vias for the reference's 547
+    (D140). The class B form, which hands its planes over on `signal` layers, wants none."""
+    return re.sub(r"(\(layer \S+\n\s*)\(type power\)", r"\1(type signal)", dsn_text)
+
+
 def autoroute_settings_dsn(dsn_text: str, layers: list[str], trace_costs: dict[str, float], via_costs: int,
                            plane_via_costs: int = 5, ripup_costs: int = 100) -> str:
     """Add an `(autoroute_settings ...)` block to the structure right after the boundary, in the form the jar's
@@ -2018,11 +2177,12 @@ def parse_log(text: str) -> dict:
     return facts
 
 
-def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRules, dict[str, str]]:
+def export_dsn(board, rules, out: Path, slack_all: bool = True, slack_mm: float | None = None,
+               ring_per_axis: bool = False) -> tuple[DsnRules, dict[str, str]]:
     """Write the DSN for ``board`` under ``rules``; the board is left with its references renamed (see
     :func:`unique_references`) so that the session can be imported into it, and the mapping is returned."""
-    _via_ring, pin_ring = smallest_ring_mm(board)
-    d = dsn_rules(rules, pin_ring, slack_all=slack_all)
+    _via_ring, pin_ring = smallest_ring_mm(board, per_axis=ring_per_axis)
+    d = dsn_rules(rules, pin_ring, slack_all=slack_all, slack_mm=slack_mm)
     apply_rules(board, d)
     renamed = unique_references(board)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -2036,8 +2196,10 @@ def export_dsn(board, rules, out: Path, slack_all: bool = True) -> tuple[DsnRule
     if not ok or not out.is_file():
         raise RuntimeError(f"pcbnew.ExportSpecctraDSN returned {ok} and wrote {'a file' if out.is_file() else 'nothing'}"
                            f" (a duplicate reference is the known cause and was handled: {len(renamed)} renamed)")
-    text = drop_pins(typed_clearances(out.read_text(), d), joined_pins(board))
-    out.write_text(keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm)))
+    text = drop_pins(typed_clearances(plain_via_names(out.read_text()), d), joined_pins(board))
+    text = keepouts_dsn(text, pad_keepouts(board, d.clearance_mm, rules.hole_to_copper_mm))
+    text = copper_art_dsn(text, copper_art(board))  # the copper the export leaves out (D143)
+    out.write_text(copper_art_dsn(text, bridge_pad_outlines(board), kind="via_keepout"))
     return d, renamed
 
 
@@ -2081,7 +2243,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                 via_bands=None, only_nets: set[str] | None = None,
                 fix_existing: bool = False, plane_type: str = "power", jar_name: str | None = None,
                 via_costs: int | None = None, plane_via_costs: int | None = None,
-                ripup_costs: int | None = None) -> FreeroutingResult:
+                ripup_costs: int | None = None, slack_mm: float | None = None,
+                ring_per_axis: bool = False, via_at_smd: bool = False) -> FreeroutingResult:
     """Route every net of ``board`` under ``rules`` with Freerouting, in place. The board should carry no copper
     for the nets to route (the gate's problem board). ``work_dir`` receives the DSN, the session and the log.
 
@@ -2123,7 +2286,10 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     ``plane_via_costs`` and ``ripup_costs`` are the router's, the environment's `WAFFLE_*` on top.
     ``layer_trace_costs`` raises the router's trace costs on the named layers through an `autoroute_settings`
     block in the DSN (:func:`autoroute_settings_dsn`), to keep tracks off a plane's layer without typing it
-    `power`, which closes the plane to vias in 2.4.1 ("layers are disabled")."""
+    `power`, which closes the plane to vias in 2.4.1 ("layers are disabled"). ``slack_mm`` is the clearance
+    slack handed to the router (:data:`CLEARANCE_SLACK_MM` when None); a jar with D126's patch needs none.
+    ``ring_per_axis`` measures a slotted pad's ring along its axes (:func:`smallest_ring_mm`, D130).
+    ``via_at_smd`` lets a via sit on a same-net SMD pad (:func:`via_at_smd_dsn`, D93, D132)."""
     t0 = time.time()
     work_dir = work_dir.resolve()  # the jar runs with the work directory as its cwd, so nothing relative survives
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -2164,7 +2330,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             feedlib.lay_feeds(board, targets, in_pad=False, stubs=False)  # (their stubs come after the import)
         say(f"plane feeds {'found' if feeds_mode == 'reserved' else 'laid'}: {len(laid_feeds)}, "
             f"{sum(1 for x in laid_feeds if x.in_pad)} in a pad (after the import)")
-    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all)
+    d, renamed = export_dsn(board, rules, dsn, slack_all=slack_all, slack_mm=slack_mm, ring_per_axis=ring_per_axis)
     if laid or (laid_feeds and feeds_mode in ("fixed", "vias")) or targets:  # every wire in the DSN, the feeds included where stubs are laid
         dsn.write_text(fix_wires(dsn.read_text()))
     if only_nets is not None:
@@ -2177,6 +2343,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         kb.save_board(board, work_dir / "problem.kicad_pcb")  # 166 items to 19), so it comes back from this
         dsn.write_text(fix_wires(dsn.read_text()))  # snapshot after the import
         say(f"the problem board's own copper typed fixed: {len(fixed_nets)} nets")
+    if via_at_smd:  # D93, D132: a via may sit on a same-net SMD pad, as the references' do
+        dsn.write_text(via_at_smd_dsn(dsn.read_text()))
+        say("vias allowed on SMD pads")
     if via_bands == "fine-pitch":
         via_bands = fine_pitch_bands(board)
     if via_bands:
@@ -2251,7 +2420,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
             dsn.write_text(drop_net_pins(dsn.read_text(), set(feeds)))
     if planes and plane_type == "power":
         dsn.write_text(type_layers_power(dsn.read_text(), sorted({p["layer"] for p in planes})))
-    elif planes and plane_type != "signal":
+    elif plane_type == "signal":  # a layer the board file types power is closed to the router (D140)
+        dsn.write_text(type_layers_signal(dsn.read_text()))
+    elif planes:
         raise ValueError(f"plane_type {plane_type!r}: power or signal")
     layers = re.findall(r"\(layer (\S+)\n\s*\(type", dsn.read_text())
     say(f"exported {dsn.name}: layers {layers}, {len(renamed)} references renamed, rules {d}")
@@ -2261,7 +2432,8 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         router_edge_mm = min(ROUTER_EDGE_MM, rules.edge_clearance_mm)
     jar = jar_path(jar_name) if jar_name else None
     if jar is not None and not jar.is_file():
-        raise RuntimeError(f"patched jar {jar} not found: python3 scripts/patch_freerouting.py {jar_name}")
+        raise RuntimeError(f"patched jar {jar} not found: python3 scripts/patch_freerouting.py <fork checkout> "
+                           f"{jar_name.replace('-', ' ')}")
     code, timed_out = run_jar(dsn, ses, log, passes, threads, timeout_s, edge_clearance_mm=router_edge_mm, jar=jar,
                               via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs,
                               fanout=fanout, gui=gui)

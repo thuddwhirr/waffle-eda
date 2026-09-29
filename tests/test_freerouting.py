@@ -107,6 +107,40 @@ def test_the_measured_rules_become_the_routers_rules():
     assert d.pin_clearance_mm is None
 
 
+def test_a_run_can_hand_the_router_the_rule_itself(monkeypatch):
+    # D126: the slack worked round the jar's own insertion margin; a run on the patched jar asks for none
+    monkeypatch.delenv("WAFFLE_CLEARANCE_SLACK_MM", raising=False)
+    assert fr.dsn_rules(_rules(), None, slack_mm=0.0).clearance_mm == 0.1972
+    assert fr.dsn_rules(_rules(), None).clearance_mm == round(0.1972 - fr.CLEARANCE_SLACK_MM, 4)
+    monkeypatch.setenv("WAFFLE_CLEARANCE_SLACK_MM", "0.01")  # a measurement overrides the run's own slack
+    assert fr.dsn_rules(_rules(), None, slack_mm=0.0).clearance_mm == round(0.1972 - 0.01, 4)
+
+
+def test_a_slotted_pad_has_the_ring_of_its_axes():
+    # D130: a USB shield's pad 1.9 x 1.2 mm round a 1.3 x 0.6 mm slot has a 0.3 mm ring on both axes; the pad's
+    # short side less the slot's long side counted it as none, and the whole hole-to-copper rule then fenced
+    # every plated pin of upduino and pico-ice at 0.2526 mm from its pad's edge
+    import pcbnew
+    board = pcbnew.BOARD()
+    net = pcbnew.NETINFO_ITEM(board, "SHIELD")
+    board.Add(net)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("J1")
+    pad = pcbnew.PAD(fp)
+    pad.SetNumber("S1")
+    pad.SetAttribute(pcbnew.PAD_ATTRIB_PTH)
+    pad.SetShape(pcbnew.PAD_SHAPE_OVAL)
+    pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.9), kb.nm(1.2)))
+    pad.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_OBLONG)
+    pad.SetDrillSize(pcbnew.VECTOR2I(kb.nm(1.3), kb.nm(0.6)))
+    pad.SetLayerSet(pcbnew.PAD.PTHMask())
+    pad.SetNet(net)
+    fp.Add(pad)
+    board.Add(fp)
+    assert fr.smallest_ring_mm(board)[1] == pytest.approx(0.3)
+    assert fr.dsn_rules(_rules(hole_to_copper_mm=0.2526, clearance_mm=0.1479), 0.3).pin_clearance_mm is None
+
+
 def test_a_hole_rule_the_ordinary_clearance_already_meets_needs_no_typed_rule():
     d = fr.dsn_rules(_rules(hole_to_copper_mm=0.3), pin_ring_mm=0.3)
     assert d.via_clearance_mm is None and d.pin_clearance_mm is None
@@ -126,6 +160,71 @@ def test_typed_clearances_go_into_the_structures_rule_block_only():
         assert f"(type {t})" in structure
         assert f"(type {t})" not in network
     assert structure.index("(clearance 190)") < structure.index("(type via_via)") < structure.index("(type smd_smd)")
+
+
+LIBRARY = """  (library
+    (padstack RoundRect[T]Pad_1000x950_um
+      (shape (polygon F.Cu 0  -500 475  500 475  500 -475  -500 -475))
+      (attach off)
+    )
+    (padstack "Via[0-1]_701:249_um"
+      (shape (circle F.Cu 701))
+      (shape (circle B.Cu 701))
+      (attach off)
+    )
+  )
+"""
+
+
+def test_a_via_may_sit_on_an_smd_pad_when_the_run_allows_it():
+    # D93 allowed vias in pads on class B; the router takes one only with `(control (via_at_smd on))` in the
+    # structure and `(attach on)` on the via's padstack, and KiCad's export writes neither (the references put
+    # 38 vias on SMD pads on upduino and 13 on pico-ice, every one illegal in our DSN until now)
+    dsn = DSN.replace("  (placement\n", LIBRARY + "  (placement\n")
+    text = fr.via_at_smd_dsn(dsn)
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert "(control\n      (via_at_smd on)\n    )" in structure
+    assert structure.index("(via ") < structure.index("(control") < structure.index("(rule")
+    via = text[text.index('(padstack "Via[0-1]_701:249_um"'):]
+    assert via[:via.index("\n    )")].count("(attach on)") == 1
+    pin = text[text.index("(padstack RoundRect"):text.index('(padstack "Via')]
+    assert "(attach off)" in pin and "(attach on)" not in pin
+    assert fr.via_at_smd_dsn(text) == text  # once is enough
+
+
+def test_a_via_list_kicad_wraps_over_two_lines_is_read_whole():
+    # mch2022-badge has five via sizes; KiCad wraps the structure's (via ...) list, and a pre-laid via in the
+    # wiring must not be taken for it
+    wrapped = '    (via "Via[0-1]_701:249_um" "Via[0-1]_800:400_um" "Via[0-1]_900:500_um" "Via[0-1]_950:500_um"\n' \
+              '       "Via[0-1]_3000:2500_um")\n'
+    stacks = "".join(f'    (padstack "Via[0-1]_{s}_um"\n      (shape (circle F.Cu 1))\n      (attach off)\n    )\n'
+                     for s in ("800:400", "900:500", "950:500", "3000:2500"))
+    dsn = DSN.replace('    (via "Via[0-1]_701:249_um")\n', wrapped)
+    dsn = dsn.replace("  (placement\n", LIBRARY.replace("  )\n", stacks + "  )\n", 1)[:-len("  )\n")] + "  )\n"
+                      + "  (placement\n")
+    dsn = dsn.replace("  (network\n", '  (wiring\n    (via "Via[0-1]_701:249_um"  220 -27800 (net GND)(type fix))\n'
+                      "  )\n  (network\n")
+    text = fr.via_at_smd_dsn(dsn)
+    assert text.count("(attach on)") == 5 and text.count("(attach off)") == 1  # the pin's alone stays off
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.index('"Via[0-1]_3000:2500_um")') < structure.index("(control") < structure.index("(rule")
+
+
+def test_a_via_name_with_a_decimal_point_is_written_without_one():
+    """Freerouting reads the padstack `"Via[0-3]_654.8:350_um"` back as `Via[0-3]_654:350_um` while the net
+    classes still ask for the name as written, so every via rule holds no via and the router places none:
+    buspirate5-rev10, 0 vias for the reference's 547 (D140). The name is rewritten everywhere it appears."""
+    name = '"Via[0-1]_654.8:350_um"'
+    dsn = (DSN.replace('"Via[0-1]_701:249_um"', name)
+           .replace("  (placement\n", LIBRARY.replace('"Via[0-1]_701:249_um"', name) + "  (placement\n")
+           .replace("  (network\n", f"  (wiring\n    (via {name}  220 -27800 (net GND)(type fix))\n  )\n  (network\n"))
+    out = fr.plain_via_names(dsn)
+    assert "654.8" not in out
+    new = '"Via[0-1]_654_8:350_um"'
+    assert out.count(new) == 4  # the structure's list, the padstack, the class's use_via, the fixed via
+    assert out.count("(padstack RoundRect[T]Pad_1000x950_um") == 1  # a pin's padstack is left alone
+    assert fr.plain_via_names(out) == out
+    assert fr.plain_via_names(DSN) == DSN  # a whole-number name is not touched
 
 
 def test_the_via_cost_goes_into_the_settings_file(tmp_path):
@@ -222,6 +321,118 @@ def test_pads_with_a_clearance_override_become_keepouts_grown_by_it():
     structure = text[text.index("(structure"):text.index("(placement")]
     assert structure.count("(keepout") == sum(len(k.layers) for k in keepouts)  # one per copper layer of the pad
     assert structure.index("(keepout") < structure.index("(via ")  # where KiCad puts its own
+
+
+def _art_board():
+    """A four-layer board with a bridged solder jumper (a copper rect joining pads of two nets), a pad with a copper
+    shape of its own, and a copper text on In1.Cu: the kinds of copper KiCad's export leaves out."""
+    board = pcbnew.BOARD()
+    board.SetCopperLayerCount(4)
+    nets = {}
+    for name in ("A", "B", "C"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+
+    def footprint(ref, x, pad_nets):
+        fp = pcbnew.FOOTPRINT(board)
+        fp.SetReference(ref)
+        for i, (dx, net) in enumerate(pad_nets):
+            pad = pcbnew.PAD(fp)
+            pad.SetNumber(str(i + 1))
+            pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+            pad.SetLayerSet(pad.SMDMask())
+            pad.SetShape(pcbnew.F_Cu, pcbnew.PAD_SHAPE_RECT)
+            pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+            pad.SetPosition(pcbnew.VECTOR2I(kb.nm(x + dx), kb.nm(5)))
+            pad.SetNet(nets[net])
+            fp.Add(pad)
+        board.Add(fp)
+        return fp
+
+    def rect(fp, x0, x1):
+        s = pcbnew.PCB_SHAPE(fp)
+        s.SetShape(pcbnew.SHAPE_T_RECT)
+        s.SetLayer(pcbnew.F_Cu)
+        s.SetFilled(True)
+        s.SetWidth(0)  # no stroke: the outline is the rect itself
+        s.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(4.8)))
+        s.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(5.2)))
+        fp.Add(s)
+
+    rect(footprint("JP1", 2, [(-0.65, "A"), (0.65, "B")]), 1.5, 2.5)  # bridges the two nets
+    rect(footprint("U1", 8, [(0, "C")]), 8.4, 9.4)  # an extension of its one pad
+    text = pcbnew.PCB_TEXT(board)
+    text.SetText("3")
+    text.SetLayer(pcbnew.In1_Cu)
+    text.SetTextSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+    text.SetPosition(pcbnew.VECTOR2I(kb.nm(14), kb.nm(5)))
+    board.Add(text)
+    return board
+
+
+def test_copper_the_export_leaves_out_becomes_keepouts():
+    """KiCad's export leaves copper graphics out of the DSN and the router routes through them: a via through the
+    layer marker "3" on poe-m1's In2.Cu (D138), four tracks through tinytapeout's solder-jumper bridges (D142). A
+    shape that touches pads of one net only is that pad's copper and stays out, as a keepout would wall the pad off."""
+    art = fr.copper_art(_art_board())
+    by_layer = {}
+    for layer, outline in art:
+        by_layer.setdefault(layer, []).append(outline)
+    assert sorted(by_layer) == ["F.Cu", "In1.Cu"]
+    assert len(by_layer["F.Cu"]) == 1  # the bridge; U1's own shape is not art
+    # less the pads it overlaps (1.35 and 2.65, 1 mm wide): a keepout on a pad walls it off, and tinytapeout's
+    # 1.4 mm bridges over 0603 pads slowed its row threefold and timed it out (D143)
+    xs = [x for x, _y in by_layer["F.Cu"][0]]
+    assert min(xs) == pytest.approx(1.85, abs=0.01) and max(xs) == pytest.approx(2.15, abs=0.01)
+    assert all(12 < x < 16 for outline in by_layer["In1.Cu"] for x, _y in outline)  # the glyph, where it was put
+    text = fr.copper_art_dsn(DSN, art)
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.count('(keepout "" (polygon F.Cu 0 ') == 1
+    assert structure.count('(keepout "" (polygon In1.Cu 0 ') == len(by_layer["In1.Cu"])
+    assert structure.index("(keepout") < structure.index("(via ")
+    assert "1850.00 -4800.00" in structure or "1850.00 -5200.00" in structure  # micrometres, y negated
+    assert fr.copper_art_dsn(DSN, []) == DSN
+
+
+def test_no_via_goes_into_a_bridged_jumpers_pads():
+    """A via in a bridged jumper's pad reaches past the pad into the bridge, which has no net: upduino's +3V3 via in
+    R28's pad 2 overlapped the bridge by 0.05 mm and the gate's DRC called it a short (D143). The pads a bridge
+    joins get a via keepout; tracks still reach them."""
+    pads = fr.bridge_pad_outlines(_art_board())
+    assert [layer for layer, _o in pads] == ["F.Cu", "F.Cu"]  # JP1's two pads; U1's pad is not a bridge's
+    centres = sorted(round(sum(x for x, _y in o) / len(o), 2) for _l, o in pads)
+    assert centres == [1.35, 2.65]
+    text = fr.copper_art_dsn(DSN, pads, kind="via_keepout")
+    structure = text[text.index("(structure"):text.index("(placement")]
+    assert structure.count('(via_keepout "" (polygon F.Cu 0 ') == 2 and '(keepout ""' not in structure
+    assert structure.index("(via_keepout") < structure.index("(via ")
+    assert fr.copper_art_dsn(DSN, [], kind="via_keepout") == DSN
+
+
+def test_a_pad_the_router_must_reach_is_no_keepout_whatever_its_clearance():
+    """A keepout carries no net, and the circle covers the whole pad, so its own net cannot reach it:
+    olimex-esp32-poe-m1's D1, D3 and D8 and tinkerforge-master-v3.2's nine capacitors, U2, L2, D14 and two switches
+    (D136). A fiducial whose net is its own single pad keeps its keepout (olimex-rp2040-pico-pc's `Net-(FID1-..)`)."""
+    board = pcbnew.BOARD()
+    nets = {}
+    for name in ("VIN", "Net-(FID1-PadFid1)"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+    for ref, x, net in (("D1", 2, "VIN"), ("C1", 6, "VIN"), ("FID1", 10, "Net-(FID1-PadFid1)")):
+        fp = pcbnew.FOOTPRINT(board)
+        fp.SetReference(ref)
+        pad = pcbnew.PAD(fp)
+        pad.SetNumber("1")
+        pad.SetAttribute(pcbnew.PAD_ATTRIB_SMD)
+        pad.SetLayerSet(pad.SMDMask())
+        pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+        pad.SetNet(nets[net])
+        if ref != "C1":
+            pad.SetLocalClearance(kb.nm(1.0))
+        fp.Add(pad)
+        fp.SetPosition(pcbnew.VECTOR2I(kb.nm(x), kb.nm(5)))
+        board.Add(fp)
+    assert [k.reference for k in fr.pad_keepouts(board, clearance_mm=0.15)] == ["FID1"]
 
 
 def test_the_smoke_board_carries_overrides_too_and_an_override_below_the_rule_is_none():
@@ -560,6 +771,33 @@ def test_a_rule_area_that_forbids_only_the_pour_is_not_a_keepout_to_the_router(t
     assert back.IsOnLayer(pcbnew.F_Cu)
 
 
+def test_a_rule_area_that_forbids_nothing_is_not_a_keepout_to_the_router(tmp_path):
+    """A named area a custom DRC rule refers to forbids nothing, and KiCad still writes it as a plain (keepout):
+    tinytapeout-demo's four (CARRIERBREAKOUT, ANALOGBREAKOUT, LAYERMARKERS) gave 371 of the 453 violations its
+    own copper has under our DSN (D132)."""
+    board = _rule_area_board(tmp_path)
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetLayer(pcbnew.F_Cu)
+    z.SetZoneName("BREAKOUT")
+    for off in (z.SetDoNotAllowCopperPour, z.SetDoNotAllowTracks, z.SetDoNotAllowVias, z.SetDoNotAllowPads,
+                z.SetDoNotAllowFootprints):
+        off(False)
+    o = z.Outline()
+    o.NewOutline()
+    for px, py in ((16, 12), (19, 12), (19, 15), (16, 15)):
+        o.Append(kb.nm(px), kb.nm(py))
+    board.Add(z)
+    assert sorted(z.GetZoneName() for z in fr.pour_only_rule_areas(board)) == ["BREAKOUT", "pour-only"]
+    fr.export_dsn(board, _rules(), tmp_path / "board.dsn")
+    text = (tmp_path / "board.dsn").read_text()
+    assert text.count('(keepout "" (polygon') == 1  # the one forbidding everything
+    assert "16000 -12000" not in text
+    back = {z.GetZoneName(): z for z in board.Zones()}["BREAKOUT"]
+    assert back.GetIsRuleArea() and not back.GetDoNotAllowCopperPour() and not back.GetDoNotAllowTracks()
+    assert not back.GetDoNotAllowVias() and not back.GetDoNotAllowPads() and not back.GetDoNotAllowFootprints()
+
+
 def test_the_rp2040_boards_no_pour_areas_leave_its_tssop_pads_to_the_router():
     ref = _ref("olimex-rp2040-pico-pc")
     bare, _ = rebuild.strip_all(ref)
@@ -814,6 +1052,17 @@ def test_a_plane_layer_handed_to_the_router_is_typed_power_in_the_dsn():
         fr.type_layers_power(dsn, ["In9.Cu"])
     with pytest.raises(ValueError):
         fr.type_layers_power(out, ["In1.Cu"])  # already power: typing it again is a mistake
+
+
+def test_a_layer_the_board_file_types_power_is_a_signal_layer_to_the_router():
+    """KiCad writes each layer's own type from the board file into the DSN: buspirate5-rev10 types In2.Cu `power`,
+    olimex-esp32-poe-m1 In1.Cu and In2.Cu, and 2.4.1 closes a `power` layer to the router; buspirate5's row placed
+    0 vias for the reference's 547 (D140). Under the class B form every layer is `signal`."""
+    dsn = ("(pcb x\n  (structure\n    (layer F.Cu\n      (type signal)\n    )\n    (layer In1.Cu\n      (type power)\n"
+           "    )\n    (layer In2.Cu\n      (type power)\n    )\n  )\n)")
+    out = fr.type_layers_signal(dsn)
+    assert "(type power)" not in out and out.count("(type signal)") == 3
+    assert fr.type_layers_signal(out) == out
 
 
 def test_a_plane_nets_pins_leave_the_network_and_the_net_stays():

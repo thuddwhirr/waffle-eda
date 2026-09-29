@@ -843,6 +843,142 @@ under option 2 as it did under every earlier configuration, thirteen nets better
 is an hour, not minutes. The class's scope (the review's option 3) is the next decision for the owner: the
 ladder has seven more references behind pico-ice, unmeasured under this default. Measurement.
 
+**D126. The jar's insertion asked 16 units more clearance than its maze plans with; the fork drops the margin**
+(2026-09-27, the owner's fork, branch `waffle/maze-inserter-clearance` at 5d300f7a5;
+`tools/freerouting-2.4.1-d126.patch`). Every insertion, shove and spring-over check adds
+`ClearanceMatrix.clearance_safety_margin`, 16 units (1.6 um, upstream 4cfd20d59, still on master), which the
+compensated trees the maze searches never add, and the maze lays a path 2 units off the rule. Logged by
+`tools/freerouting-2.4.1-diag.patch` (`scripts/insertion_blockers.py`): D57's board at the rule itself, 214 of 233
+failed insertions blocked by the margin alone, 8 units inside it, 0 of 6 nets; upduino at four passes 34 of 48, 2
+units inside it at the median. With the margin 0: D57's board 6 of 6 in 2 passes at the rule, no failed insertion,
+the repair moving nothing; upduino 11, none the margin's, 8 across another net's track the maze meant to shove. The
+fork's two fixtures fail on 2.4.1 and pass with it; its 499 tests pass. Measurement.
+
+**D127. Upduino at the rule itself: 83 of 86 with no clearance; class B drops D57's slack** (2026-09-27, `python3
+scripts/gate.py b upduino-v3.01`, 30 passes). The default under D57's slack: 79 of 86, 7 open nets, 8 clearances,
+231 failed insertions (D123's row, reproduced). The stock jar handed the rule itself: **83 of 86**, 3 open
+(/CRESET_N, /LED_B, R3-1 to U3-5), no clearance, the repair moving nothing, 148 failed insertions. D126's jar with
+the slack: 80, 6 open, 17 clearances of 0.007 mm the repair left, 44; at the rule: 75, 11 open, none, 35, the router
+stopping itself at pass 19. The slack laid copper up to 0.0072 mm inside the rule wherever the router was tight and
+gave nothing back on this board, so `CLASS_B` carries `"slack_mm": 0.0` on the stock jar; class A keeps it (its
+SOT-563 needs it on the stock jar, D57). D126 cuts failed insertions by four fifths and loses nets here; it stays a
+measured jar. Measurement.
+
+**D128. pico-ice at the rule itself: 70 of 95, 25 open nets, no clearance, every plane whole; FAIL** (2026-09-27,
+`python3 scripts/gate.py b pico-ice-rev3` under D127's default, 30 passes in 4642 s, dsn 3ff0b16e74, final
+215bdf8267). Against D125's row under the slack (74 of 95, 21 open, 14 clearances, VBUS open): four nets fewer, no
+clearance and the repair moving nothing, the planes whole, so the row fails on open nets alone. 15 of the 25 are the
+FPGA's lines (/ICE_*) and 3 the PMOD's, as in D125. The router: 32 unrouted on its best board, 702 failed insertions
+and 122 paths not found over the run, against upduino's 148 and 98 at the rule (D127). Measurement.
+
+**D129. pico-ice on D126's jar at the rule: 62 of 95, 33 open, VBUS open; the router stops itself at pass 20**
+(2026-09-27, `WAFFLE_FREEROUTING_JAR=<abs>/build/tools/freerouting-2.4.1-d107-d126.jar python3 scripts/gate.py b
+pico-ice-rev3`, 3061 s, final e311057a08). A four-pass row on the stock jar at the rule first: 77 failed insertions,
+50 of them the margin's alone (`scripts/insertion_blockers.py`). The 30-pass row on D126's jar has 171 failed
+insertions for D128's 702 and 60 paths not found for 122, and ends at 62 of 95 for D128's 70: its best board came at
+pass 10 (39 unrouted) and the router's own rule stopped it at pass 20, as it stopped upduino's at pass 19 (D127),
+while the stock jar ran all 30 passes on both boards. Four fifths fewer failed insertions closed no net on either
+board; D126 stays a measured jar. Measurement.
+
+**D130. The router's version of a reference against its own copper: the slot ring fenced every plated pin**
+(2026-09-27, `scripts/translation_check.py`, `tools/DsnDrc.java`). `smallest_ring_mm` took a slotted pad's short
+side less its slot's long side, counted a USB shield's 0.3 mm ring as none, and handed the whole hole rule (0.2526
+mm) over as the clearance from every plated pin's edge: the reference's own copper broke it 90 times on upduino and
+127 on pico-ice, 15 and 6 with the ring along the slot's axes. Also: the jar joins a track to a pin only at its
+exact centre and KiCad writes wires in whole micrometres, so copper laid before the router (D85 to D106) was open to
+it; the reference puts vias on SMD pads the DSN forbids. Per axis, class A fails (esp32c3 32 of 34, rp2040 three
+clearances) and keeps the old measure, its DSNs byte-identical; class B takes it: upduino 80 of 86 for 83, pico-ice
+76 of 95 for 70 (19 open, no clearance, VBUS open, final 362315cce9). Measurement.
+
+**D131. The inner layer the references route on, given to the router: pico-ice 85 of 95, PASS** (2026-09-28,
+`WAFFLE_PLANES=gnd python3 scripts/gate.py b pico-ice-rev3`, 2233 s, dsn 9566c86809, final d4050b140a). The
+references route signals through their split inner pours (pico-ice 576 mm on In2, a quarter of its track; upduino
+236 mm); the class B default handed every inner pour to the router as a solid plane priced at 30, a choice measured
+on upduino only and under D130's pin fence. With only the GND plane handed over and the others laid after the
+import: 85 of 95 for 76, 10 open nets (/ICE_19, /ICE_2, /ICE_26, /ICE_31, /ICE_34, two PMOD, /SRAM_SS, /LED_R,
+/+3V3_STDBY), every plane whole, one clearance (a track 0.15 mm short of fiducial FID2), the router at 12 unrouted
+and in half the time. `CLASS_B["planes"]` becomes "gnd"; upduino under it: 82 of 86 for 80, 4 open, no clearance,
+planes whole. Measurement.
+
+**D132. Vias on SMD pads for class B: upduino 85 of 86, pico-ice 91 of 95, PASS** (2026-09-28,
+`python3 scripts/gate.py b <key>`). D93's via-in-pad never reached the router: KiCad writes `(attach off)` on every
+padstack and no `(control (via_at_smd on))`. `via_at_smd_dsn()` writes both for the via padstacks
+(`CLASS_B["via_at_smd"]`); the translation check's same-net pin/via violations go 38 to 0 on upduino (81 to 43 in
+all) and 13 to 0 on pico-ice (58 to 45). upduino 85 of 86 for 82 (/FLASH_MISO open, dsn e446f97a44, final
+124d579ab3, 216 s); pico-ice 91 of 95 for 85 (/+3V3_STDBY, /ICE_19, /ICE_20_G3, /~{ICE_RST} open, dsn 4a6350384e,
+final 2d12139722, 955 s); both with no clearance, no short, every plane whole. Measurement.
+
+**D133. Every class B row carries the reference's own copper under our rules; rule areas that forbid nothing are
+not keepouts** (2026-09-28, `scripts/gate.py` `_translation`). The first lines for the seven unmeasured
+references: fomu-pvt 282 violations, sensor-watch-c1 54, olimex-esp32-poe-m1 318, tinkerforge-master-v3.2 699,
+buspirate5-rev10 166, tinytapeout-demo 453. KiCad exports a rule area that forbids nothing (a name a custom DRC
+rule refers to) as a full keepout: tinytapeout's four gave 371 of its 453, 82 once `pour_only_rule_areas` lifts
+any area forbidding neither tracks nor vias. No other reference has such an area; class A's DSNs are unchanged.
+mch2022-badge's DSN has an empty `(boundary)` and does not load: its outline builds on the reference file (1 outline)
+and not after any pcbnew load and save (0), with the same edge shapes and two points where four edges meet. Measurement.
+
+**D134. fomu-pvt fails: 7 of 27, its reference is HDI** (2026-09-28, `python3 scripts/gate.py b fomu-pvt`, 350 s,
+dsn 9f1d38006b, final 8b3ac9d15e). 20 nets open, 6 shorts, every plane net open; the router sat at about 40
+unrouted from pass 10 to 30. The reference has no through via: 29 microvias F.Cu to In1, 167 In2 to B.Cu, 53
+buried In1 to In2 (0.2/0.1 and 0.5/0.2 mm) round a 0.4 mm WLCSP (U5); the DSN offers one through via, 0.2/0.1 mm
+on all four layers. definition.md puts HDI blind and buried vias out of scope; the other eight class B
+references use through vias only. Measurement; the scope is the owner's.
+
+**D135. sensor-watch-c1 fails: 55 of 61, no clearance, no short, GND open** (2026-09-28, `python3 scripts/gate.py b
+sensor-watch-c1`, 228 s, dsn 23e401cc8b, final d3f4e0152d). The router's four unrouted connections are the four
+plated pads of U$2 (MODE, LIGHT, ALARM, BUZZER) that cross the board outline, 0.000 mm from it on every layer in
+the translation check; the reference connects all four. /COM1 is whole on the imported board and open on the
+final one (the repair moved 53 items and left 7); GND is open at U$2-GND, a finger 0.41 mm from the top edge.
+The measured edge rule is 0.5948 mm, the search's upper bound (0.60), while 11 reference tracks lie within
+0.0878 mm of the DSN's outline. Measurement.
+
+**D136. A pad the router must reach is no keepout** (2026-09-28, `pad_keepouts`). D59's keepouts carry no net and
+cover the whole pad; on a pad with a net of two or more pads they shut the pad's own net out:
+olimex-esp32-poe-m1's D1, D3 and D8, tinkerforge-master-v3.2's nine capacitors, U2, L2, D14, SW1 and SW2,
+tinytapeout-demo's C46 and C47. Such a pad now has none (the DRC and the repair hold its override); a pad alone
+on its net keeps it (class A's only netted keepouts are fiducials of that kind, so its DSNs are unchanged).
+Translation lines: poe-m1 318 to 292 violations, tinkerforge-master 699 to 507. Measurement.
+
+**D137. fomu-pvt leaves class B** (2026-09-28). Its reference is built on microvias and buried vias (D134), which
+definition.md puts out of scope. Class `-` in the registry, fetched, out of the ladder, as crkbd (D72). Owner.
+
+**D138. olimex-esp32-poe-m1 fails: 70 of 101, one short, GND and Spare2 open** (2026-09-28, `python3
+scripts/gate.py b olimex-esp32-poe-m1` after D136, 2659 s, dsn 17659c1cb8, final 672eca0245). The router sat at
+77 to 78 unrouted from pass 10 to 30 (102 after pass 1, about 90 s a pass). 22 of the 31 open nets end at U6, the
+ESP32-WROVER module, on pins all round it (not only its split pins 15 to 24), 12 at U4, the QFN-32. The short is a
+router via through the layer-marker text "3" on In2.Cu: copper text is not in the DSN. Measurement.
+
+**D139. tinkerforge-master-v3.2 passes: 144 of 151** (2026-09-28, `python3 scripts/gate.py b
+tinkerforge-master-v3.2` after D136, 796 s, dsn 8fac5625dd, final ebccee7635). 7 open nets (three J6/J7 pins to
+RP307, Port-D-MOSI, STACK-SELECT-04, -05, -07), no clearance, no short, every plane whole. Measurement.
+
+**D140. buspirate5-rev10: the router had no via; 94 of 183 before, 168 after, FAIL** (2026-09-28, `python3
+scripts/gate.py b buspirate5-rev10`, 3267 s, dsn d64f2dff7e, final 6c11b7c533). Freerouting reads the padstack
+`"Via[0-3]_654.8:350_um"` back as `Via[0-3]_654:350_um` while the net classes keep the name as written: every
+via rule held 0 vias (probed in the jar) and the row placed 0 for the reference's 547. `plain_via_names` writes
+such names without the point (only buspirate5 has one). After: 431 vias, 15 open nets, GND open, no clearance, no
+short. The router reported 8 unrouted; the repair left 83 items (worst 0.5698 mm) and the final board has 15
+open. Typing every layer `signal` (a board file types In2.Cu `power`) changed nothing here. Measurement.
+
+**D141. olimex-esp32-poe-m1 with its inner layers typed signal: 76 of 101, FAIL** (2026-09-28, `python3
+scripts/gate.py b olimex-esp32-poe-m1` after 6d66695). Its board file types In1.Cu and In2.Cu `power`, closed to
+the router in 2.4.1; typed `signal` (the one change since D138) the router ends at 28 unrouted for 77, the row at
+76 of 101 for 70, 227 vias for 158. 25 open nets, GND and Spare2 open, 2 clearances: tracks 0.1015 and 0.0493 mm
+short of the own-clearance of D3 and D8, the pads D136 took the keepouts from. Measurement.
+
+**D142. tinytapeout-demo fails: 129 of 137, four shorts, GND open** (2026-09-28, `python3 scripts/gate.py b
+tinytapeout-demo` after D133 and 6d66695). 8 open nets (within the bound), 401 vias for the reference's 402, but
+GND in 157 pieces and four shorts: tracks through the copper rectangles of solder jumpers JP1, JP3 and JP4,
+footprint graphics the DSN does not carry (as poe-m1's copper text, D138). Measurement.
+
+**D143. Copper the export leaves out, as keepouts** (2026-09-29, 4a36227, 17c19d5, 9df0a07). KiCad's DSN carries no
+copper graphics. Board copper text and shapes and footprint copper shapes with no net are now keepouts; a
+footprint shape touching pads of one net only is that pad's copper and stays out; a solder-jumper bridge (pads of
+two nets) is the bridge less its pads, and its pads get a via keepout (a +3V3 via in upduino's R28 pad reached the
+bridge and read as a short). tinytapeout-demo 132 of 137, FAIL: the four jumper shorts gone, GND in 157 pieces,
+3 edge clearances. upduino 83 of 86, pico-ice 85 of 95, both PASS, no short (85 and 91 in D132; single rows,
+poe-m1 ran 8 nets apart on a one-connection change, D141). poe-m1 68 of 101 with its four layer-marker keepouts,
+no short. Class A has no such copper: gate PASS 5 of 5, DSNs unchanged. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
