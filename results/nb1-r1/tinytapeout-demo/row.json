@@ -1,0 +1,15 @@
+{
+ "gate": "b",
+ "pass": false,
+ "detail": "tinytapeout-demo           score=0.669 fail | connected 131/137, unconnected items 8 | electrical 3 {'copper_edge_clearance': 3} | tracks 1989 (answer 2785), vias 407 (answer 401) | 5.1s | residue 6 nets, 0 clearances, 0 shorts; planes open ['GND'] | plane nets open ['GND']; other violations 3 (tinytapeout-demo-residue.md) | freerouting 2.4.1: exit 0, 19 passes, router reports 10 unrouted and 8 violations; imported 1985 tracks, 404 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 9, 'moved': 53, 'remaining': 9, 'unfixable': 0, 'worst_mm': 0.1589, 'strategy': 'floor'}; dsn 2a09c8105f imported 019b24b129 final 33de883539; 2621s | cap 6000 s | planes gnd | feeds 0 none, stitched 3 | no window | reference copper under our rules: clearance violations: 68; Freerouting's incomplete connections: 203; nets the copper leaves open (ends within 1.0 um joined): 24 (5 ObstacleArea/PolylineTrace on B.Cu, 5 ObstacleArea/PolylineTrace on F.Cu, 8 Pin/Pin same net on F.Cu, 1 Pin/Via on F.Cu, 4 PolylineTrace/Via on F.Cu, 11 Via/Via same net on B.Cu, 11 Via/Via same net on F.Cu, 11 Via/Via same net on In1.Cu, 11 Via/Via same net on In2.Cu, 1 Via/ViaObstacleArea on B.Cu)",
+ "dsn": "2a09c8105f",
+ "imported": "019b24b129",
+ "final": "33de883539",
+ "commit": "935bc60",
+ "unreached": [],
+ "replayed": false,
+ "overridden": {},
+ "budget": {
+  "timeout_s": 6000.0
+ }
+}
