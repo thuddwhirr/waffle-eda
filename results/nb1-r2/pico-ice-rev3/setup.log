@@ -1,0 +1,29 @@
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+fetching Freerouting 2.4.1 -> /home/user/waffle-eda/build/tools/freerouting-2.4.1.jar
+fetching Temurin jdk-25.0.4+7 -> /home/user/waffle-eda/build/tools/jdk
+jar   /home/user/waffle-eda/build/tools/freerouting-2.4.1.jar
+java  /home/user/waffle-eda/build/tools/jdk/bin/java (major 25)
+fetching kicad-symbols at 9.0.9 -> /home/user/waffle-eda/build/tools/kicad-symbols
+fetching kicad-footprints at 9.0.9 -> /home/user/waffle-eda/build/tools/kicad-footprints
+libs  /home/user/waffle-eda/build/tools/kicad-symbols
+libs  /home/user/waffle-eda/build/tools/kicad-footprints
+freerouting: ok
+kicad libraries: ok (/home/user/waffle-eda/build/tools/kicad-symbols, /home/user/waffle-eda/build/tools/kicad-footprints)
+patching file src/main/java/app/freerouting/settings/RouterSettings.java
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36841 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=36841 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+/home/user/waffle-eda/build/tools/freerouting-2.4.1-d107.jar: 1 classes replaced: ['app/freerouting/settings/RouterSettings.class']
+ok       python            3.11.15 (/usr/local/bin/python3)
+ok       kicad-cli         9.0.9
+ok       pcbnew            9.0.9-9.0.9~ubuntu24.04.1
+ok       z3                5.1.0
+ok       numpy             2.4.6
+ok       shapely           2.1.2
+ok       pytest            9.1.1
+ok       java              25 at /home/user/waffle-eda/build/tools/jdk/bin/java
+ok       freerouting       /home/user/waffle-eda/build/tools/freerouting-2.4.1.jar
+ok       xvfb-run          /usr/bin/xvfb-run
+ok       kicad symbols     /home/user/waffle-eda/build/tools/kicad-symbols
+ok       kicad footprints  /home/user/waffle-eda/build/tools/kicad-footprints
+ok       git               git version 2.43.0
+environment: ok
