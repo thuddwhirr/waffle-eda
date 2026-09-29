@@ -2205,6 +2205,7 @@ class FreeroutingResult:
     vias: int = 0
     exit_code: int | None = None
     timed_out: bool = False
+    unreached: tuple = ()  # plated pads of a plane net its fill does not reach, found before the export (D147)
 
     @property
     def ok(self) -> bool:
@@ -2218,7 +2219,8 @@ class FreeroutingResult:
                 f"repair {self.repair or 'none'}; dsn {self.dsn_md5} "
                 f"imported {self.imported} "
                 f"final {self.digest}; "
-                f"{self.seconds:.0f}s")
+                f"{self.seconds:.0f}s"
+                + (f"; plane pads the fill does not reach: {list(self.unreached)}" if self.unreached else ""))
 
 
 _STAGE = re.compile(r"(Auto-routing|Optimization) stage completed:.*?final score: [\d.]+ \((\d+) unrouted and (\d+) violations\)")
@@ -2360,6 +2362,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
     if stub_pads:
         say(f"exit stubs laid for {len(exits)} of {len(stub_pads)} pads left open: {sorted(x.pad for x in exits)}")
     laid_feeds = []
+    unreached: list[str] = []
     targets: list = []  # reserved: the feeds fixed as vias for the pads no feed reaches (D91)
     if planes:  # a plated pad of a poured net is left to its own pour (class A's pads keep theirs: it passes so)
         hole_rule_areas(board, rules, poured={(p["net"], p["layer"]) for p in planes + list(pours or [])})
@@ -2367,6 +2370,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         # the smallest ring the rules give a via, since the vias come after the plane here
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
+        from waffle_eda.route import planes as feedlib
+        unreached = feedlib.unreached(board, planes)  # the router takes these as joined by the plane (D147)
+        say(f"plated pads of a plane net its fill does not reach: {unreached or 'none'}")
     if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias", "none"):
         raise ValueError(f"feeds_mode {feeds_mode!r}: fixed, routable, after, reserved, vias or none")
     left_to_pour: set[str] = pour_pins(board, pours or [], set(feeds)) if feeds and pour_pins_rule else set()
@@ -2500,7 +2506,7 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
                                exits=tuple(sorted(x.pad for x in exits)), feeds=len(laid_feeds), exported_layers=layers,
                                feeds_mode=feeds_mode,
                                passes=facts["passes"], unrouted=facts["unrouted"], violations=facts["violations"],
-                               exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5)
+                               exit_code=code, timed_out=timed_out, dsn_md5=dsn_md5, unreached=tuple(unreached))
     if ses.is_file():
         before = len(list(board.GetTracks()))
         if not pcbnew.ImportSpecctraSES(board, str(ses)):

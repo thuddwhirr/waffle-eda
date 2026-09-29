@@ -436,6 +436,40 @@ def stitch(board, rules, nets: set[str]) -> list[Feed]:
     return laid
 
 
+def unreached(board, planes: list[dict]) -> list[str]:
+    """The plated pads of a plane's net that pass through the plane's layer and that its fill does not reach
+    ("REF-N"), read on a copy of ``board`` filled in a child process (D14). The router takes every such pad as
+    joined by the plane, so each is a net the finishing cannot make whole: buspirate5's USB shield pads inside
+    no-pour circles (D145), olimex-esp32-poe-m1's LAN_CON1-7 and -8 with the fill 1.4 mm short (D146). A check
+    before the router, seconds a board (D147)."""
+    import tempfile
+    from waffle_eda.kicad import refill
+    if not planes:
+        return []
+    out: set[str] = set()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "planes.kicad_pcb"
+        kb.save_board(board, path)
+        refill.refill_file(path)
+        filled = kb.load_board(path)
+        filled.BuildConnectivity()
+        conn = filled.GetConnectivity()
+        ids = {name: lid for lid, name in kb.copper_layers(filled)}
+        for plane in planes:
+            layer = ids.get(plane["layer"])
+            if layer is None:
+                continue
+            zones = [z for z in filled.Zones()
+                     if not z.GetIsRuleArea() and z.GetNetname() == plane["net"] and z.IsOnLayer(layer)]
+            reached = {p.m_Uuid.AsString() for z in zones for p in conn.GetConnectedPads(z)}
+            for fp in filled.GetFootprints():
+                for pad in fp.Pads():
+                    if (pad.GetNetname() == plane["net"] and pad.GetAttribute() == pcbnew.PAD_ATTRIB_PTH
+                            and pad.IsOnLayer(layer) and pad.m_Uuid.AsString() not in reached):
+                        out.add(f"{fp.GetReference()}-{pad.GetNumber()}")
+    return sorted(out)
+
+
 def finish(board, out: Path, rules, nets: set[str]) -> dict:
     """A routed board's finishing, the gate's own: saved to ``out``, its zones filled in a child process
     (`kicad/refill.py`, D14), every plane net stitched (one feed for every piece beyond the largest) and filled

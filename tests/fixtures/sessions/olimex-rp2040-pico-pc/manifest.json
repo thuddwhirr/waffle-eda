@@ -1,0 +1,18 @@
+{
+ "dsn_md5": "b892daa4a1e5e7e5696165b47ac137ea",
+ "frozen_at": "2affb15",
+ "key": "olimex-rp2040-pico-pc",
+ "row": {
+  "budget": {},
+  "commit": "a786a5b",
+  "detail": "olimex-rp2040-pico-pc      score=1.000 PASS | connected 60/60, unconnected items 0 | electrical 0  | tracks 851 (answer 934), vias 148 (answer 110) | 2.3s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 65 violations; imported 851 tracks, 148 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 4, 'moved': 126, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn b892daa4a1 imported eecaf2df44 final f1e8eb5d45; 192s",
+  "dsn": "b892daa4a1",
+  "final": "f1e8eb5d45",
+  "gate": "a",
+  "imported": "eecaf2df44",
+  "overridden": {},
+  "pass": true,
+  "replayed": false
+ },
+ "session_md5": "438a5b98d1b161d3cb01e052f606d745"
+}

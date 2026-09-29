@@ -252,10 +252,18 @@ def plane_split(board, pours: list[dict], planes: str) -> tuple[list[dict], list
 
 
 def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
-    from waffle_eda.bench import rebuild
+    """The re-route rows. `WAFFLE_REPLAY=1` replays each row from its frozen router session instead of running the
+    router (`bench.replay`, D147): minutes a row, the same board every time; a row with no frozen session, or whose
+    DSN has changed since it was frozen, fails and says so. Every row leaves `build/fr/<key>/row.json`, what
+    `scripts/freeze_sessions.py` freezes with the session."""
+    import contextlib
+    import json
+    from waffle_eda.bench import rebuild, replay as replaylib
     from waffle_eda.route import freerouting, planes as feedlib
     rows = []
     missing = freerouting.available()
+    replay = os.environ.get("WAFFLE_REPLAY") == "1"
+    klass = "b" if "plane_type" in defaults else "a"
     cfg = configuration(defaults)
     overridden = {k: v for k, v in cfg.items() if v != defaults[k]}
     budget = router_budget()  # the environment's, over the class's own cap
@@ -275,8 +283,11 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             finishing.update(feedlib.finish(routed, out, rules, plane_nets or set()))  # fallbacks (the
             return out  # in-process fill can take an hour), the plane nets stitched, the file scored below
 
-        translation = _translation(ref.key) if "plane_type" in cfg else ""
+        translation = _translation(ref.key) if "plane_type" in cfg and not replay else ""
+        frozen, stack = None, contextlib.ExitStack()
         try:
+            if replay:  # the router's run is the frozen session; the rest of the row is as ever
+                frozen = stack.enter_context(replaylib.replaying(ref.key))
             bare, info = rebuild.strip_all(ref)
             rules = rebuild.measure_rules(ref)
             board = kb.load_board(bare)
@@ -299,6 +310,8 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
         except Exception as why:  # a board the benchmark cannot even pose is a failure, not a skip
             rows.append((ref.key, False, f"{type(why).__name__}: {why}"))
             continue
+        finally:
+            stack.close()
         fill, stitched = finishing["fill"], finishing["stitched"]
         s = rebuild.score(ref, out)
         rebuild.write_score(s)
@@ -312,7 +325,8 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                           f"{' pour-pins' if cfg['pour_pins'] else ''}, stitched {len(stitched)}" if plane_nets else "")
                        + (f" | stubs {result.stubs}" if cfg["stubs"] else "")
                        + (f" | rounds {len(results)} of {cfg['rounds']}, exits {list(result.exits)}" if cfg["rounds"] > 1 else "")
-                       + (" | no window" if not cfg["gui"] else ""))
+                       + (" | no window" if not cfg["gui"] else "")
+                       + (f" | replayed the session frozen at {frozen['frozen_at']}" if frozen else ""))
         verdict, residue_note = s.passed, ""
         if "residue_max" in cfg:  # option 2 (D120): the row passes with a documented residue
             r = rebuild.residue(ref, out, s, plane_nets or set(), {p["layer"] for p in planes},
@@ -321,8 +335,14 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
             page.write_text(rebuild.residue_markdown(r))
             verdict, residue_note = rebuild.residue_verdict(r, cfg["residue_max"])
             residue_note = f" | {residue_note} ({page.name})"
-        rows.append((ref.key, verdict, s.summary() + residue_note + " | " + result.summary() + fill_note + config_note
-                     + (f" | {translation}" if translation else "")))
+        detail = (s.summary() + residue_note + " | " + result.summary() + fill_note + config_note
+                  + (f" | {translation}" if translation else ""))
+        rows.append((ref.key, verdict, detail))
+        row = {"gate": klass, "pass": bool(verdict), "detail": detail, "dsn": result.dsn_md5,
+               "imported": result.imported, "final": result.digest, "commit": replaylib.commit(),
+               "unreached": list(result.unreached), "replayed": bool(frozen), "overridden": {k: str(v) for k, v in overridden.items()},
+               "budget": {k: v for k, v in budget.items()}}
+        (refs.repo_root() / "build" / "fr" / ref.key / "row.json").write_text(json.dumps(row, indent=1) + "\n")
     return rows
 
 

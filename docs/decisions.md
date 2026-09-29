@@ -1006,6 +1006,12 @@ this one DSN (D140, 42e251f, a786a5b), with different nets open each time. Measu
 finishing changes nothing (imported = final 3dfc47a586), GND in 3 pieces (LAN_CON1-7 and -8 alone), +3.3V and Spare2
 open, 2 tracks 0.1015 mm inside the own clearance of D3's and D1's pads (D136's; dsn a5fbccd76f, 4074 s).
 mch2022-badge: the jar exits 1 (D133). Measurement.
+
+**D147. A test harness before the next fix; router sessions committed; gate rows fanned out to cloud sessions**
+(2026-09-29). The next work is the harness: the gate row replayed from a frozen router session (minutes, the same
+result every time), invariant tests on the replay, a plane-reach check before the router, micro-boards cropped
+from a failure. A router session derived from a reference board is committed when a persistent test uses it.
+Gate rows may run in parallel cloud sessions. Owner.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

@@ -290,6 +290,50 @@ def open_nets(board: pcbnew.BOARD) -> dict[str, int]:
     return out
 
 
+def pad_pieces(board: pcbnew.BOARD) -> dict[str, list[frozenset[str]]]:
+    """Every net's pads grouped as KiCad's connectivity joins them (fills included), as :func:`open_nets` reads
+    it, by pad UUID: a board's references may be renamed and restored between two saves, its pads' UUIDs are
+    not. A net on one pad is one piece."""
+    board.BuildConnectivity()
+    conn = board.GetConnectivity()
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    pads: dict[str, list[str]] = {}
+    for fp in board.GetFootprints():
+        for pad in fp.Pads():
+            if pad.GetNetname():
+                pads.setdefault(pad.GetNetname(), []).append(pad.m_Uuid.AsString())
+    items = [p for fp in board.GetFootprints() for p in fp.Pads() if p.GetNetname()]
+    items += [t for t in board.GetTracks() if t.GetNetname()]
+    items += [z for z in board.Zones() if not z.GetIsRuleArea() and z.GetNetname()]
+    for x in items:
+        xid = x.m_Uuid.AsString()
+        find(xid)
+        for y in list(conn.GetConnectedPads(x)) + list(conn.GetConnectedTracks(x)):
+            rx, ry = find(xid), find(y.m_Uuid.AsString())
+            if rx != ry:
+                parent[rx] = ry
+    out: dict[str, list[frozenset[str]]] = {}
+    for name, ids in pads.items():
+        groups: dict[str, set[str]] = {}
+        for i in ids:
+            groups.setdefault(find(i), set()).add(i)
+        out[name] = [frozenset(g) for g in groups.values()]
+    return out
+
+
+def pad_names(board: pcbnew.BOARD) -> dict[str, str]:
+    """Pad UUID to "REF-N"."""
+    return {p.m_Uuid.AsString(): f"{fp.GetReference()}-{p.GetNumber()}" for fp in board.GetFootprints()
+            for p in fp.Pads()}
+
+
 def unconnected_count(board: pcbnew.BOARD) -> int:
     """KiCad's own count of missing connections on the board, uncapped (the DRC report's list is not)."""
     board.BuildConnectivity()

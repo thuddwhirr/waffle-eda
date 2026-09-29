@@ -1,0 +1,18 @@
+{
+ "dsn_md5": "244088a3b8a5283994200a58d0b47d08",
+ "frozen_at": "2affb15",
+ "key": "open-book-c1",
+ "row": {
+  "budget": {},
+  "commit": "a786a5b",
+  "detail": "open-book-c1               score=1.000 PASS | connected 35/35, unconnected items 0 | electrical 0  | tracks 441 (answer 296), vias 103 (answer 76) | 2.4s | freerouting 2.4.1: exit 0, 3 passes, router reports 0 unrouted and 123 violations; imported 441 tracks, 103 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 37, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 244088a3b8 imported baabd9724d final c6986a4d35; 21s",
+  "dsn": "244088a3b8",
+  "final": "c6986a4d35",
+  "gate": "a",
+  "imported": "baabd9724d",
+  "overridden": {},
+  "pass": true,
+  "replayed": false
+ },
+ "session_md5": "52a28960aec41dbdd3851216c48c2f4b"
+}

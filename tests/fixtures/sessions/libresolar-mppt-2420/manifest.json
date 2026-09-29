@@ -1,0 +1,18 @@
+{
+ "dsn_md5": "7c237c3d57d79f6381bc3603d93a7436",
+ "frozen_at": "2affb15",
+ "key": "libresolar-mppt-2420",
+ "row": {
+  "budget": {},
+  "commit": "a786a5b",
+  "detail": "libresolar-mppt-2420       score=1.000 PASS | connected 102/102, unconnected items 0 | electrical 0  | tracks 1419 (answer 1668), vias 275 (answer 408) | 2.3s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 64 violations; imported 1419 tracks, 275 vias, 0 widened, 4 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 5, 'moved': 217, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 7c237c3d57 imported 7d06913027 final 5d656b559a; 422s",
+  "dsn": "7c237c3d57",
+  "final": "5d656b559a",
+  "gate": "a",
+  "imported": "7d06913027",
+  "overridden": {},
+  "pass": true,
+  "replayed": false
+ },
+ "session_md5": "545da0f65ee48b7fef1a759b09c20355"
+}

@@ -1,0 +1,20 @@
+{
+ "dsn_md5": "8fac5625dda77c1efcf86243a9b173c7",
+ "frozen_at": "2affb15",
+ "key": "tinkerforge-master-v3.2",
+ "row": {
+  "budget": {
+   "timeout_s": 6000.0
+  },
+  "commit": "a786a5b",
+  "detail": "tinkerforge-master-v3.2    score=0.954 fail | connected 144/151, unconnected items 8 | electrical 0  | tracks 1872 (answer 2285), vias 295 (answer 327) | 2.5s | residue 7 nets, 0 clearances, 0 shorts; planes whole (tinkerforge-master-v3.2-residue.md) | freerouting 2.4.1: exit 0, 18 passes, router reports 8 unrouted and 76 violations; imported 1872 tracks, 295 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 2, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 8fac5625dd imported ebccee7635 final ebccee7635; 888s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | reference copper under our rules: clearance violations: 507; Freerouting's incomplete connections: 483; nets the copper leaves open (ends within 1.0 um joined): 39 (38 BoardOutline/Pin on R?ckseite, 38 BoardOutline/Pin on Vorderseite, 8 BoardOutline/Via on GND, 8 BoardOutline/Via on R?ckseite, 8 BoardOutline/Via on VCC, 8 BoardOutline/Via on Vorderseite, 1 ObstacleArea/PolylineTrace on R?ckseite, 4 ObstacleArea/PolylineTrace on VCC, 2 ObstacleArea/PolylineTrace on Vorderseite, 1 ObstacleArea/Via on GND, 1 ObstacleArea/Via on R?ckseite, 1 ObstacleArea/Via on VCC, 2 ObstacleArea/Via on Vorderseite, 1 Pin/PolylineTrace on GND, 3 Pin/PolylineTrace on R?ckseite, 1 Pin/PolylineTrace on Vorderseite, 1 Pin/Via on GND, 7 Pin/Via on R?ckseite, 1 Pin/Via on VCC, 8 Pin/Via on Vorderseite, 13 PolylineTrace/Via on R?ckseite, 8 PolylineTrace/Via on VCC, 12 PolylineTrace/Via on Vorderseite, 17 Via/Via on GND, 17 Via/Via on R?ckseite, 17 Via/Via on VCC, 17 Via/Via on Vorderseite, 66 Via/Via same net on GND, 66 Via/Via same net on R?ckseite, 66 Via/Via same net on VCC, 66 Via/Via same net on Vorderseite)",
+  "dsn": "8fac5625dd",
+  "final": "ebccee7635",
+  "gate": "b",
+  "imported": "ebccee7635",
+  "overridden": {},
+  "pass": true,
+  "replayed": false
+ },
+ "session_md5": "61e92a302d294b9acbdc727d1cbdcdb5"
+}

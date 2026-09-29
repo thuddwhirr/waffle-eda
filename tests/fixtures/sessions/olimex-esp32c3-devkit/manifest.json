@@ -1,0 +1,18 @@
+{
+ "dsn_md5": "40c42bc2eaa41bf4a2ef3ee7cdacc1e5",
+ "frozen_at": "2affb15",
+ "key": "olimex-esp32c3-devkit",
+ "row": {
+  "budget": {},
+  "commit": "a786a5b",
+  "detail": "olimex-esp32c3-devkit      score=1.000 PASS | connected 34/34, unconnected items 0 | electrical 0  | tracks 630 (answer 799), vias 102 (answer 88) | 1.9s | freerouting 2.4.1: exit 0, 5 passes, router reports 0 unrouted and 10 violations; imported 630 tracks, 102 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 65, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 40c42bc2ea imported a2aa28e237 final d7c2eb53ad; 32s",
+  "dsn": "40c42bc2ea",
+  "final": "d7c2eb53ad",
+  "gate": "a",
+  "imported": "a2aa28e237",
+  "overridden": {},
+  "pass": true,
+  "replayed": false
+ },
+ "session_md5": "dedcdec52a81bcc8ed1b921b076fed58"
+}
