@@ -1,0 +1,17 @@
+{
+ "gate": "b",
+ "pass": true,
+ "detail": "pico-ice-rev3              score=0.947 fail | connected 90/95, unconnected items 5 | electrical 0  | tracks 1999 (answer 1689), vias 259 (answer 189) | 3.4s | residue 5 nets, 0 clearances, 0 shorts; planes whole (pico-ice-rev3-residue.md) | freerouting 2.4.1: exit 0, 30 passes, router reports 5 unrouted and 173 violations; imported 1999 tracks, 259 vias, 0 widened, 2 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 3, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 68a8a1d62d imported 1b2c5fe229 final b9a04dc34d; 2020s | cap 6000 s | configuration overridden: {'router_edge': 'rule'} | planes gnd | feeds 0 none, stitched 0 | no window | reference copper under our rules: clearance violations: 49; Freerouting's incomplete connections: 181; nets the copper leaves open (ends within 1.0 um joined): 5 (2 ObstacleArea/PolylineTrace on B.Cu, 1 Pin/Pin on F.Cu, 12 Pin/Pin same net on F.Cu, 1 Pin/PolylineTrace on B.Cu, 5 Pin/PolylineTrace on F.Cu, 4 Pin/Via on B.Cu, 2 Pin/Via on F.Cu, 9 PolylineTrace/PolylineTrace on In2.Cu, 1 PolylineTrace/Via on B.Cu, 2 PolylineTrace/Via on F.Cu, 2 Via/Via on B.Cu, 2 Via/Via on F.Cu, 2 Via/Via on In1.Cu, 2 Via/Via on In2.Cu, 1 Via/ViaObstacleArea on B.Cu, 1 Via/ViaObstacleArea on F.Cu)",
+ "dsn": "68a8a1d62d",
+ "imported": "1b2c5fe229",
+ "final": "b9a04dc34d",
+ "commit": "371b676",
+ "unreached": [],
+ "replayed": false,
+ "overridden": {
+  "router_edge": "rule"
+ },
+ "budget": {
+  "timeout_s": 6000.0
+ }
+}
