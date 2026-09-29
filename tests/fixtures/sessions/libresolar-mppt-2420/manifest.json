@@ -7,7 +7,7 @@
    "multi_threading": false
   },
   "gui": true,
-  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "jar": "d85c9e83e6d460b88ea1b06123d907cd",
   "router": {
    "copper_to_edge_clearance_um": 300.0,
    "fanout": {

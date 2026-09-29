@@ -2183,15 +2183,25 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
     return path
 
 
+def jar_identity(jar: Path) -> str | None:
+    """A jar by what it holds: every entry's name and CRC. The patched jar is rebuilt in every container
+    (`scripts/patch_freerouting.py`) and its entries' timestamps differ, so its file's md5 does (D148)."""
+    import hashlib
+    import zipfile
+    if not jar.is_file():
+        return None
+    with zipfile.ZipFile(jar) as z:
+        entries = sorted(f"{i.filename}:{i.CRC}" for i in z.infolist())
+    return hashlib.md5("\n".join(entries).encode()).hexdigest()
+
+
 def router_record(settings: Path, jar: Path) -> dict:
     """What decides a run's session besides the DSN: the settings file's routing part (its profile id and log
     path vary run to run) and the jar. A frozen session is replayed only under the same record (D147)."""
-    import hashlib
     import json
     cfg = json.loads(settings.read_text())
     return {"version": cfg["version"], "router": cfg["router"], "gui": cfg["gui"]["enabled"],
-            "feature_flags": cfg["feature_flags"],
-            "jar_md5": hashlib.md5(jar.read_bytes()).hexdigest() if jar.is_file() else None}
+            "feature_flags": cfg["feature_flags"], "jar": jar_identity(jar)}
 
 
 def geometry_digest(board) -> str:

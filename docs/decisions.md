@@ -1029,6 +1029,33 @@ and a rectangle outline was read as its diagonal, so on a crop the track went ou
 (micro-board test, both outlines). On the board the track stays: res1's 0.55 mm via beside it has 0.0015 mm of room
 and the straight chain push cannot shift it. The finishing changed on 4 class A and 3 class B replays, every row
 passing as before. Measurement.
+
+**D150. The plane handed to the router carved round a no-pour area over its own pad** (2026-09-29, 3cb2eef,
+`scripts/preflight.py`). olimex-esp32-poe-m1's LAN_CON1-7 and -8 lie under the reference's no-pour area on F.Cu,
+In1 and In2 and are joined by F.Cu tracks there; the router got the In1 GND plane without the area (D133 lifts
+pour-only areas) and took them as joined; the fill obeyed the area, GND in 3 pieces (D146). `route.planes.carve`
+subtracts such areas from the plane before the export; the plane-reach check now counts only pads inside the
+plane's outline (C25-2, C27-2, EXT1-3, U4-33, U6-39 lie outside it). Pre-flight, 8 s for the 7 boards: only
+poe-m1's DSN changes and no pad is left unreached. Routed twice (cloud workers, dsn 798c181234): 81 of 101 both
+times (68 before), the router at 22 unrouted (36), GND whole, FAIL on 20 open nets, 1 clearance and Spare2 open.
+Its session is poe-m1's fixture; the patched jar is identified by its entries' CRCs, as its rebuild in another
+container differs in timestamps only. Measurement.
+
+**D151. The noise band, 2 more runs a board on one DSN and settings** (2026-09-29, 935bc60, cloud workers).
+pico-ice 85, 85 and poe-m1 68, 68 (the frozen board again, all four); tinytapeout 131, 135 (J5-R41 alone and the
+same 3 edge clearances in both); buspirate5 174, 175 (174 in D145). With D148, D149: upduino, sensor-watch,
+tinkerforge-master, pico-ice, poe-m1 and the class A boards repeat; buspirate5, tinytapeout and, once in three runs,
+libresolar do not. On those three a few nets up or down is noise; on the others any change is an effect.
+Measurement.
+
+**D152. The router held to the measured edge rule instead of 0.30 mm** (2026-09-29, 371b676, `WAFFLE_ROUTER_EDGE=rule`,
+cloud workers). tinytapeout PASS 134 of 137 (3 open, planes whole, no edge clearance; 131 to 135 FAIL at 0.30);
+pico-ice PASS 90 of 95 (85, deterministic); sensor-watch FAIL 52 of 61 (57, deterministic; GND and VCC open);
+upduino 83 and tinkerforge-master 144, unchanged (their rules are under 0.30); buspirate5 PASS 176 (174, 175);
+poe-m1 FAIL 84 (68 three times; its rule is 0.3229, so a 0.02 mm change: a repeatable board still swings on a small
+change of its input, as D141's 76 and 68). The edge rule measures at the search's bound, 0.5948, on pico-ice,
+sensor-watch and buspirate5: there it says the reference keeps at least that much, not what the rule is. The gate
+stays at 5 of 8 either way (tinytapeout in, sensor-watch out); the default stays 0.30. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
