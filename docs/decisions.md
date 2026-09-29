@@ -978,7 +978,7 @@ two nets) is the bridge less its pads, and its pads get a via keepout (a +3V3 vi
 bridge and read as a short). tinytapeout-demo 132 of 137, FAIL: the four jumper shorts gone, GND in 157 pieces,
 3 edge clearances. upduino 83 of 86, pico-ice 85 of 95, both PASS, no short (85 and 91 in D132; single rows,
 poe-m1 ran 8 nets apart on a one-connection change, D141). poe-m1 68 of 101 with its four layer-marker keepouts,
-no short. Class A has no such copper, DSNs unchanged. Measurement.
+no short. Class A has no such copper: gate PASS 5 of 5, DSNs unchanged. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

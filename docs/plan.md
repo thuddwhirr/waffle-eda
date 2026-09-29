@@ -10,19 +10,34 @@ This is the only part of the plan that says what to *do*. **Whoever finishes a p
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
 decision log, D87 to D143, and `docs/review-class-b.md`; do not re-derive it.
 
-**State (2026-09-28, `claude/project-progress-assessment-2hob4y`).**
+**State (2026-09-29, `claude/project-progress-assessment-2hob4y`).** Class B: FAIL, 3 of 7 references pass.
 
 | Gate | Result | What it means |
 |---|---|---|
-| `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
+| `python3 scripts/gate.py a` | PASS 5 of 5 | DSNs byte-identical through D143; run it clean (no `WAFFLE_*`) and alone before any push to shared code |
 | `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | no clearance, no short, planes whole (D143; 85 in D132) |
 | `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | at the bound: 10 open, no clearance, no short, planes whole (D143; 91 in D132) |
-| `python3 scripts/gate.py b sensor-watch-c1` | FAIL, 55 of 61 | no clearance, no short; GND open, four plated pads of U$2 across the outline unreachable to the router, /COM1 opened by the finishing step (D135) |
-| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 68 of 101 | 33 open, 2 clearances at pads with their own clearance, planes open; 76 in D141, a spread single rows show on this board (D143) |
-| `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open nets, no clearance, no short, every plane whole (D139) |
-| `python3 scripts/gate.py b buspirate5-rev10` | FAIL, 168 of 183 | 15 open, GND open, no clearance, no short; the router reports 8 unrouted, the finishing step leaves 15 (D140); 94 before its via name was fixed |
-| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 132 of 137 | the jumper shorts gone (D143); GND in 157 pieces, 3 edge clearances |
-| `mch2022-badge` | not run | its DSN has no boundary after a pcbnew save (D133) | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
+| `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open, no clearance, no short, planes whole (D139) |
+| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 132 of 137 | no short (the jumper shorts gone, D143); GND in 157 pieces, 3 edge clearances |
+| `python3 scripts/gate.py b buspirate5-rev10` | FAIL, 168 of 183 | the router ends at 8 unrouted, the final board has 15 open; GND open (D140) |
+| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 68 of 101 | 33 open, 2 clearances at pads with their own clearance, planes open; 76 in D141 (D143) |
+| `python3 scripts/gate.py b sensor-watch-c1` | FAIL, 55 of 61 | four plated pads of U$2 across the outline unreachable, /COM1 opened by the finishing step, GND open (D135) |
+| `mch2022-badge` | cannot run | its outline is lost on any pcbnew save; the DSN has no boundary (D133) |
+
+fomu-pvt left class B (owner, D137: its reference is HDI). A row takes 4 to 55 minutes; run one router at a time.
+
+**First thing next session: the finishing step drops connections the router made.** It fails two boards and is
+entirely our code, so it is the cheapest gain. Evidence: buspirate5's router ends at 8 unrouted and its final board
+has 15 open nets (the repair left 83 items, worst 0.5698 mm, D140); sensor-watch's /COM1 is whole on
+`build/fr/sensor-watch-c1/imported.kicad_pcb` and open on `build/bench/sensor-watch-c1-routed.kicad_pcb` (D135).
+Steps:
+1. Find the step that opens it: `kb.open_nets` on the imported board, then after each finishing step in
+   `route_board` (`prune_dangling`, `repair_clearances`, around `freerouting.py:2461`) and after the gate's
+   `planes.finish` (`planes.py:439`: fill, stitching). sensor-watch is the fast board (about 4 minutes a row); its
+   imported board is on disk, so no router run is needed to start.
+2. A failing test that reproduces it on the smallest board piece that shows it (tests/test_freerouting.py or
+   tests/test_planes.py), then the smallest fix; class A's gate and the three passing class B rows must hold.
+3. Re-run buspirate5 and sensor-watch.
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
 passes when the router's board has every plane net whole, no short, and a documented residue of at most ten
@@ -38,34 +53,22 @@ slotted pad's ring measured along its axes (D130; class A keeps the old measure,
 vias allowed on same-net SMD pads (D132). Every class B row also prints the reference's own copper checked against
 the DSN it was routed from (D133): a row whose line shows violations nobody has explained is not believed.
 
-**What this session found (D126 to D131).** The router's insertion asked 16 units more clearance than its maze plans
-with (D126); fixed on the owner's fork with fixture tests, it removes four fifths of the failed insertions and
-closes no net (D127, D129), so it is a measured jar, not the default. D57's slack only laid copper inside the rule
-on class B (D127). `scripts/translation_check.py` then asked whether the router's version of a board admits the
-reference's own routing: it did not, because a slotted pad's ring was counted as none and every plated pin was
-fenced at the whole hole rule (D130); corrected, pico-ice reaches 76 of 95, its best. Two translation differences
-remain: the reference puts vias on SMD pads the DSN forbids (38 on upduino, 13 on pico-ice; D93 allows via-in-pad on
-class B), and the jar joins a track to a pin only at its exact centre, which leaves any copper laid before the
-router open to it (not a limit on routing from scratch).
+**What the last sessions found (D126 to D143).** Every gain came from making the DSN say what the board says, found
+by `scripts/translation_check.py` (the reference's own copper under our DSN) and the router's own view of the DSN
+(`tools/DsnDrc.java`, and a probe of its via rules): a slotted pad's ring (D130), the inner layers the references
+route on (D131), vias on SMD pads (D132), rule areas that forbid nothing (D133), keepouts round pads their own net
+must reach (D136), a via name with a decimal point that left the router no via (buspirate5 94 to 168, D140), board
+files typing inner layers `power` (poe-m1's router 77 to 28 unrouted, D141), copper graphics (D143). Router
+parameter changes gained nothing (D103 to D125). On the larger boards single rows differ by several nets on a
+trivial DSN change (poe-m1 76 and 68): read a short gone or present as a result, a few nets up or down as noise.
 
-Then D131: the references route a quarter of their track through the split pours of their inner layers, and the default had handed those pours to the router as solid planes; with only GND handed over and the rest laid after the import, pico-ice passes at 85 of 95 and upduino at 82 of 86, both with every plane whole.
-
-**Decisions the owner owes before class B moves again.**
-1. The class's scope (the review's option 3): the boards that route to a residue of minutes (upduino's kind),
-   or the dense ones too (pico-ice's kind, which no measurement from outside the jar has brought within the
-   bound: D103 to D125, all under D57's slack).
-2. The residue bound, ten or another number.
-3. The synthetic class B design of the milestone: it needs the owner's board.
-
-Then D132 and D133: vias on same-net SMD pads, allowed by D93 but never written into the DSN, take upduino to 85
-of 86 and pico-ice to 91 of 95. The translation check now runs beside every class B row; its first lines on the
-seven unmeasured references found KiCad exporting rule areas that forbid nothing as keepouts (tinytapeout, 371
-of its 453 violations, fixed).
+**Decisions the owner owes.**
+1. The residue bound, ten or another number (pico-ice sits at ten).
+2. The synthetic class B design of the milestone: it needs the owner's board.
+3. Whether to spend router time on a noise band (item 4 below) before reading small row differences.
 
 **Then, in this order.** Every class B reference has a row (mch2022 excepted); what fails them is on our side:
-1. The finishing step drops connections the router made: buspirate5's router ends at 8 unrouted and the final
-   board has 15 open (D140); sensor-watch's /COM1 is whole on the imported board and open on the final one (D135).
-   A failing test on the imported board first.
+1. The finishing step (above).
 2. GND open on tinytapeout (157 pieces, D143), buspirate5 and poe-m1: why the plane net does not come out whole.
 3. Pads across the board outline (sensor-watch's U$2, D135) and mch2022's outline lost on a pcbnew save (D133).
 4. Single rows on the larger boards differ by several nets on a trivial DSN change (poe-m1: 76 and 68, D141, D143);
