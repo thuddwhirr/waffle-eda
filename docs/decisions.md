@@ -1012,6 +1012,23 @@ mch2022-badge: the jar exits 1 (D133). Measurement.
 result every time), invariant tests on the replay, a plane-reach check before the router, micro-boards cropped
 from a failure. A router session derived from a reference board is committed when a persistent test uses it.
 Gate rows may run in parallel cloud sessions. Owner.
+
+**D148. The harness measured** (2026-09-29, 935bc60). The 12 rows of a786a5b's gates frozen (368 KB); all 12 replay
+in 1 min 46 s (`scripts/replay.py -j 4`; 3 s to 106 s a row), each board identical to its gate row, and class A's gate
+PASS 5 of 5 with every digest unchanged. On 41564b7's finishing the replay gives D140's buspirate5 (168 of 183, 15
+open, GND open) and D135's sensor-watch (55 of 61, GND open) exactly, and the invariant test (`pytest -m replay`)
+fails on those two boards alone: 3 min 56 s for what took two 4-hour gates. The plane-reach check flags 7 plated GND
+pads on olimex-esp32-poe-m1 (C25-2, C27-2, EXT1-3, LAN_CON1-7, -8, U4-33, U6-39), none elsewhere. A crop routes in 19
+to 42 s; tinytapeout's J5-R41, unrouted on the board, routes in a crop round it. Measurement.
+
+**D149. tinytapeout's edge clearances are the router's 0.30 mm margin, and the repair's three faults at the edge**
+(2026-09-29, `scripts/crop.py cut ... --edge`, tests). The router laid a 27 mm +3V3 track 0.398 mm from the edge (rule
+0.4964; D68's router margin is 0.30). The repair left it: its free-travel probe stopped at 0.05 mm, so the track was
+"boxed in" with 0.094 of room; the push that followed moved res1 the whole step into J7's pads, where 0.006 would do;
+and a rectangle outline was read as its diagonal, so on a crop the track went out across the edge. All three fixed
+(micro-board test, both outlines). On the board the track stays: res1's 0.55 mm via beside it has 0.0015 mm of room
+and the straight chain push cannot shift it. The finishing changed on 4 class A and 3 class B replays, every row
+passing as before. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

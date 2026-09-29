@@ -2,17 +2,45 @@
  "dsn_md5": "244088a3b8a5283994200a58d0b47d08",
  "frozen_at": "2affb15",
  "key": "open-book-c1",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": true,
+  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 5,
+    "start_ripup_costs": 100,
+    "via_costs": 1
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {},
-  "commit": "a786a5b",
-  "detail": "open-book-c1               score=1.000 PASS | connected 35/35, unconnected items 0 | electrical 0  | tracks 441 (answer 296), vias 103 (answer 76) | 2.4s | freerouting 2.4.1: exit 0, 3 passes, router reports 0 unrouted and 123 violations; imported 441 tracks, 103 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 37, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 244088a3b8 imported baabd9724d final c6986a4d35; 21s",
+  "commit": "935bc60",
+  "detail": "open-book-c1               score=1.000 PASS | connected 35/35, unconnected items 0 | electrical 0  | tracks 441 (answer 296), vias 103 (answer 76) | 3.0s | freerouting 2.4.1: exit 0, 3 passes, router reports 0 unrouted and 123 violations; imported 441 tracks, 103 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 37, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 244088a3b8 imported baabd9724d final 5b5bf6c4a6; 1s | replayed the session frozen at 2affb15",
   "dsn": "244088a3b8",
-  "final": "c6986a4d35",
+  "final": "5b5bf6c4a6",
   "gate": "a",
   "imported": "baabd9724d",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "52a28960aec41dbdd3851216c48c2f4b"
 }

@@ -513,6 +513,60 @@ def test_a_track_a_few_micrometres_too_close_is_moved_away_and_the_drc_then_pass
     assert ys[1] - ys[0] >= 0.25 + 0.1972 - 1e-6  # moved apart, not narrowed
 
 
+@pytest.mark.parametrize("outline", ["lines", "rectangle"])
+def test_a_track_too_near_the_edge_moves_in_and_its_neighbour_makes_just_the_room_it_needs(tmp_path, outline):
+    """tinytapeout-demo's +3V3 ran 27 mm along the board edge, 0.0986 mm inside the edge rule (the router keeps
+    0.30 mm from the edge, D68), with res1 beside it and J7's header pads beyond: a corridor of 1.15 mm for
+    1.134 mm of copper and gaps. The repair's probe for free travel stopped at 0.05 mm, so the track counted as
+    boxed in, and the push that followed moved res1 the whole step, into the pads (2026-09-29, a crop of the
+    imported board). Drawn as a rectangle, the outline was taken for its diagonal, and the track went out across
+    the edge."""
+    board = pcbnew.BOARD()
+    nets = {}
+    for name in ("+3V3", "res1", "res0", "GND"):
+        nets[name] = pcbnew.NETINFO_ITEM(board, name)
+        board.Add(nets[name])
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("J7")
+    for number, y, net in (("7", 68.04, "GND"), ("8", 65.5, "res0")):
+        pad = pcbnew.PAD(fp)
+        pad.SetNumber(number)
+        pad.SetAttribute(pcbnew.PAD_ATTRIB_PTH)
+        pad.SetShape(pcbnew.PAD_SHAPE_CIRCLE)
+        pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.7), kb.nm(1.7)))
+        pad.SetDrillSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+        pad.SetLayerSet(pcbnew.PAD.PTHMask())
+        pad.SetPosition(pcbnew.VECTOR2I(kb.nm(150.0), kb.nm(y)))
+        pad.SetNet(nets[net])
+        fp.Add(pad)
+    board.Add(fp)
+    for net, (x0, y0), (x1, y1) in (("+3V3", (151.5221, 51.7821), (151.5221, 79.2179)),
+                                    ("res1", (151.1094, 64.0694), (151.1094, 69.1533))):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(y0)))
+        t.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(y1)))
+        t.SetWidth(kb.nm(0.16))
+        t.SetLayer(pcbnew.F_Cu)
+        t.SetNet(nets[net])
+        board.Add(t)
+    corners = [(140.0, 45.0), (152.0, 45.0), (152.0, 85.0), (140.0, 85.0)]
+    sides = [(corners[0], corners[2], pcbnew.SHAPE_T_RECT)] if outline == "rectangle" else \
+        [(corners[i], corners[(i + 1) % 4], pcbnew.SHAPE_T_SEGMENT) for i in range(4)]
+    for (x0, y0), (x1, y1), shape in sides:
+        edge = pcbnew.PCB_SHAPE(board)
+        edge.SetShape(shape)
+        edge.SetStart(pcbnew.VECTOR2I(kb.nm(x0), kb.nm(y0)))
+        edge.SetEnd(pcbnew.VECTOR2I(kb.nm(x1), kb.nm(y1)))
+        edge.SetLayer(pcbnew.Edge_Cuts)
+        board.Add(edge)
+    rules = _rules(clearance_mm=0.1589, hole_to_copper_mm=0.2495, edge_clearance_mm=0.4964, min_track_mm=0.16)
+    report = fr.repair_clearances(board, rules, tmp_path / "repair")
+    assert report["remaining"] == 0, report
+    x = {t.GetNetname(): kb.mm(t.GetStart().x) for t in kb.track_segments(board)}
+    assert 152.0 - (x["+3V3"] + 0.08) >= 0.4964 - 1e-4  # the edge rule
+    assert x["res1"] - 0.08 - 150.85 >= 0.1589 - 1e-4  # and res1 still clear of the pads
+
+
 def test_a_track_squeezed_from_both_sides_settles_between_its_neighbours(tmp_path):
     """One move per violation oscillated the smoke board's middle SOT-563 exit between its two neighbours and
     ended at zero or one violation by the order KiCad listed them. The pushes are summed per track."""

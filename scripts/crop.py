@@ -2,12 +2,12 @@
 """Micro-boards cut out of a real board round a failure (D147): the failure alone, in seconds instead of the
 board's hour.
 
-    python3 scripts/crop.py cut <board.kicad_pcb> <x> <y> <half> <out.kicad_pcb>
+    python3 scripts/crop.py cut <board.kicad_pcb> <x> <y> <half> <out.kicad_pcb> [--edge]
     python3 scripts/crop.py route <key> <x> <y> <half> [a|b]
 
 `cut` keeps every footprint, track, via, zone and drawing whose bounding box meets the square of side 2 x half
-round (x, y), in mm, and draws the outline round what it kept, 0.5 mm out: a footprint half in the square comes
-whole. `route` cuts the gate's stripped board of <key> the same way and routes it with Freerouting under the class's
+round (x, y), in mm, and draws the outline round what it kept, 0.5 mm out (with --edge it keeps the board's own
+outline where it meets the square instead, for a failure at the edge): a footprint half in the square comes whole. `route` cuts the gate's stripped board of <key> the same way and routes it with Freerouting under the class's
 configuration (b when not named), the nets with two or more pads left in it; the work goes to
 build/fr/<key>-crop/. A crop the router cannot finish locates a real blocker at that spot (a translation fault, a
 missing constraint, a pad it cannot reach); a crop it finishes proves less, the congestion round it being gone.
@@ -21,8 +21,9 @@ import _path  # noqa: F401
 from waffle_eda.kicad import board as kb
 
 
-def cut(board, x: float, y: float, half: float) -> pcbnew.BOARD:
-    """Cut ``board`` in place down to what meets the square round (x, y); returns it."""
+def cut(board, x: float, y: float, half: float, keep_edge: bool = False) -> pcbnew.BOARD:
+    """Cut ``board`` in place down to what meets the square round (x, y); returns it. ``keep_edge`` keeps the
+    board's own outline where it meets the square instead of drawing one, for a failure at the edge."""
     window = pcbnew.BOX2I(pcbnew.VECTOR2I(kb.nm(x - half), kb.nm(y - half)),
                           pcbnew.VECTOR2I(kb.nm(2 * half), kb.nm(2 * half)))
     kept = pcbnew.BOX2I(window.GetPosition(), window.GetSize())
@@ -41,8 +42,10 @@ def cut(board, x: float, y: float, half: float) -> pcbnew.BOARD:
         if not window.Intersects(z.GetBoundingBox()):
             board.Delete(z)
     for d in list(board.GetDrawings()):
-        if d.GetLayer() == pcbnew.Edge_Cuts or not window.Intersects(d.GetBoundingBox()):
+        if (d.GetLayer() == pcbnew.Edge_Cuts and not keep_edge) or not window.Intersects(d.GetBoundingBox()):
             board.Delete(d)
+    if keep_edge:
+        return board
     kept.Inflate(kb.nm(0.5))
     edge = pcbnew.PCB_SHAPE(board)
     edge.SetShape(pcbnew.SHAPE_T_RECT)
@@ -93,7 +96,7 @@ def route(key: str, x: float, y: float, half: float, klass: str = "b") -> int:
 
 def main(argv: list[str]) -> int:
     if len(argv) >= 6 and argv[0] == "cut":
-        board = cut(kb.load_board(argv[1]), float(argv[2]), float(argv[3]), float(argv[4]))
+        board = cut(kb.load_board(argv[1]), float(argv[2]), float(argv[3]), float(argv[4]), keep_edge="--edge" in argv)
         kb.save_board(board, argv[5])
         print(f"{argv[5]}: {len(list(board.GetFootprints()))} footprints, {len(list(board.GetTracks()))} tracks and "
               f"vias, {len(list(board.Zones()))} zones")

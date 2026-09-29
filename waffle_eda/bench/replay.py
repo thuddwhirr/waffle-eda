@@ -9,7 +9,8 @@ longer matches, the replay stops with `StaleSession`, and the row has to be rout
 
     tests/fixtures/sessions/<key>/board.ses.gz   the router's session, gzip without a timestamp
     tests/fixtures/sessions/<key>/router.log     its log lines the row reads (passes, unrouted, violations)
-    tests/fixtures/sessions/<key>/manifest.json  the DSN's md5, the commit, the gate and the row it produced
+    tests/fixtures/sessions/<key>/manifest.json  the DSN's md5, the router's settings and jar (`router_record`),
+                                                 the commit, the gate and the row it produced
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import gzip
 import hashlib
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 from waffle_eda.bench import references as refs
@@ -61,11 +63,14 @@ def freeze(key: str, work_dir: Path, row: dict) -> Path:
     ses, dsn, log = work_dir / "board.ses", work_dir / "board.dsn", work_dir / "run.log"
     if not ses.is_file() or ses.stat().st_size == 0:
         raise FileNotFoundError(f"{key}: no session in {work_dir}")
+    if not (work_dir / "router.json").is_file():
+        raise FileNotFoundError(f"{key}: no router.json in {work_dir}: the run predates the record")
     out = fixtures_dir() / key
     out.mkdir(parents=True, exist_ok=True)
     (out / "board.ses.gz").write_bytes(gzip.compress(ses.read_bytes(), mtime=0))
     (out / "router.log").write_text(router_lines(log.read_text()))
-    facts = {"key": key, "dsn_md5": md5(dsn), "session_md5": md5(ses), "frozen_at": commit(), "row": row}
+    facts = {"key": key, "dsn_md5": md5(dsn), "session_md5": md5(ses), "frozen_at": commit(), "row": row,
+             "router": json.loads((work_dir / "router.json").read_text())}
     (out / "manifest.json").write_text(json.dumps(facts, indent=1, sort_keys=True) + "\n")
     return out
 
@@ -80,12 +85,25 @@ def replaying(key: str):
     facts = manifest(key)
     real = fr.run_jar
 
-    def run_jar(dsn: Path, ses: Path, log: Path, *_a, **_k):
+    def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, _timeout_s: float,
+                edge_clearance_mm: float | None = None, fanout: bool = fr.FANOUT, gui: bool = fr.GUI,
+                jar: Path | None = None, via_costs: int | None = None, plane_via_costs: int | None = None,
+                ripup_costs: int | None = None):
         got = md5(dsn)
         if got != facts["dsn_md5"]:
             raise StaleSession(f"{key}: the export wrote DSN {got[:10]}, the frozen session was routed from "
                                f"{facts['dsn_md5'][:10]} (frozen at {facts['frozen_at']}): route the row again and "
                                f"freeze it (scripts/freeze_sessions.py)")
+        with tempfile.TemporaryDirectory() as tmp:  # the settings this run would hand the jar, and the jar
+            settings = fr.settings_json(Path(tmp), threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm,
+                                        gui=gui, via_costs=via_costs, plane_via_costs=plane_via_costs,
+                                        ripup_costs=ripup_costs)
+            record = fr.router_record(settings, jar or fr.jar_path())
+        if record != facts["router"]:
+            differs = sorted(k for k in record if record[k] != facts["router"].get(k))
+            raise StaleSession(f"{key}: the router would run with other settings or another jar ({differs}) than "
+                               f"the frozen session's (frozen at {facts['frozen_at']}): route the row again and "
+                               f"freeze it")
         ses.write_bytes(gzip.decompress((folder / "board.ses.gz").read_bytes()))
         log.write_text((folder / "router.log").read_text())
         return 0, False

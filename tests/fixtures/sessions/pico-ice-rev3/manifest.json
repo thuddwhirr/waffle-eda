@@ -2,19 +2,47 @@
  "dsn_md5": "68a8a1d62de4ccf22d5b0850871a974d",
  "frozen_at": "2affb15",
  "key": "pico-ice-rev3",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": false,
+  "jar_md5": "aa2af4d483675e011e71ff027400d9a9",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 2,
+    "start_ripup_costs": 400,
+    "via_costs": 20
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {
    "timeout_s": 6000.0
   },
-  "commit": "a786a5b",
-  "detail": "pico-ice-rev3              score=0.895 fail | connected 85/95, unconnected items 10 | electrical 0  | tracks 1768 (answer 1689), vias 228 (answer 189) | 2.8s | residue 10 nets, 0 clearances, 0 shorts; planes whole (pico-ice-rev3-residue.md) | freerouting 2.4.1: exit 0, 20 passes, router reports 10 unrouted and 13 violations; imported 1768 tracks, 228 vias, 0 widened, 2 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 68a8a1d62d imported 3de2ee06d9 final 3de2ee06d9; 1283s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | reference copper under our rules: clearance violations: 49; Freerouting's incomplete connections: 181; nets the copper leaves open (ends within 1.0 um joined): 5 (2 ObstacleArea/PolylineTrace on B.Cu, 1 Pin/Pin on F.Cu, 12 Pin/Pin same net on F.Cu, 1 Pin/PolylineTrace on B.Cu, 5 Pin/PolylineTrace on F.Cu, 4 Pin/Via on B.Cu, 2 Pin/Via on F.Cu, 9 PolylineTrace/PolylineTrace on In2.Cu, 1 PolylineTrace/Via on B.Cu, 2 PolylineTrace/Via on F.Cu, 2 Via/Via on B.Cu, 2 Via/Via on F.Cu, 2 Via/Via on In1.Cu, 2 Via/Via on In2.Cu, 1 Via/ViaObstacleArea on B.Cu, 1 Via/ViaObstacleArea on F.Cu)",
+  "commit": "935bc60",
+  "detail": "pico-ice-rev3              score=0.895 fail | connected 85/95, unconnected items 10 | electrical 0  | tracks 1768 (answer 1689), vias 228 (answer 189) | 3.8s | residue 10 nets, 0 clearances, 0 shorts; planes whole (pico-ice-rev3-residue.md) | freerouting 2.4.1: exit 0, 20 passes, router reports 10 unrouted and 13 violations; imported 1768 tracks, 228 vias, 0 widened, 2 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 68a8a1d62d imported 3de2ee06d9 final 3de2ee06d9; 2s | fill {'mode': 'per-layer', 'fallback_layers': [], 'unfilled_zones': []} | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | replayed the session frozen at 2affb15",
   "dsn": "68a8a1d62d",
   "final": "3de2ee06d9",
   "gate": "b",
   "imported": "3de2ee06d9",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "22305431530b512892f6b6c173f213d9"
 }

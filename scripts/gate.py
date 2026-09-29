@@ -203,7 +203,10 @@ CLASS_B = {"planes": "gnd", "feeds": True, "stubs": False, "rounds": 1, "gui": F
            # a slotted pad's ring along its axes (D130): the whole hole rule no longer fences every plated pin
            "ring_per_axis": True,
            # a via may sit on a same-net SMD pad (D93, D132), as 38 of upduino's and 13 of pico-ice's do
-           "via_at_smd": True}
+           "via_at_smd": True,
+           # what the router keeps from the board edge: None for D68's 0.30 mm (the repair then holds the rule),
+           # "rule" for the measured edge rule; tinytapeout's +3V3 at 0.398 of 0.4964 (D149)
+           "router_edge": None}
 # D131: only the GND plane goes to the router before the export ("gnd"); the other inner pours are laid after
 # the import, so the router routes on the inner layer the references route on (pico-ice 85 of 95 for 76)
 
@@ -233,6 +236,8 @@ def configuration(defaults: dict) -> dict:
         out["slack_mm"] = float(os.environ["WAFFLE_CLEARANCE_SLACK_MM"])
     if os.environ.get("WAFFLE_VIA_AT_SMD") and "via_at_smd" in out:
         out["via_at_smd"] = os.environ["WAFFLE_VIA_AT_SMD"] == "1"
+    if os.environ.get("WAFFLE_ROUTER_EDGE") and "router_edge" in out:  # "rule": the router keeps the measured
+        out["router_edge"] = os.environ["WAFFLE_ROUTER_EDGE"]           # edge rule, not D68's 0.30 mm
     if os.environ.get("WAFFLE_VIA_BANDS") and "via_bands" in out:  # "none" or "fine-pitch" (D120, D121)
         out["via_bands"] = None if os.environ["WAFFLE_VIA_BANDS"] == "none" else os.environ["WAFFLE_VIA_BANDS"]
     return out
@@ -300,7 +305,8 @@ def _reroute_gate(references, defaults: dict) -> list[tuple[str, bool, str]]:
                          "plane_via_costs": cfg["plane_via_costs"], "ripup_costs": cfg["ripup_costs"],
                          "via_bands": cfg["via_bands"], "slack_mm": cfg["slack_mm"],
                          "ring_per_axis": cfg["ring_per_axis"], "via_at_smd": cfg["via_at_smd"],
-                         "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None}
+                         "layer_trace_costs": {p["layer"]: cfg["layer_costs"] for p in planes} if planes else None,
+                         "router_edge_mm": rules.edge_clearance_mm if cfg["router_edge"] == "rule" else None}
             _final, results = freerouting.route_rounds(bare, rules, refs.repo_root() / "build" / "fr" / ref.key, finish,
                                                        rounds=cfg["rounds"], pours=pours, planes=planes, feeds=plane_nets,
                                                        stubs=cfg["stubs"], gui=cfg["gui"], feeds_mode=cfg["feeds_mode"],

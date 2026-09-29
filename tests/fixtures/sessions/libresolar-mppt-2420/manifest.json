@@ -2,17 +2,45 @@
  "dsn_md5": "7c237c3d57d79f6381bc3603d93a7436",
  "frozen_at": "2affb15",
  "key": "libresolar-mppt-2420",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": true,
+  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 5,
+    "start_ripup_costs": 100,
+    "via_costs": 1
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {},
-  "commit": "a786a5b",
-  "detail": "libresolar-mppt-2420       score=1.000 PASS | connected 102/102, unconnected items 0 | electrical 0  | tracks 1419 (answer 1668), vias 275 (answer 408) | 2.3s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 64 violations; imported 1419 tracks, 275 vias, 0 widened, 4 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 5, 'moved': 217, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 7c237c3d57 imported 7d06913027 final 5d656b559a; 422s",
+  "commit": "935bc60",
+  "detail": "libresolar-mppt-2420       score=1.000 PASS | connected 102/102, unconnected items 0 | electrical 0  | tracks 1419 (answer 1668), vias 275 (answer 408) | 3.3s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 64 violations; imported 1419 tracks, 275 vias, 0 widened, 4 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 5, 'moved': 217, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 7c237c3d57 imported 7d06913027 final 9cca18e3cf; 8s | replayed the session frozen at 2affb15",
   "dsn": "7c237c3d57",
-  "final": "5d656b559a",
+  "final": "9cca18e3cf",
   "gate": "a",
   "imported": "7d06913027",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "545da0f65ee48b7fef1a759b09c20355"
 }

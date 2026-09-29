@@ -2,17 +2,45 @@
  "dsn_md5": "9f4b3e14f448a08b7b25ebe5e4de8e3b",
  "frozen_at": "2affb15",
  "key": "tinkerforge-temperature",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": true,
+  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 5,
+    "start_ripup_costs": 100,
+    "via_costs": 1
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {},
-  "commit": "a786a5b",
-  "detail": "tinkerforge-temperature    score=1.000 PASS | connected 6/6, unconnected items 0 | electrical 0  | tracks 100 (answer 83), vias 19 (answer 15) | 1.6s | freerouting 2.4.1: exit 0, 3 passes, router reports 0 unrouted and 2 violations; imported 100 tracks, 19 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 2, 'moved': 4, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 9f4b3e14f4 imported 31f630a9ec final 14b00be3e1; 10s",
+  "commit": "935bc60",
+  "detail": "tinkerforge-temperature    score=1.000 PASS | connected 6/6, unconnected items 0 | electrical 0  | tracks 100 (answer 83), vias 19 (answer 15) | 1.5s | freerouting 2.4.1: exit 0, 3 passes, router reports 0 unrouted and 2 violations; imported 100 tracks, 19 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 2, 'moved': 4, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 9f4b3e14f4 imported 31f630a9ec final b153b1d0ba; 0s | replayed the session frozen at 2affb15",
   "dsn": "9f4b3e14f4",
-  "final": "14b00be3e1",
+  "final": "b153b1d0ba",
   "gate": "a",
   "imported": "31f630a9ec",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "8a41753b4c158c8d5cfdb0a360971852"
 }

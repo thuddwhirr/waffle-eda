@@ -53,6 +53,7 @@ keeps most of both.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -740,7 +741,10 @@ def drc_violations(board, rules, work_dir: Path) -> list[Violation]:
     return out
 
 
-def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float = 0.05,
+ROOM_MM = 0.05  # how far the repair's probe for free travel reaches, at the least
+
+
+def _room(board, obstacles, track, ux: float, uy: float, rules, limit_mm: float = ROOM_MM,
           allowed: frozenset | None = None) -> float:
     """How far ``track`` can move along the unit vector (ux, uy) before colliding, by bisection of trial moves."""
     lo, hi = 0.0, limit_mm
@@ -818,11 +822,22 @@ def _item_ref(item, near=None) -> tuple:
         px, py = kb.mm(s.x), kb.mm(s.y)
         if near is not None:
             n = near.GetPosition() if near.GetClass() == "PCB_VIA" else near.GetStart()
-            ax, ay, bx, by = kb.mm(s.x), kb.mm(s.y), kb.mm(e.x), kb.mm(e.y)
-            dx, dy = bx - ax, by - ay
-            length2 = dx * dx + dy * dy
-            t = 0.0 if length2 < 1e-12 else max(0.0, min(1.0, ((kb.mm(n.x) - ax) * dx + (kb.mm(n.y) - ay) * dy) / length2))
-            px, py = ax + t * dx, ay + t * dy
+            nx_, ny_ = kb.mm(n.x), kb.mm(n.y)
+            sides = [((kb.mm(s.x), kb.mm(s.y)), (kb.mm(e.x), kb.mm(e.y)))]
+            if item.GetShape() == pcbnew.SHAPE_T_RECT:  # its four sides: its start and end are the diagonal's, and a
+                corners = [(kb.mm(s.x), kb.mm(s.y)), (kb.mm(e.x), kb.mm(s.y)), (kb.mm(e.x), kb.mm(e.y)),
+                           (kb.mm(s.x), kb.mm(e.y))]  # push away from a point on it went out across the edge
+                sides = [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+            best = None
+            for (ax, ay), (bx, by) in sides:
+                dx, dy = bx - ax, by - ay
+                length2 = dx * dx + dy * dy
+                t = 0.0 if length2 < 1e-12 else max(0.0, min(1.0, ((nx_ - ax) * dx + (ny_ - ay) * dy) / length2))
+                q = (ax + t * dx, ay + t * dy)
+                d = (q[0] - nx_) ** 2 + (q[1] - ny_) ** 2
+                if best is None or d < best[0]:
+                    best = (d, q)
+            px, py = best[1]
         return (item.m_Uuid.AsString(), f"{item.GetShapeStr()} on {item.GetLayerName()}", (px, py))
     if cls == "PCB_TRACK":
         p = item.GetStart()
@@ -1310,6 +1325,7 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
         if TRACE is not None:
             TRACE.append(("round", round_no, sorted((_track_key(tracks[u])[1:3], tuple(sides[u])) for u in sides)))
         stuck: list[str] = []
+        rooms: dict[str, tuple[int, float]] = {}  # per track: the side it moves to and its free travel there
         balanced: set[str] = set()  # pressed equally from both sides: moved only by a neighbour's push
         for uuid, (plus, minus) in sorted(sides.items(), key=lambda kv: _track_key(tracks[kv[0]])):
             nx, ny = normals[uuid]
@@ -1325,7 +1341,11 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
             sign = 1 if step > 0 else -1
             both = plus > 0 and minus > 0
             allowed = frozenset(partners[uuid][0] | partners[uuid][1]) if both else frozenset(partners[uuid][0 if sign > 0 else 1])
-            room = _room(board, obstacles, track, nx * sign, ny * sign, rules, allowed=allowed)  # free travel
+            # free travel, probed as far as the move needs: an edge shortfall runs to the rule less the router's
+            # 0.30 mm (D68), and a probe stopped at 0.05 mm called tinytapeout's +3V3 boxed in with 0.094 of room
+            room = _room(board, obstacles, track, nx * sign, ny * sign, rules, allowed=allowed,
+                         limit_mm=max(ROOM_MM, short))
+            rooms[uuid] = (sign, room)
             if room < short - 1e-6:  # boxed in: no translation clears both sides
                 stuck.append(uuid)
                 continue
@@ -1365,7 +1385,10 @@ def _repair_rounds(board, rules, work_dir: Path, rounds: int) -> dict:
                 uid = blocker.m_Uuid.AsString()
                 other = movable.get(uid)
                 if other is not None and (uid not in sides or uid in balanced):
-                    step = short + 2 * NUDGE_EXTRA_MM
+                    # the blocker gives only the room the track lacks: pushed the whole step, tinytapeout's res1
+                    # ran into J7's header pads where 0.006 mm would have done
+                    side, room = rooms.get(uuid, (sign, 0.0))
+                    step = short + 2 * NUDGE_EXTRA_MM - (room if side == sign else 0.0)
                     if _push_chain(board, obstacles, other, nx * sign, ny * sign, step, rules, movable, None):
                         moved_now += 1
                         continue
@@ -2160,6 +2183,17 @@ def settings_json(work_dir: Path, threads: int, passes: int, fanout: bool = FANO
     return path
 
 
+def router_record(settings: Path, jar: Path) -> dict:
+    """What decides a run's session besides the DSN: the settings file's routing part (its profile id and log
+    path vary run to run) and the jar. A frozen session is replayed only under the same record (D147)."""
+    import hashlib
+    import json
+    cfg = json.loads(settings.read_text())
+    return {"version": cfg["version"], "router": cfg["router"], "gui": cfg["gui"]["enabled"],
+            "feature_flags": cfg["feature_flags"],
+            "jar_md5": hashlib.md5(jar.read_bytes()).hexdigest() if jar.is_file() else None}
+
+
 def geometry_digest(board) -> str:
     """A short digest of the board's routed copper, independent of item order and uuids: two runs of one
     configuration must agree on it (D25), and a gate row carries it so a difference shows at a glance."""
@@ -2270,8 +2304,9 @@ def run_jar(dsn: Path, ses: Path, log: Path, passes: int, threads: int, timeout_
     reason = available()
     if reason:
         raise RuntimeError(reason)
-    settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm, gui=gui,
-                  via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs)
+    settings = settings_json(dsn.parent, threads, passes, fanout=fanout, edge_clearance_mm=edge_clearance_mm,
+                             gui=gui, via_costs=via_costs, plane_via_costs=plane_via_costs, ripup_costs=ripup_costs)
+    (dsn.parent / "router.json").write_text(json.dumps(router_record(settings, jar or jar_path()), sort_keys=True))
     cmd = ["xvfb-run", "-a", str(java_path()), "-jar", str(jar or jar_path()), f"--user_data_path={dsn.parent}",
            "-de", str(dsn), "-do", str(ses), "-mp", str(passes), "-mt", str(threads)]
     if ses.is_file():

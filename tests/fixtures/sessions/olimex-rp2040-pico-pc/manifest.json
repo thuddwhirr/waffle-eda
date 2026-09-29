@@ -2,17 +2,45 @@
  "dsn_md5": "b892daa4a1e5e7e5696165b47ac137ea",
  "frozen_at": "2affb15",
  "key": "olimex-rp2040-pico-pc",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": true,
+  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 5,
+    "start_ripup_costs": 100,
+    "via_costs": 1
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {},
-  "commit": "a786a5b",
-  "detail": "olimex-rp2040-pico-pc      score=1.000 PASS | connected 60/60, unconnected items 0 | electrical 0  | tracks 851 (answer 934), vias 148 (answer 110) | 2.3s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 65 violations; imported 851 tracks, 148 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 4, 'moved': 126, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn b892daa4a1 imported eecaf2df44 final f1e8eb5d45; 192s",
+  "commit": "935bc60",
+  "detail": "olimex-rp2040-pico-pc      score=1.000 PASS | connected 60/60, unconnected items 0 | electrical 0  | tracks 851 (answer 934), vias 148 (answer 110) | 2.8s | freerouting 2.4.1: exit 0, 18 passes, router reports 5 unrouted and 65 violations; imported 851 tracks, 148 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 5, 'moved': 129, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn b892daa4a1 imported eecaf2df44 final 1462ff03a1; 4s | replayed the session frozen at 2affb15",
   "dsn": "b892daa4a1",
-  "final": "f1e8eb5d45",
+  "final": "1462ff03a1",
   "gate": "a",
   "imported": "eecaf2df44",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "438a5b98d1b161d3cb01e052f606d745"
 }

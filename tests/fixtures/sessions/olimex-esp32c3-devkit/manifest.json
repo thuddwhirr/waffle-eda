@@ -2,17 +2,45 @@
  "dsn_md5": "40c42bc2eaa41bf4a2ef3ee7cdacc1e5",
  "frozen_at": "2affb15",
  "key": "olimex-esp32c3-devkit",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": true,
+  "jar_md5": "ad88a74328807581681de2b68c0ccd40",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 5,
+    "start_ripup_costs": 100,
+    "via_costs": 1
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {},
-  "commit": "a786a5b",
-  "detail": "olimex-esp32c3-devkit      score=1.000 PASS | connected 34/34, unconnected items 0 | electrical 0  | tracks 630 (answer 799), vias 102 (answer 88) | 1.9s | freerouting 2.4.1: exit 0, 5 passes, router reports 0 unrouted and 10 violations; imported 630 tracks, 102 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 65, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 40c42bc2ea imported a2aa28e237 final d7c2eb53ad; 32s",
+  "commit": "935bc60",
+  "detail": "olimex-esp32c3-devkit      score=1.000 PASS | connected 34/34, unconnected items 0 | electrical 0  | tracks 630 (answer 799), vias 102 (answer 88) | 2.2s | freerouting 2.4.1: exit 0, 5 passes, router reports 0 unrouted and 10 violations; imported 630 tracks, 102 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 3, 'moved': 65, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 40c42bc2ea imported a2aa28e237 final d7c2eb53ad; 1s | replayed the session frozen at 2affb15",
   "dsn": "40c42bc2ea",
   "final": "d7c2eb53ad",
   "gate": "a",
   "imported": "a2aa28e237",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "dedcdec52a81bcc8ed1b921b076fed58"
 }

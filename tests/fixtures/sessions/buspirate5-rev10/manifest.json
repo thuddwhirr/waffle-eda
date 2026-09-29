@@ -2,19 +2,47 @@
  "dsn_md5": "d64f2dff7e7b3b31837fda3bd89e881d",
  "frozen_at": "2affb15",
  "key": "buspirate5-rev10",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": false,
+  "jar_md5": "aa2af4d483675e011e71ff027400d9a9",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 2,
+    "start_ripup_costs": 400,
+    "via_costs": 20
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {
    "timeout_s": 6000.0
   },
-  "commit": "a786a5b",
-  "detail": "buspirate5-rev10           score=0.951 fail | connected 174/183, unconnected items 9 | electrical 0  | tracks 2611 (answer 2417), vias 429 (answer 547) | 5.1s | residue 9 nets, 0 clearances, 0 shorts; planes whole (buspirate5-rev10-residue.md) | freerouting 2.4.1: exit 0, 28 passes, router reports 9 unrouted and 9 violations; imported 2611 tracks, 429 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 12, 'moved': 52, 'remaining': 93, 'unfixable': 0, 'worst_mm': 0.5698, 'strategy': 'floor'}; dsn d64f2dff7e imported 7d271ed893 final 4745ae57f3; 3325s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | reference copper under our rules: clearance violations: 166; Freerouting's incomplete connections: 493; nets the copper leaves open (ends within 1.0 um joined): 39 (1 ObstacleArea/PolylineTrace on F.Cu, 1 Pin/Pin on F.Cu, 8 Pin/Pin same net on F.Cu, 7 Pin/PolylineTrace on F.Cu, 1 Pin/Via on B.Cu, 7 Pin/Via on F.Cu, 1 Pin/Via on In1.Cu, 1 Pin/Via on In2.Cu, 4 PolylineTrace/Via on B.Cu, 9 PolylineTrace/Via on F.Cu, 2 PolylineTrace/Via on In2.Cu, 12 Via/Via on B.Cu, 12 Via/Via on F.Cu, 12 Via/Via on In1.Cu, 12 Via/Via on In2.Cu, 19 Via/Via same net on B.Cu, 19 Via/Via same net on F.Cu, 19 Via/Via same net on In1.Cu, 19 Via/Via same net on In2.Cu)",
+  "commit": "935bc60",
+  "detail": "buspirate5-rev10           score=0.951 fail | connected 174/183, unconnected items 9 | electrical 0  | tracks 2611 (answer 2417), vias 429 (answer 547) | 5.2s | residue 9 nets, 0 clearances, 0 shorts; planes whole (buspirate5-rev10-residue.md) | freerouting 2.4.1: exit 0, 28 passes, router reports 9 unrouted and 9 violations; imported 2611 tracks, 429 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 1, 'dangling': 0}, repair {'rounds': 12, 'moved': 46, 'remaining': 93, 'unfixable': 0, 'worst_mm': 0.5698, 'strategy': 'floor'}; dsn d64f2dff7e imported 7d271ed893 final 5456e4e985; 98s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | replayed the session frozen at 2affb15",
   "dsn": "d64f2dff7e",
-  "final": "4745ae57f3",
+  "final": "5456e4e985",
   "gate": "b",
   "imported": "7d271ed893",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "18873af68f26f4940031a297d350edc9"
 }

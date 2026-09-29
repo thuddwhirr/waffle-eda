@@ -2,19 +2,47 @@
  "dsn_md5": "2a09c8105fe18524485a3d6d83275121",
  "frozen_at": "2affb15",
  "key": "tinytapeout-demo",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": false,
+  "jar_md5": "aa2af4d483675e011e71ff027400d9a9",
+  "router": {
+   "copper_to_edge_clearance_um": 300.0,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 2,
+    "start_ripup_costs": 400,
+    "via_costs": 20
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {
    "timeout_s": 6000.0
   },
-  "commit": "a786a5b",
-  "detail": "tinytapeout-demo           score=0.669 fail | connected 131/137, unconnected items 8 | electrical 3 {'copper_edge_clearance': 3} | tracks 1989 (answer 2785), vias 407 (answer 401) | 5.3s | residue 6 nets, 0 clearances, 0 shorts; planes open ['GND'] | plane nets open ['GND']; other violations 3 (tinytapeout-demo-residue.md) | freerouting 2.4.1: exit 0, 19 passes, router reports 10 unrouted and 8 violations; imported 1985 tracks, 404 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 9, 'moved': 53, 'remaining': 9, 'unfixable': 0, 'worst_mm': 0.1589, 'strategy': 'floor'}; dsn 2a09c8105f imported 019b24b129 final 33de883539; 2601s | cap 6000 s | planes gnd | feeds 0 none, stitched 3 | no window | reference copper under our rules: clearance violations: 68; Freerouting's incomplete connections: 203; nets the copper leaves open (ends within 1.0 um joined): 24 (5 ObstacleArea/PolylineTrace on B.Cu, 5 ObstacleArea/PolylineTrace on F.Cu, 8 Pin/Pin same net on F.Cu, 1 Pin/Via on F.Cu, 4 PolylineTrace/Via on F.Cu, 11 Via/Via same net on B.Cu, 11 Via/Via same net on F.Cu, 11 Via/Via same net on In1.Cu, 11 Via/Via same net on In2.Cu, 1 Via/ViaObstacleArea on B.Cu)",
+  "commit": "935bc60",
+  "detail": "tinytapeout-demo           score=0.669 fail | connected 131/137, unconnected items 8 | electrical 3 {'copper_edge_clearance': 3} | tracks 1989 (answer 2785), vias 407 (answer 401) | 6.1s | residue 6 nets, 0 clearances, 0 shorts; planes open ['GND'] | plane nets open ['GND']; other violations 3 (tinytapeout-demo-residue.md) | freerouting 2.4.1: exit 0, 19 passes, router reports 10 unrouted and 8 violations; imported 1985 tracks, 404 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 9, 'moved': 66, 'remaining': 9, 'unfixable': 0, 'worst_mm': 0.1589, 'strategy': 'floor'}; dsn 2a09c8105f imported 019b24b129 final 3c8e61de39; 17s | cap 6000 s | planes gnd | feeds 0 none, stitched 3 | no window | replayed the session frozen at 2affb15",
   "dsn": "2a09c8105f",
-  "final": "33de883539",
+  "final": "3c8e61de39",
   "gate": "b",
   "imported": "019b24b129",
   "overridden": {},
   "pass": false,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "b76356560b3b829d395f0c981cefa05a"
 }

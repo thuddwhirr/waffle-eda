@@ -2,19 +2,47 @@
  "dsn_md5": "57c46c406da3539e2cb69eb63708c7bb",
  "frozen_at": "2affb15",
  "key": "upduino-v3.01",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": false,
+  "jar_md5": "aa2af4d483675e011e71ff027400d9a9",
+  "router": {
+   "copper_to_edge_clearance_um": 294.8,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 2,
+    "start_ripup_costs": 400,
+    "via_costs": 20
+   }
+  },
+  "version": "2.4.1"
+ },
  "row": {
   "budget": {
    "timeout_s": 6000.0
   },
-  "commit": "a786a5b",
-  "detail": "upduino-v3.01              score=0.965 fail | connected 83/86, unconnected items 3 | electrical 0  | tracks 1136 (answer 1585), vias 144 (answer 123) | 2.4s | residue 3 nets, 0 clearances, 0 shorts; planes whole (upduino-v3.01-residue.md) | freerouting 2.4.1: exit 0, 18 passes, router reports 7 unrouted and 23 violations; imported 1136 tracks, 144 vias, 0 widened, 6 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 57c46c406d imported 89c40788e7 final 89c40788e7; 243s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | reference copper under our rules: clearance violations: 44; Freerouting's incomplete connections: 242; nets the copper leaves open (ends within 1.0 um joined): 6 (1 ObstacleArea/PolylineTrace on B.Cu, 2 Pin/Pin on B.Cu, 11 Pin/Pin on F.Cu, 10 Pin/Pin same net on F.Cu, 15 Pin/PolylineTrace on F.Cu, 2 PolylineTrace/Via on B.Cu, 1 PolylineTrace/Via on F.Cu, 1 PolylineTrace/Via on In2.Cu, 1 Via/ViaObstacleArea on F.Cu)",
+  "commit": "935bc60",
+  "detail": "upduino-v3.01              score=0.965 fail | connected 83/86, unconnected items 3 | electrical 0  | tracks 1136 (answer 1585), vias 144 (answer 123) | 2.7s | residue 3 nets, 0 clearances, 0 shorts; planes whole (upduino-v3.01-residue.md) | freerouting 2.4.1: exit 0, 18 passes, router reports 7 unrouted and 23 violations; imported 1136 tracks, 144 vias, 0 widened, 6 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 57c46c406d imported 89c40788e7 final 89c40788e7; 1s | cap 6000 s | planes gnd | feeds 0 none, stitched 0 | no window | replayed the session frozen at 2affb15",
   "dsn": "57c46c406d",
   "final": "89c40788e7",
   "gate": "b",
   "imported": "89c40788e7",
   "overridden": {},
   "pass": true,
-  "replayed": false
+  "rebased_at": "935bc60",
+  "replayed": false,
+  "unreached": []
  },
  "session_md5": "bdabc38a16105241bbe71fe398160a11"
 }
