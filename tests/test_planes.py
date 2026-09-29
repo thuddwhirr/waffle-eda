@@ -4,6 +4,7 @@ import math
 from types import SimpleNamespace
 
 import pcbnew
+import pytest
 
 from waffle_eda.kicad import board as kb
 from waffle_eda.route import planes
@@ -305,3 +306,54 @@ def test_a_thermal_pads_via_moves_inside_the_pad_off_another_nets_track_beneath(
     assert feed.in_pad and feed.legs == [] and feed.via != (0.0, 0.0)
     assert abs(feed.via[1]) >= 0.1 + 0.3 + 0.2 and abs(feed.via[0]) <= 1.5 - 0.35 and abs(feed.via[1]) <= 1.5 - 0.35
     assert len(planes.lay_feeds(b, [feed])) == 1  # one via, no stub
+
+
+def test_a_no_pour_area_over_a_pad_of_the_planes_net_is_carved_out_of_the_plane():
+    """olimex-esp32-poe-m1's LAN_CON1-7 and -8 sit under the reference's no-pour area on In1, and the reference joins
+    them with tracks. The router, handed the GND plane on In1 with no area in it (a pour-only area never reaches the
+    DSN, D133), took them as joined by the plane; the fill after the import obeyed the area (D150). A pad of the
+    plane's net under no area, and an area over no such pad, change nothing."""
+    board = pcbnew.BOARD()
+    board.SetCopperLayerCount(4)
+    gnd = pcbnew.NETINFO_ITEM(board, "GND")
+    board.Add(gnd)
+    fp = pcbnew.FOOTPRINT(board)
+    fp.SetReference("LAN_CON1")
+    for number, x in (("7", 10.0), ("8", 30.0)):
+        pad = pcbnew.PAD(fp)
+        pad.SetNumber(number)
+        pad.SetAttribute(pcbnew.PAD_ATTRIB_PTH)
+        pad.SetShape(pcbnew.PAD_SHAPE_CIRCLE)
+        pad.SetSize(pcbnew.VECTOR2I(kb.nm(1.524), kb.nm(1.524)))
+        pad.SetDrillSize(pcbnew.VECTOR2I(kb.nm(1.0), kb.nm(1.0)))
+        pad.SetLayerSet(pcbnew.PAD.PTHMask())
+        pad.SetPosition(pcbnew.VECTOR2I(kb.nm(x), kb.nm(10.0)))
+        pad.SetNet(gnd)
+        fp.Add(pad)
+    board.Add(fp)
+
+    def square(zone, x0, y0, x1, y1):
+        outline = zone.Outline()
+        outline.NewOutline()
+        for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+            outline.Append(kb.nm(x), kb.nm(y))
+        board.Add(zone)
+        return zone
+
+    plane = pcbnew.ZONE(board)
+    plane.SetLayer(pcbnew.In1_Cu)
+    plane.SetNet(gnd)
+    square(plane, 0.0, 0.0, 40.0, 20.0)
+    for x0, x1, forbid in ((5.0, 15.0, True), (20.0, 25.0, True), (27.0, 33.0, False)):
+        area = pcbnew.ZONE(board)
+        area.SetIsRuleArea(True)
+        area.SetDoNotAllowCopperPour(forbid)
+        area.SetDoNotAllowTracks(False)
+        area.SetDoNotAllowVias(False)
+        area.SetLayer(pcbnew.In1_Cu)
+        square(area, x0, 5.0, x1, 15.0)
+    area_before = plane.Outline().Area()
+    assert planes.carve(board, [plane]) == ["LAN_CON1-7"]  # under the no-pour area; -8's area forbids nothing
+    assert not plane.Outline().Contains(pcbnew.VECTOR2I(kb.nm(10.0), kb.nm(10.0)))
+    assert plane.Outline().Contains(pcbnew.VECTOR2I(kb.nm(22.5), kb.nm(10.0)))  # the area over no pad stays plane
+    assert plane.Outline().Area() == pytest.approx(area_before - kb.nm(10.0) * kb.nm(10.0), rel=1e-6)

@@ -436,6 +436,28 @@ def stitch(board, rules, nets: set[str]) -> list[Feed]:
     return laid
 
 
+def carve(board, zones: list) -> list[str]:
+    """Cut out of each plane zone the pour-forbidding rule areas on its layer that cover a plated pad of its net,
+    before the export; returns those pads ("REF-N"). The reference joins such a pad with tracks
+    (olimex-esp32-poe-m1's LAN_CON1-7 and -8 under the magnetics' no-pour area); the router, handed the plane with
+    no area in it (a pour-only area never reaches the DSN, D133), took the pad as joined by the plane, and the fill
+    after the import obeyed the area (D150)."""
+    carved: set[str] = set()
+    areas = [z for z in board.Zones() if z.GetIsRuleArea() and z.GetDoNotAllowCopperPour()]
+    for zone in zones:
+        layer, net = zone.GetFirstLayer(), zone.GetNetname()
+        pads = [(fp.GetReference(), p) for fp in board.GetFootprints() for p in fp.Pads()
+                if p.GetNetname() == net and p.GetAttribute() == pcbnew.PAD_ATTRIB_PTH and p.IsOnLayer(layer)]
+        for area in areas:
+            if not area.IsOnLayer(layer):
+                continue
+            covered = [f"{ref}-{p.GetNumber()}" for ref, p in pads if area.Outline().Contains(p.GetPosition())]
+            if covered:
+                zone.Outline().BooleanSubtract(area.Outline())
+                carved.update(covered)
+    return sorted(carved)
+
+
 def unreached(board, planes: list[dict]) -> list[str]:
     """The plated pads of a plane's net that pass through the plane's layer and that its fill does not reach
     ("REF-N"), read on a copy of ``board`` filled in a child process (D14). The router takes every such pad as
@@ -465,7 +487,8 @@ def unreached(board, planes: list[dict]) -> list[str]:
             for fp in filled.GetFootprints():
                 for pad in fp.Pads():
                     if (pad.GetNetname() == plane["net"] and pad.GetAttribute() == pcbnew.PAD_ATTRIB_PTH
-                            and pad.IsOnLayer(layer) and pad.m_Uuid.AsString() not in reached):
+                            and pad.IsOnLayer(layer) and pad.m_Uuid.AsString() not in reached
+                            and any(z.Outline().Contains(pad.GetPosition()) for z in zones)):  # left to the plane
                         out.add(f"{fp.GetReference()}-{pad.GetNumber()}")
     return sorted(out)
 

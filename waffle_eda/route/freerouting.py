@@ -2406,6 +2406,9 @@ def route_board(board, rules, work_dir: Path, passes: int = 30, threads: int = 1
         laid_planes = add_pours(board, planes, rules, ring_mm=(rules.min_via_mm - rules.min_drill_mm) / 2)
         say(f"planes laid before the export: {len(laid_planes)} of {len(planes)}")
         from waffle_eda.route import planes as feedlib
+        carved = feedlib.carve(board, laid_planes)  # no plane under a no-pour area over a pad of its net (D150)
+        if carved:
+            say(f"no-pour areas carved out of the planes over {carved}")
         unreached = feedlib.unreached(board, planes)  # the router takes these as joined by the plane (D147)
         say(f"plated pads of a plane net its fill does not reach: {unreached or 'none'}")
     if feeds_mode not in ("fixed", "routable", "after", "reserved", "vias", "none"):
