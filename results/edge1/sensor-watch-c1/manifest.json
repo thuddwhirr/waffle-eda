@@ -1,0 +1,49 @@
+{
+ "dsn_md5": "23e401cc8bccdf3a08bbf66b4eb14cfe",
+ "frozen_at": "371b676",
+ "key": "sensor-watch-c1",
+ "router": {
+  "feature_flags": {
+   "multi_threading": false
+  },
+  "gui": false,
+  "jar_md5": "10b321b0ec7e449ff1fcbe4c72cb96c1",
+  "router": {
+   "copper_to_edge_clearance_um": 594.8,
+   "fanout": {
+    "enabled": false
+   },
+   "max_passes": 30,
+   "max_threads": 1,
+   "optimizer": {
+    "enabled": false,
+    "max_passes": 0,
+    "max_threads": 1
+   },
+   "scoring": {
+    "plane_via_costs": 2,
+    "start_ripup_costs": 400,
+    "via_costs": 20
+   }
+  },
+  "version": "2.4.1"
+ },
+ "row": {
+  "budget": {
+   "timeout_s": 6000.0
+  },
+  "commit": "371b676",
+  "detail": "sensor-watch-c1            score=0.852 fail | connected 52/61, unconnected items 11 | electrical 0  | tracks 576 (answer 587), vias 128 (answer 81) | 3.0s | residue 9 nets, 0 clearances, 0 shorts; planes open ['GND', 'VCC'] | plane nets open ['GND', 'VCC'] (sensor-watch-c1-residue.md) | freerouting 2.4.1: exit 0, 18 passes, router reports 11 unrouted and 46 violations; imported 574 tracks, 126 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn 23e401cc8b imported c31b906733 final c31b906733; 568s | cap 6000 s | configuration overridden: {'router_edge': 'rule'} | planes gnd | feeds 0 none, stitched 2 | no window | reference copper under our rules: clearance violations: 54; Freerouting's incomplete connections: 48; nets the copper leaves open (ends within 1.0 um joined): 3 (4 BoardOutline/Pin on B.Cu, 4 BoardOutline/Pin on F.Cu, 4 BoardOutline/Pin on In1.Cu, 4 BoardOutline/Pin on In2.Cu, 7 BoardOutline/PolylineTrace on F.Cu, 4 BoardOutline/PolylineTrace on In2.Cu, 3 ObstacleArea/PolylineTrace on B.Cu, 2 ObstacleArea/PolylineTrace on F.Cu, 1 Pin/PolylineTrace on F.Cu, 2 Pin/Via on B.Cu, 7 Pin/Via on F.Cu, 3 Via/Via on B.Cu, 3 Via/Via on F.Cu, 3 Via/Via on In1.Cu, 3 Via/Via on In2.Cu)",
+  "dsn": "23e401cc8b",
+  "final": "c31b906733",
+  "gate": "b",
+  "imported": "c31b906733",
+  "overridden": {
+   "router_edge": "rule"
+  },
+  "pass": false,
+  "replayed": false,
+  "unreached": []
+ },
+ "session_md5": "1e7da8adebd57d83f40ea1f455a4887d"
+}
