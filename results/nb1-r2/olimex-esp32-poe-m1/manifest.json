@@ -1,0 +1,29 @@
+{
+ "dsn_md5": "a5fbccd76fdd5c20442b813ee2856a97",
+ "frozen_at": "935bc60",
+ "key": "olimex-esp32-poe-m1",
+ "row": {
+  "budget": {
+   "timeout_s": 6000.0
+  },
+  "commit": "935bc60",
+  "detail": "olimex-esp32-poe-m1        score=0.471 fail | connected 68/101, unconnected items 42 | electrical 2 {'clearance': 2} | tracks 1502 (answer 2528), vias 187 (answer 233) | 3.3s | residue 33 nets, 2 clearances, 0 shorts; planes open ['+3.3V', 'GND', 'Spare2'] | plane nets open ['+3.3V', 'GND', 'Spare2']; open nets 33 over 10 (olimex-esp32-poe-m1-residue.md) | freerouting 2.4.1: exit 0, 27 passes, router reports 36 unrouted and 85 violations; imported 1501 tracks, 186 vias, 0 widened, 0 joined, 0 feeds, pruned {'duplicates': 0, 'dangling': 0}, repair {'rounds': 1, 'moved': 0, 'remaining': 0, 'unfixable': 0, 'worst_mm': 0.0, 'strategy': 'floor'}; dsn a5fbccd76f imported 3dfc47a586 final 3dfc47a586; 4162s; plane pads the fill does not reach: ['C25-2', 'C27-2', 'EXT1-3', 'LAN_CON1-7', 'LAN_CON1-8', 'U4-33', 'U6-39'] | cap 6000 s | planes gnd | feeds 0 none, stitched 1 | no window | reference copper under our rules: clearance violations: 292; Freerouting's incomplete connections: 100; nets the copper leaves open (ends within 1.0 um joined): 12 (10 ObstacleArea/PolylineTrace on B.Cu, 18 ObstacleArea/PolylineTrace on F.Cu, 5 ObstacleArea/Via on B.Cu, 5 ObstacleArea/Via on F.Cu, 5 ObstacleArea/Via on In1.Cu, 5 ObstacleArea/Via on In2.Cu, 25 Pin/Pin on B.Cu, 16 Pin/Pin on F.Cu, 12 Pin/Pin on In1.Cu, 12 Pin/Pin on In2.Cu, 12 Pin/Pin same net on B.Cu, 8 Pin/Pin same net on F.Cu, 40 Pin/PolylineTrace on B.Cu, 46 Pin/PolylineTrace on F.Cu, 4 Pin/Via on B.Cu, 8 Pin/Via on F.Cu, 1 PolylineTrace/PolylineTrace on F.Cu, 3 Via/Via on B.Cu, 3 Via/Via on F.Cu, 3 Via/Via on In1.Cu, 3 Via/Via on In2.Cu, 12 Via/Via same net on B.Cu, 12 Via/Via same net on F.Cu, 12 Via/Via same net on In1.Cu, 12 Via/Via same net on In2.Cu)",
+  "dsn": "a5fbccd76f",
+  "final": "3dfc47a586",
+  "gate": "b",
+  "imported": "3dfc47a586",
+  "overridden": {},
+  "pass": false,
+  "replayed": false,
+  "unreached": [
+   "C25-2",
+   "C27-2",
+   "EXT1-3",
+   "LAN_CON1-7",
+   "LAN_CON1-8",
+   "U4-33",
+   "U6-39"
+  ]
+ },
+ "session_md5": "025ccdfd3075e1137805ac4e9ddc06d4"
+}
