@@ -8,20 +8,20 @@ Everything else in this file serves that sentence.
 
 This is the only part of the plan that says what to *do*. **Whoever finishes a piece of work updates it in the
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
-decision log, D87 to D142, and `docs/review-class-b.md`; do not re-derive it.
+decision log, D87 to D143, and `docs/review-class-b.md`; do not re-derive it.
 
 **State (2026-09-28, `claude/project-progress-assessment-2hob4y`).**
 
 | Gate | Result | What it means |
 |---|---|---|
 | `python3 scripts/gate.py a` | PASS 5 of 5 | class A untouched by everything below; run it clean (no `WAFFLE_*` in the environment) before any push to shared code |
-| `python3 scripts/gate.py b upduino-v3.01` | PASS, 85 of 86 | under D132's default (vias on SMD pads): /FLASH_MISO open, no clearance, no short, both planes whole; 82 before (D131) |
-| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 91 of 95 | under D132's default: 4 open nets, no clearance, no short, every plane whole; 85 before (D131) |
+| `python3 scripts/gate.py b upduino-v3.01` | PASS, 83 of 86 | no clearance, no short, planes whole (D143; 85 in D132) |
+| `python3 scripts/gate.py b pico-ice-rev3` | PASS, 85 of 95 | at the bound: 10 open, no clearance, no short, planes whole (D143; 91 in D132) |
 | `python3 scripts/gate.py b sensor-watch-c1` | FAIL, 55 of 61 | no clearance, no short; GND open, four plated pads of U$2 across the outline unreachable to the router, /COM1 opened by the finishing step (D135) |
-| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 76 of 101 | 25 open, 2 clearances at pads with their own clearance (D136's cost), GND and Spare2 open; the router at 28 unrouted once its inner layers are typed signal (D141; 70 and 77 before, D138) |
+| `python3 scripts/gate.py b olimex-esp32-poe-m1` | FAIL, 68 of 101 | 33 open, 2 clearances at pads with their own clearance, planes open; 76 in D141, a spread single rows show on this board (D143) |
 | `python3 scripts/gate.py b tinkerforge-master-v3.2` | PASS, 144 of 151 | 7 open nets, no clearance, no short, every plane whole (D139) |
 | `python3 scripts/gate.py b buspirate5-rev10` | FAIL, 168 of 183 | 15 open, GND open, no clearance, no short; the router reports 8 unrouted, the finishing step leaves 15 (D140); 94 before its via name was fixed |
-| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 129 of 137 | 8 open (within the bound) but GND in 157 pieces and 4 shorts through jumper copper the DSN lacks (D142) |
+| `python3 scripts/gate.py b tinytapeout-demo` | FAIL, 132 of 137 | the jumper shorts gone (D143); GND in 157 pieces, 3 edge clearances |
 | `mch2022-badge` | not run | its DSN has no boundary after a pcbnew save (D133) | never routed under the class B default; their translation lines (D133) show our DSN still stricter than their own copper |
 
 **What "done" means for class B now (the owner's decision, D120; the rule as corrected, D124).** A reference
@@ -62,21 +62,21 @@ of 86 and pico-ice to 91 of 95. The translation check now runs beside every clas
 seven unmeasured references found KiCad exporting rule areas that forbid nothing as keepouts (tinytapeout, 371
 of its 453 violations, fixed).
 
-**Then, in this order.**
-1. The translation lines of the remaining references, each explained before its row is believed. Explained so
-   far: same-net vias closer than the via rule (stitching, not the router's), connector tabs and a few reference
-   vias over the outline (tinkerforge-master), the reference breaking its own net-class rule at a few vias
-   (sensor-watch); fixed: rule areas that forbid nothing (D133), keepouts round pads the router must reach (D136).
-   Open: D61's netless pad pieces walling their own net (fomu's U9, poe-m1's exposed pad U4-33; D73 settled it on
-   class A); mch2022-badge's DSN has no boundary after any pcbnew save (D133), so neither its line nor its row can
-   run until its outline survives the save. A cause in our export gets a failing test and the smallest fix.
-2. The remaining references under the default, one row each, smallest first (fomu-pvt out of the class, D137; sensor-watch-c1 done, D135;
-   olimex-esp32-poe-m1 done, D138; tinkerforge-master-v3.2 done, D139; buspirate5-rev10 done, D140; tinytapeout-demo done, D142; mch2022-badge), one run at a
-   time: two Freerouting runs at once wrote libresolar an empty session on 2026-09-28 (the pitfall in
-   `freerouting.py`).
-3. Fanout, the optimizer and the outer-layer pours (D57, D65, D62) were set under the conditions D130 to D132
-   found wrong; each is re-measured only with a stated hypothesis, by the translation check first.
-4. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
+**Then, in this order.** Every class B reference has a row (mch2022 excepted); what fails them is on our side:
+1. The finishing step drops connections the router made: buspirate5's router ends at 8 unrouted and the final
+   board has 15 open (D140); sensor-watch's /COM1 is whole on the imported board and open on the final one (D135).
+   A failing test on the imported board first.
+2. GND open on tinytapeout (157 pieces, D143), buspirate5 and poe-m1: why the plane net does not come out whole.
+3. Pads across the board outline (sensor-watch's U$2, D135) and mch2022's outline lost on a pcbnew save (D133).
+4. Single rows on the larger boards differ by several nets on a trivial DSN change (poe-m1: 76 and 68, D141, D143);
+   before a small difference is read as an effect, run the board two or three times with harmless DSN changes and
+   take the spread as the noise band (the owner's call on the router time).
+5. D61's netless pad pieces walling their own net (fomu's U9, poe-m1's exposed pad U4-33; D73 settled it on class
+   A); fanout, the optimizer and the outer pours (D57, D65, D62) re-measured only with a stated hypothesis.
+6. `scripts/fetch_tools.py` should build the patched jar after fetching the stock one.
+
+One router at a time: two Freerouting runs at once wrote libresolar an empty session on 2026-09-28 (the pitfall in
+`freerouting.py`).
 
 **Tools for a measurement**, all measured, none the default: `scripts/rung.py` (one row with every knob:
 `stitch`, `band=`, `costs=`, `first=`, `answer=`, the feed forms), the environment overrides `WAFFLE_VIA_COSTS`,

@@ -970,6 +970,15 @@ short of the own-clearance of D3 and D8, the pads D136 took the keepouts from. M
 tinytapeout-demo` after D133 and 6d66695). 8 open nets (within the bound), 401 vias for the reference's 402, but
 GND in 157 pieces and four shorts: tracks through the copper rectangles of solder jumpers JP1, JP3 and JP4,
 footprint graphics the DSN does not carry (as poe-m1's copper text, D138). Measurement.
+
+**D143. Copper the export leaves out, as keepouts** (2026-09-29, 4a36227, 17c19d5, 9df0a07). KiCad's DSN carries no
+copper graphics. Board copper text and shapes and footprint copper shapes with no net are now keepouts; a
+footprint shape touching pads of one net only is that pad's copper and stays out; a solder-jumper bridge (pads of
+two nets) is the bridge less its pads, and its pads get a via keepout (a +3V3 via in upduino's R28 pad reached the
+bridge and read as a short). tinytapeout-demo 132 of 137, FAIL: the four jumper shorts gone, GND in 157 pieces,
+3 edge clearances. upduino 83 of 86, pico-ice 85 of 95, both PASS, no short (85 and 91 in D132; single rows,
+poe-m1 ran 8 nets apart on a one-connection change, D141). poe-m1 68 of 101 with its four layer-marker keepouts,
+no short. Class A has no such copper, DSNs unchanged. Measurement.
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the
