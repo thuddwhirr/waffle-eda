@@ -10,7 +10,7 @@ This is the only part of the plan that says what to *do*. **Whoever finishes a p
 same commit.** A stale next-step is worse than none. The history of how the state below was reached is the
 decision log, D87 to D152, and `docs/review-class-b.md`; do not re-derive it.
 
-**State (2026-09-29, `claude/clever-knuth-c41w4c`).** Class B: FAIL, 5 of 8. Every row below is a replay
+**State (2026-09-30, `claude/clever-knuth-c41w4c`).** Class B: FAIL, 5 of 8; its synthetic design at stage 1 (below). Every row below is a replay
 of its frozen session on this code (`scripts/replay.py`) or a cloud worker's row (D151, D152); class A's gate PASS 5 of 5 on
 this code.
 
@@ -100,9 +100,16 @@ their own plane (D145) and could not move copper in from the edge (D149). Router
 buspirate5, tinytapeout and at times libresolar (D151), and every board swings on a small change of its input
 (poe-m1 68 to 84 on a 0.02 mm edge margin, D152): one routed row is one sample.
 
+**The synthetic design, the ECP5 power and programming pod (D153).** `python3 scripts/design.py status ecp5-pod`:
+stage 1 PASS, 12 criteria, 0 failing, 2 waiting on the owner (the cost ceiling, unknown; the owner's review of
+`designs/ecp5-pod/design.md`). All 257 pin references resolve on the KiCad 9 symbols the Blocks table names, each
+symbol pin on one net or listed unconnected. Stage 2 (`bom.csv`) starts when the owner sets `owner review` to
+`accepted <date>`; the values marked *(confirm)* are checked there against their datasheets, which are not on disk.
+The pod runs through stages 2 to 6 alongside the reference rows; its stage 5 is a class B row of its own.
+
 **Decisions the owner owes.**
 1. The residue bound, ten or another number (pico-ice sits at ten).
-2. The synthetic class B design of the milestone: it needs the owner's board.
+2. The review of `designs/ecp5-pod/design.md` (above).
 
 One router at a time on one container: two Freerouting runs at once wrote libresolar an empty session on 2026-09-28
 (the pitfall in `freerouting.py`); in parallel, each row in its own cloud worker (above).
@@ -310,7 +317,8 @@ regulator and decoupling placement rules from `lessons/layout-practices.md`; the
 four-layer board.
 
 *Gates:* `gate.py b` on the nine references, in the order the plan's table lists them (D75, D84); a class B synthetic
-design (an MCU with USB and a buck regulator) to fab outputs. *First task, in progress:* the sanity pair of
+design to fab outputs: the ECP5 power and programming pod (`designs/ecp5-pod/`, D153: USB-C, an FT2232H in
+a 0.5 mm QFN, three bucks, four layers). *First task, in progress:* the sanity pair of
 `tests/test_rebuild.py` on the class B references (D76 is what it found first).
 
 *State (2026-09-25):* the first task is done: the sanity pair passes on all nine references (D76 to D79 are

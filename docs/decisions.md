@@ -1056,6 +1056,12 @@ poe-m1 FAIL 84 (68 three times; its rule is 0.3229, so a 0.02 mm change: a repea
 change of its input, as D141's 76 and 68). The edge rule measures at the search's bound, 0.5948, on pico-ice,
 sensor-watch and buspirate5: there it says the reference keeps at least that much, not what the rule is. The gate
 stays at 5 of 8 either way (tinytapeout in, sensor-watch out); the default stays 0.30. Measurement.
+
+**D153. Class B's synthetic design is the ECP5 power and programming pod** (2026-09-30, `designs/ecp5-pod/`). The
+owner's own board, ECP5 with DDR3, is class C; its power and programming section is built first as a board of its
+own: USB-C in, 5 V only (no power delivery for now), the ECP5's four rails, FT2232H JTAG and UART, a header to the
+FPGA board. PCBWay standard (profile `pcbway`), turnkey, 5 boards, at most 50 x 50 mm, USB-C and the FPGA header on
+opposite edges, cost ceiling unknown. Owner (the defaults proposed in chat, accepted).
 ## BGA escape (the class B+ machinery; passes its gate)
 
 **D13. How the references escape their bus balls** (`bench/fanout_measure.py`). Dog-bone vias sit in the

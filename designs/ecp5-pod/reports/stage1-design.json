@@ -1,0 +1,83 @@
+{
+ "stage": 1,
+ "name": "design",
+ "checks": [
+  {
+   "criterion": "the document parses",
+   "ok": true,
+   "detail": "'ECP5 power and programming pod'"
+  },
+  {
+   "criterion": "every locked constraint is explicit (size, cost, interfaces, features)",
+   "ok": true,
+   "detail": "size: at most 50 x 50 mm, cost: unknown: no price captured; every cost decision escalates to the owner, interfaces: usb on the left edge, fpga on the right edge, features: the capabilities above; USB power delivery left out (D153)"
+  },
+  {
+   "criterion": "the size limit is a number",
+   "ok": true,
+   "detail": "at most 50 x 50 mm"
+  },
+  {
+   "criterion": "the cost ceiling",
+   "ok": null,
+   "detail": "unknown: no price captured; every cost decision escalates to the owner: until a ceiling and prices are captured, every cost decision escalates (definition.md section 4)"
+  },
+  {
+   "criterion": "every interface has a stated position or is marked free",
+   "ok": true,
+   "detail": "usb: left edge, centred; fpga: right edge, centred; indicator: free; mounting: free"
+  },
+  {
+   "criterion": "every positioned interface is named in the locked set",
+   "ok": true,
+   "detail": "usb, fpga"
+  },
+  {
+   "criterion": "every block the interfaces and nets name is in Blocks, and every block is used",
+   "ok": true,
+   "detail": "78 blocks"
+  },
+  {
+   "criterion": "every net joins at least two pins",
+   "ok": true,
+   "detail": "49 nets, 257 pins"
+  },
+  {
+   "criterion": "no pin is on two nets",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "a pin marked unconnected is on no net",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "criterion": "the fab profile exists",
+   "ok": true,
+   "detail": "'pcbway'; available ['pcbway']"
+  },
+  {
+   "criterion": "owner review",
+   "ok": null,
+   "detail": "'pending': the owner reads design.md and sets 'owner review' to 'accepted <date>' (an edit to the file is the owner's input)"
+  }
+ ],
+ "outputs": [
+  "design.md"
+ ],
+ "numbers": {
+  "blocks": 78,
+  "interfaces": 4,
+  "nets": 49,
+  "pins": 257,
+  "max size mm": [
+   50.0,
+   50.0
+  ]
+ },
+ "next": "stage 2: bom.csv, one part per block",
+ "seconds": 0.0,
+ "when": "2026-09-30 05:22 UTC",
+ "passed": true
+}
